@@ -1,0 +1,67 @@
+Iuna
+====
+
+The source code is released under the MIT License (see LICENSE).
+
+The vocabulary DATA is not. It is derived from the sources below and is
+distributed under the Creative Commons Attribution-ShareAlike 4.0
+International licence (CC-BY-SA 4.0,
+https://creativecommons.org/licenses/by-sa/4.0/). This covers:
+
+  * assets/db/seed.sqlite          the bundled starter deck
+  * packs/*.json                   card packs (and their published copies)
+  * jmdict.sqlite.gz               the downloadable dictionary, which
+                                   carries its own jmdict.LICENSE.txt
+
+Anyone redistributing these files, or works derived from them, must keep
+the attributions below and license the result under CC-BY-SA 4.0. The
+same credits are shown in the app under Settings → Data sources.
+
+
+Data sources
+------------
+
+JMdict
+  Copyright © James William Breen and the Electronic Dictionary Research
+  and Development Group (EDRDG). CC-BY-SA 4.0.
+  https://www.edrdg.org/jmdict/j_jmdict.html
+  https://www.edrdg.org/edrdg/licence.html
+  Read through scriptin/jmdict-simplified
+  (https://github.com/scriptin/jmdict-simplified).
+
+Example sentences — the Tatoeba Project
+  Japanese example sentences in the seed come from Tatoeba, through
+  JMdict's example index (JMdict_e_examp). CC-BY 2.0 France.
+  https://tatoeba.org
+  https://creativecommons.org/licenses/by/2.0/fr/
+
+JLPT vocabulary lists
+  Jonathan Waller's JLPT lists (https://www.tanos.co.uk), curated and
+  re-emitted by stephenmk/yomitan-jlpt-vocab. CC-BY-SA 4.0.
+  https://github.com/stephenmk/yomitan-jlpt-vocab
+
+Word frequency
+  The internet-jp frequency list by Serge Sharoff, University of Leeds
+  Centre for Translation Studies, as mirrored by hingston/japanese.
+  CC BY 2.5. Used to bucket cards into rarity tiers.
+  https://github.com/hingston/japanese
+  https://creativecommons.org/licenses/by/2.5/
+
+Science & Programming pack (packs/science.json)
+  Headwords, readings and glosses from the AnkiWeb shared deck
+  "Japanese Programming, Math and Science Terms"
+  (https://ankiweb.net/shared/info/433387608), which names no author and
+  states no licence. Rarity comes from the JMdict-derived data above.
+  If you are the deck's author and want different credit or terms,
+  please open an issue.
+
+
+Third-party code
+----------------
+
+opencode — https://github.com/sst/opencode (MIT License)
+  The tutor's compaction prompt (lib/learn/agent/compaction.dart) is
+  adapted from opencode's session summarizer.
+
+Dart and Flutter packages are listed in pubspec.yaml / pubspec.lock;
+each is used under its own licence (shown in the app's licence page).

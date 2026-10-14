@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.41.7
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      - name: Drift codegen is up to date
+        run: |
+          dart run build_runner build --delete-conflicting-outputs
+          git diff --exit-code
+
+      - run: flutter analyze
+      - run: dart analyze tools
+
+      # Goldens need the CJK/emoji fonts from tools/setup_test_fonts.sh
+      # and render slightly differently across hosts; run them locally.
+      - run: flutter test --exclude-tags golden

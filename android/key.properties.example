@@ -1,0 +1,8 @@
+# Copy to android/key.properties (gitignored) to sign release builds with
+# your own upload key. Without it, `flutter build apk --release` falls
+# back to the debug key — fine for trying the app, but a debug-signed
+# APK cannot upgrade a release-signed install (and vice versa).
+storeFile=../upload-keystore.jks
+storePassword=change-me
+keyAlias=upload
+keyPassword=change-me

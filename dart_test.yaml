@@ -1,0 +1,4 @@
+tags:
+  # Pixel goldens (test/screenshots_test.dart). They need the fonts that
+  # tools/setup_test_fonts.sh links, so CI runs `--exclude-tags golden`.
+  golden:
