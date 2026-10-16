@@ -97,6 +97,9 @@ class _ScaledProgressBar extends StatelessWidget {
                 duration: const Duration(milliseconds: 200),
                 alignment: Alignment.centerLeft,
                 widthFactor: progress,
+                // The Stack hands its children loose constraints, and a
+                // childless DecoratedBox shrinks to zero height under them.
+                heightFactor: 1,
                 child: const DecoratedBox(
                   decoration: BoxDecoration(gradient: ProgressDots._gradient),
                 ),
