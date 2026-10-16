@@ -3,49 +3,34 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:iuna/widgets/progress_dots.dart';
 
 void main() {
-  Future<void> pumpDots(
-    WidgetTester tester, {
-    required int count,
-    required int index,
-  }) {
-    return tester.pumpWidget(
+  /// 60 cards overflow the 300px row, so this renders the fallback bar.
+  Future<Size> fillSizeAt(WidgetTester tester, int index) async {
+    await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: Center(
             child: SizedBox(
               width: 300,
-              child: ProgressDots(count: count, index: index),
+              child: ProgressDots(count: 60, index: index),
             ),
           ),
         ),
       ),
     );
-  }
-
-  Size fillSize(WidgetTester tester) {
-    final fill = find.descendant(
-      of: find.byType(AnimatedFractionallySizedBox),
-      matching: find.byType(DecoratedBox),
+    await tester.pumpAndSettle();
+    return tester.getSize(
+      find.descendant(
+        of: find.byType(AnimatedFractionallySizedBox),
+        matching: find.byType(DecoratedBox),
+      ),
     );
-    return tester.getSize(fill);
   }
 
-  testWidgets('long sessions fall back to a bar whose fill is visible', (
+  testWidgets('the long-session bar fills as the session advances', (
     tester,
   ) async {
-    await pumpDots(tester, count: 60, index: 29);
-    await tester.pumpAndSettle();
-
-    expect(fillSize(tester), const Size(150, 6));
-  });
-
-  testWidgets('the bar fill grows as the session advances', (tester) async {
-    await pumpDots(tester, count: 60, index: 0);
-    await tester.pumpAndSettle();
-    expect(fillSize(tester).width, closeTo(5, 0.01));
-
-    await pumpDots(tester, count: 60, index: 59);
-    await tester.pumpAndSettle();
-    expect(fillSize(tester), const Size(300, 6));
+    expect(await fillSizeAt(tester, 0), const Size(5, 6));
+    expect(await fillSizeAt(tester, 29), const Size(150, 6));
+    expect(await fillSizeAt(tester, 59), const Size(300, 6));
   });
 }
