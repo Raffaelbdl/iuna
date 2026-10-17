@@ -88,20 +88,16 @@ class _ScaledProgressBar extends StatelessWidget {
         height: 6,
         child: ClipRRect(
           borderRadius: BorderRadius.circular(3),
-          child: Stack(
-            children: [
-              const Positioned.fill(
-                child: ColoredBox(color: ProgressDots._trackColor),
+          child: ColoredBox(
+            color: ProgressDots._trackColor,
+            child: AnimatedFractionallySizedBox(
+              duration: const Duration(milliseconds: 200),
+              alignment: Alignment.centerLeft,
+              widthFactor: progress,
+              child: const DecoratedBox(
+                decoration: BoxDecoration(gradient: ProgressDots._gradient),
               ),
-              AnimatedFractionallySizedBox(
-                duration: const Duration(milliseconds: 200),
-                alignment: Alignment.centerLeft,
-                widthFactor: progress,
-                child: const DecoratedBox(
-                  decoration: BoxDecoration(gradient: ProgressDots._gradient),
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
