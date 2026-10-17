@@ -126,6 +126,16 @@ re-attaches to it.
   to own a card.
 - **Card packs** (`pack_download.dart`) — themed sets listed in a
   `packs.json` catalogue. See *Card packs* below.
+- **App updates** (`app_update.dart`, Android only) — Settings → About →
+  "Check for updates" reads the repo's latest GitHub Release, compares
+  its `vX.Y.Z` tag with the installed version (`package_info_plus`), and
+  streams the APK to `<cache>/updates/` with `RemoteAsset.downloadFile`,
+  checked against the sha256 `digest` GitHub publishes for the asset.
+  `MainActivity` then hands it to the system installer through
+  `UpdateFileProvider` (`REQUEST_INSTALL_PACKAGES`). Android asks for
+  "Install unknown apps" once, and confirms every install. Only a
+  release-signed build can upgrade this way: a debug build's signature
+  doesn't match.
 
 ## Card packs
 

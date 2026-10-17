@@ -6,12 +6,11 @@ import '../db/repository.dart';
 import '../learn/screens/tutor_settings_section.dart';
 import '../theme/iuna_theme.dart';
 import '../widgets/section_header.dart';
+import 'settings/about_section.dart';
 import 'settings/backup_section.dart';
 import 'settings/card_packs_section.dart';
 import 'settings/dictionary_section.dart';
 import 'stats_screen.dart';
-
-const _appVersion = '0.1.0';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key, required this.db});
@@ -191,15 +190,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const SizedBox(height: 16),
                 const DictionarySection(),
                 const SizedBox(height: 16),
-                const IunaSectionHeader('About'),
-                const ListTile(
-                  leading: Icon(
-                    Icons.info_outline_rounded,
-                    color: IunaPalette.pawBrown,
-                  ),
-                  title: Text('Iuna'),
-                  subtitle: Text('Version $_appVersion'),
-                ),
+                const AboutSection(),
                 const SizedBox(height: 16),
                 const IunaSectionHeader('Data sources'),
                 const Padding(

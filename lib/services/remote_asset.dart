@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:isolate';
 import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
@@ -83,25 +84,13 @@ class RemoteAsset {
     void Function()? onEnd,
   }) {
     assert((hash == null) != (fetchHash == null));
-    final install = RemoteInstall._(
-      RemoteProgress(
-        phase: hash == null
-            ? RemotePhase.fetchingVersion
-            : RemotePhase.downloading,
-      ),
-    );
-
-    void report(RemotePhase phase, [int received = 0, int? total]) {
-      install.value = RemoteProgress(
-        phase: phase,
-        bytesReceived: received,
-        bytesTotal: total,
-      );
-    }
-
-    Future<void> run() async {
-      final c = client ?? http.Client();
-      try {
+    return _run(
+      first: hash == null
+          ? RemotePhase.fetchingVersion
+          : RemotePhase.downloading,
+      client: client,
+      onEnd: onEnd,
+      body: (c, report) async {
         final decodeFn = await decode;
         final expected = hash ?? await fetchHash!(c);
 
@@ -118,7 +107,86 @@ class RemoteAsset {
 
         if (reportsApplying) report(RemotePhase.applying);
         await apply(decoded, expected);
+      },
+    );
+  }
 
+  /// Streams [url] to [path] through `<path>.part`, renamed into place
+  /// once its full hex [sha256Hex] matches, then runs [apply]. Unlike
+  /// [install] the body is stored as is and never held in memory whole.
+  static RemoteInstall downloadFile({
+    required String url,
+    required String path,
+    required String sha256Hex,
+    Future<void> Function()? apply,
+    http.Client? client,
+    void Function()? onEnd,
+  }) {
+    return _run(
+      first: RemotePhase.downloading,
+      client: client,
+      onEnd: onEnd,
+      body: (c, report) async {
+        final resp = await c.send(http.Request('GET', Uri.parse(url)));
+        if (resp.statusCode != 200) {
+          throw HttpException('$url: HTTP ${resp.statusCode}');
+        }
+        final total = resp.contentLength;
+        final part = File('$path.part');
+        await part.parent.create(recursive: true);
+        final sink = part.openWrite();
+        final digest = _DigestSink();
+        final hasher = sha256.startChunkedConversion(digest);
+        var received = 0;
+        try {
+          await for (final chunk in resp.stream) {
+            sink.add(chunk);
+            hasher.add(chunk);
+            received += chunk.length;
+            report(RemotePhase.downloading, received, total);
+          }
+        } finally {
+          await sink.close();
+        }
+        hasher.close();
+
+        report(RemotePhase.verifying, received, received);
+        final actual = digest.value.toString();
+        if (actual != sha256Hex.toLowerCase()) {
+          await part.delete();
+          throw StateError(
+            'integrity check failed: expected $sha256Hex, got $actual',
+          );
+        }
+        await part.rename(path);
+        await apply?.call();
+      },
+    );
+  }
+
+  static RemoteInstall _run({
+    required RemotePhase first,
+    required Future<void> Function(
+      http.Client client,
+      void Function(RemotePhase phase, [int received, int? total]) report,
+    ) body,
+    http.Client? client,
+    void Function()? onEnd,
+  }) {
+    final install = RemoteInstall._(RemoteProgress(phase: first));
+
+    void report(RemotePhase phase, [int received = 0, int? total]) {
+      install.value = RemoteProgress(
+        phase: phase,
+        bytesReceived: received,
+        bytesTotal: total,
+      );
+    }
+
+    Future<void> run() async {
+      final c = client ?? http.Client();
+      try {
+        await body(c, report);
         report(RemotePhase.done);
         install._outcome.complete(null);
       } catch (e) {
@@ -174,4 +242,14 @@ class RemoteAsset {
     final raw = gzip.decode(gz);
     return decode(raw is Uint8List ? raw : Uint8List.fromList(raw));
   });
+}
+
+class _DigestSink implements Sink<Digest> {
+  late Digest value;
+
+  @override
+  void add(Digest data) => value = data;
+
+  @override
+  void close() {}
 }
