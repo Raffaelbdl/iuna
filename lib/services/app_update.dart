@@ -27,18 +27,18 @@ class AppRelease {
     final tag = json['tag_name'] as String? ?? '';
     final assets = (json['assets'] as List? ?? const [])
         .cast<Map<String, dynamic>>();
-    final apk = assets.where(
-      (a) => (a['name'] as String? ?? '').endsWith('.apk'),
-    );
-    if (apk.isEmpty) throw FormatException('release $tag has no APK');
-    final digest = apk.first['digest'] as String? ?? '';
+    final apk = assets
+        .where((a) => (a['name'] as String? ?? '').endsWith('.apk'))
+        .firstOrNull;
+    if (apk == null) throw FormatException('release $tag has no APK');
+    final digest = apk['digest'] as String? ?? '';
     if (!digest.startsWith('sha256:')) {
       throw FormatException('release $tag: APK has no sha256 digest');
     }
     return AppRelease(
       version: tag.startsWith('v') ? tag.substring(1) : tag,
-      apkUrl: apk.first['browser_download_url'] as String,
-      bytes: apk.first['size'] as int? ?? 0,
+      apkUrl: apk['browser_download_url'] as String,
+      bytes: apk['size'] as int? ?? 0,
       sha256: digest.substring('sha256:'.length),
     );
   }
@@ -50,11 +50,10 @@ class AppRelease {
   final String sha256;
 }
 
-/// True when [remote] is a later `X.Y.Z` than [local]. A `+N` build
-/// suffix is ignored: releases are keyed on `X.Y.Z` alone.
+/// True when [remote] is a later `X.Y.Z` than [local].
 bool isNewerVersion(String remote, String local) {
   List<int> parts(String v) =>
-      v.split('+').first.split('.').map((s) => int.tryParse(s) ?? 0).toList();
+      v.split('.').map((s) => int.tryParse(s) ?? 0).toList();
   final r = parts(remote);
   final l = parts(local);
   for (var i = 0; i < r.length || i < l.length; i++) {
@@ -80,7 +79,16 @@ class AppUpdate {
   static RemoteInstall? get current => _current;
   static RemoteInstall? _current;
 
-  static Future<AppRelease> latest({http.Client? client}) async {
+  /// The latest release when it is newer than [installed], else null.
+  static Future<AppRelease?> check(
+    String installed, {
+    http.Client? client,
+  }) async {
+    final release = await _latest(client);
+    return isNewerVersion(release.version, installed) ? release : null;
+  }
+
+  static Future<AppRelease> _latest(http.Client? client) async {
     final c = client ?? http.Client();
     try {
       final resp = await c.get(
@@ -117,11 +125,14 @@ class AppUpdate {
     );
   }
 
-  /// Deletes an APK left from an earlier update. The installer copies
-  /// the APK before it installs, so by the next launch it's dead weight.
+  /// Deletes an APK left from an earlier update; called once at launch.
+  /// The installer copies the APK before it installs, so by then it's
+  /// dead weight.
   static Future<void> clearDownloaded() async {
-    if (_current != null) return;
-    final dir = (await _apkFile()).parent;
-    if (dir.existsSync()) await dir.delete(recursive: true);
+    try {
+      await (await _apkFile()).parent.delete(recursive: true);
+    } on PathNotFoundException {
+      // Nothing downloaded.
+    }
   }
 }

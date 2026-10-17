@@ -34,32 +34,25 @@ class _AboutSectionState extends State<AboutSection> {
   void initState() {
     super.initState();
     _loadVersion();
-    if (!_updatable) return;
-    final running = AppUpdate.current;
+    final running = _updatable ? AppUpdate.current : null;
     if (running != null) {
       _install = running;
       _awaitInstall(running);
-    } else {
-      AppUpdate.clearDownloaded();
     }
   }
 
   Future<void> _loadVersion() async {
-    try {
-      final info = await PackageInfo.fromPlatform();
-      if (mounted) setState(() => _version = info.version);
-    } catch (_) {
-      // No platform channel in widget tests.
-    }
+    final info = await PackageInfo.fromPlatform();
+    if (mounted) setState(() => _version = info.version);
   }
 
   Future<void> _check() async {
     final local = _version;
     if (local == null) return;
     setState(() => _checking = true);
-    final AppRelease release;
+    final AppRelease? release;
     try {
-      release = await AppUpdate.latest(client: widget.client);
+      release = await AppUpdate.check(local, client: widget.client);
     } catch (e) {
       if (mounted) showSnack(context, 'Update check failed: $e');
       return;
@@ -67,7 +60,7 @@ class _AboutSectionState extends State<AboutSection> {
       if (mounted) setState(() => _checking = false);
     }
     if (!mounted) return;
-    if (!isNewerVersion(release.version, local)) {
+    if (release == null) {
       showSnack(context, 'Iuna $local is up to date.');
       return;
     }

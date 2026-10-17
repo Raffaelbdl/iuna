@@ -4,10 +4,12 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'db/database.dart';
 import 'learn/learn_settings.dart';
 import 'screens/home_screen.dart';
+import 'services/app_update.dart';
 import 'theme/iuna_theme.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  if (AppUpdate.supported) AppUpdate.clearDownloaded();
   runApp(const IunaApp());
 }
 

@@ -18,6 +18,7 @@ import 'package:iuna/screens/app_nav.dart';
 import 'package:iuna/screens/settings_screen.dart';
 import 'package:iuna/widgets/iuna_bottom_nav.dart';
 
+import '../helpers/fake_package_info.dart';
 import 'fake_llm.dart';
 import 'fake_photos.dart';
 import 'test_env.dart';
@@ -32,6 +33,7 @@ void main() {
   });
 
   setUp(() {
+    useFakePackageInfo();
     store = MemorySecretStore();
     settings = LearnSettings(store);
     LearnSettings.instance = settings;

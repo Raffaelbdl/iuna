@@ -118,7 +118,7 @@ class RemoteAsset {
     required String url,
     required String path,
     required String sha256Hex,
-    Future<void> Function()? apply,
+    required Future<void> Function() apply,
     http.Client? client,
     void Function()? onEnd,
   }) {
@@ -127,39 +127,41 @@ class RemoteAsset {
       client: client,
       onEnd: onEnd,
       body: (c, report) async {
-        final resp = await c.send(http.Request('GET', Uri.parse(url)));
-        if (resp.statusCode != 200) {
-          throw HttpException('$url: HTTP ${resp.statusCode}');
-        }
-        final total = resp.contentLength;
         final part = File('$path.part');
         await part.parent.create(recursive: true);
         final sink = part.openWrite();
         final digest = _DigestSink();
         final hasher = sha256.startChunkedConversion(digest);
-        var received = 0;
         try {
-          await for (final chunk in resp.stream) {
-            sink.add(chunk);
-            hasher.add(chunk);
-            received += chunk.length;
-            report(RemotePhase.downloading, received, total);
+          try {
+            await _stream(
+              c,
+              url,
+              onChunk: (chunk) {
+                sink.add(chunk);
+                hasher.add(chunk);
+              },
+              onProgress: (received, total) =>
+                  report(RemotePhase.downloading, received, total),
+            );
+          } finally {
+            await sink.close();
           }
-        } finally {
-          await sink.close();
-        }
-        hasher.close();
+          hasher.close();
 
-        report(RemotePhase.verifying, received, received);
-        final actual = digest.value.toString();
-        if (actual != sha256Hex.toLowerCase()) {
-          await part.delete();
-          throw StateError(
-            'integrity check failed: expected $sha256Hex, got $actual',
-          );
+          report(RemotePhase.verifying);
+          final actual = digest.value.toString();
+          if (actual != sha256Hex.toLowerCase()) {
+            throw StateError(
+              'integrity check failed: expected $sha256Hex, got $actual',
+            );
+          }
+        } catch (_) {
+          if (await part.exists()) await part.delete();
+          rethrow;
         }
         await part.rename(path);
-        await apply?.call();
+        await apply();
       },
     );
   }
@@ -205,11 +207,24 @@ class RemoteAsset {
     return install;
   }
 
-  /// Fetches [url], reporting download progress through [onProgress].
-  /// Throws [HttpException] on a non-200.
   static Future<Uint8List> _download(
     http.Client client,
     String url, {
+    void Function(int received, int? total)? onProgress,
+  }) async {
+    final builder = BytesBuilder(copy: false);
+    await _stream(client, url, onChunk: builder.add, onProgress: onProgress);
+    return builder.takeBytes();
+  }
+
+  /// GETs [url] and feeds each chunk to [onChunk], reporting progress
+  /// through [onProgress] once per whole percent (per 256 KB when the
+  /// length is unknown) rather than per chunk. Throws [HttpException] on
+  /// a non-200.
+  static Future<void> _stream(
+    http.Client client,
+    String url, {
+    required void Function(List<int> chunk) onChunk,
     void Function(int received, int? total)? onProgress,
   }) async {
     final resp = await client.send(http.Request('GET', Uri.parse(url)));
@@ -217,14 +232,19 @@ class RemoteAsset {
       throw HttpException('$url: HTTP ${resp.statusCode}');
     }
     final total = resp.contentLength;
-    final builder = BytesBuilder(copy: false);
     var received = 0;
+    var lastStep = -1;
     await for (final chunk in resp.stream) {
-      builder.add(chunk);
+      onChunk(chunk);
       received += chunk.length;
-      onProgress?.call(received, total);
+      final step = total != null && total > 0
+          ? received * 100 ~/ total
+          : received >> 18;
+      if (step != lastStep) {
+        lastStep = step;
+        onProgress?.call(received, total);
+      }
     }
-    return builder.takeBytes();
   }
 
   // Static, so the isolate closure captures only these three values.

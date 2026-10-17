@@ -7,6 +7,7 @@ import 'package:iuna/db/repository.dart';
 import 'package:iuna/learn/learn_settings.dart';
 import 'package:iuna/screens/settings_screen.dart';
 
+import 'helpers/fake_package_info.dart';
 import 'helpers/fake_path_provider.dart';
 
 void main() {
@@ -15,6 +16,7 @@ void main() {
 
   setUp(() {
     useTempDocumentsDir('iuna_settings_');
+    useFakePackageInfo();
     db = AppDatabase.forTesting(NativeDatabase.memory());
     repo = IunaRepository(db);
     LearnSettings.instance = LearnSettings(MemorySecretStore());

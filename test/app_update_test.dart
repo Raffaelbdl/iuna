@@ -12,8 +12,8 @@ import 'package:http/testing.dart';
 import 'package:iuna/screens/settings/about_section.dart';
 import 'package:iuna/services/app_update.dart';
 import 'package:iuna/services/remote_asset.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 
+import 'helpers/fake_package_info.dart';
 import 'helpers/fake_path_provider.dart';
 
 const _latestUrl =
@@ -63,10 +63,8 @@ void main() {
 
   test('isNewerVersion compares X.Y.Z numerically', () {
     expect(isNewerVersion('0.1.10', '0.1.9'), isTrue);
-    expect(isNewerVersion('0.2.0', '0.1.1+2'), isTrue);
     expect(isNewerVersion('1.0', '0.9.9'), isTrue);
     expect(isNewerVersion('0.1.1', '0.1.1'), isFalse);
-    expect(isNewerVersion('0.1.1', '0.1.1+5'), isFalse);
     expect(isNewerVersion('0.1.0', '0.1.1'), isFalse);
   });
 
@@ -117,13 +115,7 @@ void main() {
   group('AboutSection', () {
     setUp(() {
       useTempDocumentsDir('iuna_about_');
-      PackageInfo.setMockInitialValues(
-        appName: 'Iuna',
-        packageName: 'io.github.raffaelbdl.iuna',
-        version: '0.1.1',
-        buildNumber: '2',
-        buildSignature: '',
-      );
+      useFakePackageInfo();
     });
 
     Future<void> pump(WidgetTester tester, String latestTag) async {

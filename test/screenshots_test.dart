@@ -41,6 +41,7 @@ import 'package:iuna/screens/settings_screen.dart';
 import 'package:iuna/screens/stats_screen.dart';
 import 'package:iuna/theme/iuna_theme.dart';
 
+import 'helpers/fake_package_info.dart';
 import 'helpers/fake_path_provider.dart';
 import 'learn/fake_llm.dart';
 import 'learn/fake_photos.dart';
@@ -671,7 +672,10 @@ void main() {
   });
 
   // The JMdict probe (Collection, Settings) reads the documents directory.
-  setUp(() => useTempDocumentsDir('iuna_shots_'));
+  setUp(() {
+    useTempDocumentsDir('iuna_shots_');
+    useFakePackageInfo();
+  });
 
   testWidgets('home — pack available, no cards yet', (tester) async {
     final db = await _emptyDb();
