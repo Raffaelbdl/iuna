@@ -19,6 +19,9 @@ Future<int> _seedCard(AppDatabase db, String kanji, String kana, Rarity r) {
 }
 
 extension on IunaRepository {
+  Future<int> remainingBoostersToday({DateTime? now}) async =>
+      (await boosterPreview(now: now)).packs;
+
   /// Every pack still due today, flattened — with the default quota of
   /// one pack per day, exactly one pack.
   Future<BoosterClaim> claimToday({
@@ -1194,6 +1197,47 @@ void main() {
     await repo.setBoostersPerDay(5);
     expect(await repo.remainingBoostersToday(now: today), 2,
         reason: 'the three claimed packs still count against today');
+  });
+
+  test('boosterPreview caps new cards at the unseen pool', () async {
+    for (var i = 0; i < 13; i++) {
+      await _seedCard(db, 'k$i', 'kana$i', Rarity.common);
+    }
+    await repo.setBoostersPerDay(2);
+    final day1 = DateTime(2026, 4, 26, 12);
+
+    expect(await repo.boosterPreview(now: day1), (packs: 2, newCards: 13));
+    await repo.claimToday(now: day1);
+    expect(await repo.boosterPreview(now: day1), (packs: 0, newCards: 0));
+
+    expect(
+      await repo.boosterPreview(now: DateTime(2026, 4, 27, 12)),
+      (packs: 2, newCards: 0),
+      reason: 'a fresh quota over an empty pool holds no cards',
+    );
+  });
+
+  test('boosterPreview counts only cards the draw filters reach', () async {
+    for (var i = 0; i < 3; i++) {
+      await db.into(db.cards).insert(
+            CardsCompanion.insert(
+              kanji: 'j$i',
+              kana: 'jk$i',
+              meaning: 'jlpt $i',
+              jlptLevel: const Value(5),
+            ),
+          );
+    }
+    final wished = await _seedCard(db, 'w', 'wk', Rarity.common);
+    for (var i = 0; i < 20; i++) {
+      await _seedCard(db, 'n$i', 'nk$i', Rarity.common);
+    }
+    await repo.setJlptOnly(true);
+    await repo.toggleWishlist(wished);
+
+    expect((await repo.boosterPreview()).newCards, 4);
+    expect((await repo.claimToday()).cards, hasLength(4),
+        reason: 'the wishlisted card still lands once JLPT cards run out');
   });
 
   test('claimAllAvailableBoosters drains the daily quota in one call',

@@ -926,6 +926,15 @@ void main() {
   testWidgets('booster — pack intro', (tester) async {
     final db = await _emptyDb();
     addTearDown(db.close);
+    for (var i = 0; i < 10; i++) {
+      await _seedCard(
+        db,
+        kanji: 'k$i',
+        kana: 'kana$i',
+        meaning: 'word $i',
+        rarity: Rarity.common,
+      );
+    }
     await _shoot(
       tester,
       'pack_intro',

@@ -3,9 +3,8 @@ part of 'repository.dart';
 /// The unseen pool a booster draws from, loaded once and then consumed
 /// pick by pick, so several packs claimed in a row share one load.
 class _DrawPool {
-  _DrawPool({required this.jlptOnly, required this.random});
+  _DrawPool({required this.random});
 
-  final bool jlptOnly;
   final Random random;
 
   /// Unowned card ids, grouped by rarity and split into JLPT vs
@@ -15,7 +14,8 @@ class _DrawPool {
     for (final r in Rarity.values) r: (jlpt: _Bucket(), other: _Bucket()),
   };
 
-  /// Wishlisted ids still in the pool.
+  /// Wishlisted ids still in the pool. Under `jlpt_only` this also
+  /// holds non-JLPT wishlisted ids that no tier does.
   final _Bucket wished = _Bucket();
 
   void add(int id, Rarity rarity, {required bool jlpt, required bool wished}) {
@@ -28,13 +28,12 @@ class _DrawPool {
   /// (a) with probability [kWishlistDrawBias], a uniform pick from the
   ///     unseen ∩ wishlist set (if any), so wishlisted cards surface
   ///     fast — the user can mark a word seen in the wild and expect
-  ///     it within a few packs. The [jlptOnly] filter does not apply
-  ///     to this branch: bookmarked cards always remain reachable.
+  ///     it within a few packs. It is also the fallback once the tiers
+  ///     run dry, so every wishlisted card stays reachable.
   /// (b) otherwise, a rarity drawn from [kBoosterRarityWeights]
   ///     (renormalised over non-empty tiers); within that tier a
   ///     [kJlptDrawBias]-weighted coin flip picks from the JLPT vs
   ///     non-JLPT subpool, then a uniform card from the chosen side.
-  ///     Under [jlptOnly] the non-JLPT subpool is treated as empty.
   /// Picks leave the pool, so neither this pack nor a later one drawn
   /// from the same pool can repeat a card.
   List<int> draw(int count) {
@@ -42,7 +41,9 @@ class _DrawPool {
     for (var i = 0; i < count; i++) {
       final wantWishlisted =
           wished.isNotEmpty && random.nextDouble() < kWishlistDrawBias;
-      final id = wantWishlisted ? _drawWishlisted() : _drawWeighted();
+      final id = wantWishlisted
+          ? _drawWishlisted()
+          : _drawWeighted() ?? _drawWishlisted();
       if (id == null) break;
       picked.add(id);
     }
@@ -51,11 +52,11 @@ class _DrawPool {
 
   bool _tierIsEmpty(Rarity r) {
     final tier = tiers[r]!;
-    if (jlptOnly) return tier.jlpt.isEmpty;
     return tier.jlpt.isEmpty && tier.other.isEmpty;
   }
 
-  int _drawWishlisted() {
+  int? _drawWishlisted() {
+    if (wished.isEmpty) return null;
     final id = wished.takeAt(random.nextInt(wished.length));
     for (final tier in tiers.values) {
       if (tier.jlpt.remove(id) || tier.other.remove(id)) break;
@@ -84,9 +85,8 @@ class _DrawPool {
     }
     final tier = tiers[chosen]!;
     final wantJlpt =
-        jlptOnly ||
-        (tier.jlpt.isNotEmpty &&
-            (tier.other.isEmpty || random.nextDouble() < kJlptDrawBias));
+        tier.jlpt.isNotEmpty &&
+        (tier.other.isEmpty || random.nextDouble() < kJlptDrawBias);
     final bucket = wantJlpt ? tier.jlpt : tier.other;
     final id = bucket.takeAt(random.nextInt(bucket.length));
     wished.remove(id);

@@ -15,7 +15,7 @@ Future<void> openTodayFlow(BuildContext context, AppDatabase db) async {
   final repo = IunaRepository(db);
 
   final Widget screen;
-  if (await repo.remainingBoostersToday() > 0) {
+  if ((await repo.boosterPreview()).newCards > 0) {
     screen = PackIntroScreen(db: db);
   } else if (await repo.dueCountToday() > 0) {
     screen = ReviewScreen(db: db);

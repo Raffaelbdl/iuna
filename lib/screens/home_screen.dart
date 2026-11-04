@@ -41,8 +41,7 @@ class _HomeScreenState extends State<HomeScreen> {
   late final IunaRepository _repo = IunaRepository(widget.db);
 
   bool _loading = true;
-  bool _packAvailable = false;
-  int _remainingPacks = 0;
+  ({int packs, int newCards}) _booster = (packs: 0, newCards: 0);
   int _dueCount = 0;
   int _streak = 0;
   int _learned = 0;
@@ -81,8 +80,8 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Reloads in place; only the first load shows the spinner, so a
   /// return from another screen doesn't swap the whole tree out.
   Future<void> _refresh() async {
-    final (remaining, due, streak, stats, wishCount, recent) = await (
-      _repo.remainingBoostersToday(),
+    final (preview, due, streak, stats, wishCount, recent) = await (
+      _repo.boosterPreview(),
       _repo.dueCountToday(),
       _repo.recordStreak(),
       _repo.collectionStats(),
@@ -92,8 +91,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
     setState(() {
       _loading = false;
-      _packAvailable = remaining > 0;
-      _remainingPacks = remaining;
+      _booster = preview;
       _dueCount = due;
       _streak = streak;
       _learned = stats.owned;
@@ -241,9 +239,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
                   child: _HeroPack(
-                    available: _packAvailable,
+                    booster: _booster,
                     dueCount: _dueCount,
-                    newCardCount: _remainingPacks * kDefaultPackSize,
                     onTap: _openTodayFlow,
                     kumaSeed: widget.kumaSeed,
                   ),
@@ -380,27 +377,36 @@ class _Greeting extends StatelessWidget {
 
 class _HeroPack extends StatelessWidget {
   const _HeroPack({
-    required this.available,
+    required this.booster,
     required this.dueCount,
-    required this.newCardCount,
     required this.onTap,
     this.kumaSeed,
   });
 
-  final bool available;
+  final ({int packs, int newCards}) booster;
   final int dueCount;
-  final int newCardCount;
   final VoidCallback onTap;
   final int? kumaSeed;
 
   @override
   Widget build(BuildContext context) {
-    final title = available ? "Today's pack" : 'No pack today';
-    final sub = available
-        ? '$newCardCount new cards · ${dueCount == 1 ? "1 review" : "$dueCount reviews"} due'
-        : (dueCount == 0
-              ? 'All caught up — come back tomorrow.'
-              : '${dueCount == 1 ? "1 review" : "$dueCount reviews"} due today');
+    final newCards = booster.newCards;
+    final available = newCards > 0;
+    final reviews = dueCount == 1 ? '1 review' : '$dueCount reviews';
+    final String title, sub;
+    if (available) {
+      title = "Today's pack";
+      sub = '${newCards == 1 ? "1 new card" : "$newCards new cards"} · '
+          '$reviews due';
+    } else {
+      final outOfCards = booster.packs > 0;
+      title = outOfCards ? 'No new cards left' : 'No pack today';
+      sub = dueCount > 0
+          ? '$reviews due today'
+          : outOfCards
+          ? 'You have every card in the draw pool.'
+          : 'All caught up — come back tomorrow.';
+    }
     final cta = available
         ? 'Open & review'
         : (dueCount == 0 ? 'Up to date' : 'Start review');
