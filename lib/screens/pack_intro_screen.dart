@@ -13,7 +13,7 @@ import 'booster_reveal_screen.dart';
 import 'review_screen.dart';
 
 /// Splash before the booster reveal: floating Kuma-stamped pack with
-/// "10 new cards await" copy. Tap the pack to play a flash + scale
+/// "N new cards await" copy. Tap the pack to play a flash + scale
 /// animation, then route to the reveal.
 class PackIntroScreen extends StatefulWidget {
   const PackIntroScreen({super.key, required this.db, this.kumaSeed});
@@ -43,9 +43,8 @@ class _PackIntroScreenState extends State<PackIntroScreen>
     duration: const Duration(milliseconds: 600),
   );
 
-  bool _packCount = false;
-  int _newCount = kDefaultPackSize;
-  int _remainingPacks = 1;
+  int _newCount = 0;
+  int get _packs => (_newCount / kDefaultPackSize).ceil();
 
   @override
   void initState() {
@@ -54,17 +53,10 @@ class _PackIntroScreenState extends State<PackIntroScreen>
   }
 
   Future<void> _loadCount() async {
-    // Best-effort preview of how many cards will land. We don't claim
-    // here — that's the booster screen's job — so this is just used to
-    // populate the "X new cards await" line. With per-day quota > 1 we
-    // multiply by the number of packs the user can still claim today.
-    final remaining = await _repo.remainingBoostersToday();
+    // Preview only: the booster screen does the claiming.
+    final preview = await _repo.boosterPreview();
     if (!mounted) return;
-    setState(() {
-      _remainingPacks = remaining;
-      _newCount = remaining * kDefaultPackSize;
-      _packCount = remaining > 0;
-    });
+    setState(() => _newCount = preview.newCards);
   }
 
   @override
@@ -133,7 +125,7 @@ class _PackIntroScreenState extends State<PackIntroScreen>
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Text(
-                                _remainingPacks > 1
+                                _packs > 1
                                     ? "TODAY'S PACKS"
                                     : "TODAY'S PACK",
                                 style: const TextStyle(
@@ -145,9 +137,11 @@ class _PackIntroScreenState extends State<PackIntroScreen>
                               ),
                               const SizedBox(height: 10),
                               Text(
-                                _packCount
-                                    ? '$_newCount new cards await'
-                                    : 'Pack already opened',
+                                switch (_newCount) {
+                                  0 => 'Pack already opened',
+                                  1 => '1 new card awaits',
+                                  _ => '$_newCount new cards await',
+                                },
                                 textAlign: TextAlign.center,
                                 style: const TextStyle(
                                   fontSize: 24,

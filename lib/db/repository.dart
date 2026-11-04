@@ -689,12 +689,23 @@ class IunaRepository with MetaTimestamps {
     );
   }
 
-  /// How many fresh booster packs the user can still claim today —
-  /// `boosters_per_day` minus the count already claimed in this logical
-  /// day. Surfaced to the home / pack-intro screens so they can show
-  /// "N × packSize new cards" instead of always saying packSize.
-  Future<int> remainingBoostersToday({DateTime? now}) async =>
-      (await _boosterGate(now)).remaining;
+  /// Today's unclaimed packs (`boosters_per_day` minus those already
+  /// claimed this logical day) and the new cards they will really hold:
+  /// the quota, capped by the unseen pool under the current draw
+  /// filters, so a nearly collected pool doesn't advertise full packs.
+  Future<({int packs, int newCards})> boosterPreview({DateTime? now}) async {
+    final packs = (await _boosterGate(now)).remaining;
+    if (packs == 0) return (packs: 0, newCards: 0);
+    final pool = await _unseenPoolQuery();
+    // The LIMIT stops the scan at the cap instead of counting the
+    // whole dictionary.
+    final row = await db.customSelect(
+      'SELECT COUNT(*) AS n FROM (SELECT 1 ${pool.sql} LIMIT ?)',
+      variables: [...pool.vars, Variable.withInt(packs * kDefaultPackSize)],
+      readsFrom: {db.cards, db.userCards, db.wishlist},
+    ).getSingle();
+    return (packs: packs, newCards: row.read<int>('n'));
+  }
 
   /// Claims every pack the user is still entitled to today, returning
   /// one [BoosterClaim] per pack so the reveal UI can run an inline
@@ -750,13 +761,14 @@ class IunaRepository with MetaTimestamps {
     });
   }
 
-  /// The unseen pool under the current draw filters.
+  /// FROM/WHERE over the unseen pool under the current draw filters,
+  /// shared by the draw and the preview count so they can't disagree.
   ///
-  /// `booster_pack_filter` narrows the pool to a single themed pack
-  /// before the JLPT split. Wishlisted ids survive that narrowing —
-  /// same carve-out the JLPT filter gets, for the same reason: the
+  /// `booster_pack_filter` narrows the pool to a single themed pack and
+  /// `jlpt_only` to JLPT-tagged cards. Wishlisted ids survive both: the
   /// user asked for those cards by name.
-  Future<_DrawPool> _loadDrawPool() async {
+  Future<({String sql, List<Variable> vars, bool jlptOnly})>
+      _unseenPoolQuery() async {
     final meta = await _readMetas(
       [MetaKeys.jlptOnly, MetaKeys.boosterPackFilter],
     );
@@ -764,27 +776,44 @@ class IunaRepository with MetaTimestamps {
       null || '' => null,
       final p => p,
     };
+    final jlptOnly = meta[MetaKeys.jlptOnly] == '1';
+    return (
+      sql: 'FROM cards c '
+          'LEFT JOIN user_cards u ON u.card_id = c.id '
+          'LEFT JOIN wishlist w ON w.card_id = c.id '
+          'WHERE u.card_id IS NULL '
+          '${packOnly == null ? '' : 'AND (c.pack = ? OR w.card_id IS NOT NULL) '}'
+          '${jlptOnly ? 'AND (c.jlpt_level IS NOT NULL OR w.card_id IS NOT NULL)' : ''}',
+      vars: [if (packOnly != null) Variable.withString(packOnly)],
+      jlptOnly: jlptOnly,
+    );
+  }
+
+  Future<_DrawPool> _loadDrawPool() async {
+    final query = await _unseenPoolQuery();
     final rows = await db.customSelect(
       'SELECT c.id, c.rarity, c.jlpt_level IS NOT NULL AS jlpt, '
-      'w.card_id IS NOT NULL AS wished FROM cards c '
-      'LEFT JOIN user_cards u ON u.card_id = c.id '
-      'LEFT JOIN wishlist w ON w.card_id = c.id '
-      'WHERE u.card_id IS NULL '
-      '${packOnly == null ? '' : 'AND (c.pack = ? OR w.card_id IS NOT NULL)'}',
-      variables: [if (packOnly != null) Variable.withString(packOnly)],
+      'w.card_id IS NOT NULL AS wished ${query.sql}',
+      variables: query.vars,
       readsFrom: {db.cards, db.userCards, db.wishlist},
     ).get();
-    final pool = _DrawPool(
-      jlptOnly: meta[MetaKeys.jlptOnly] == '1',
-      random: _random,
-    );
+    final pool = _DrawPool(random: _random);
     for (final r in rows) {
-      pool.add(
-        r.read<int>('id'),
-        Rarity.values[r.read<int>('rarity')],
-        jlpt: r.read<bool>('jlpt'),
-        wished: r.read<bool>('wished'),
-      );
+      final id = r.read<int>('id');
+      final jlpt = r.read<bool>('jlpt');
+      // Under jlpt_only a non-JLPT row is here only because it is
+      // wishlisted; keeping it out of the tiers leaves the rarity draw
+      // JLPT-only and the wishlist odds unchanged.
+      if (query.jlptOnly && !jlpt) {
+        pool.wished.add(id);
+      } else {
+        pool.add(
+          id,
+          Rarity.values[r.read<int>('rarity')],
+          jlpt: jlpt,
+          wished: r.read<bool>('wished'),
+        );
+      }
     }
     return pool;
   }
