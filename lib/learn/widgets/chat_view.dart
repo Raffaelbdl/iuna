@@ -313,12 +313,14 @@ class _Bubble extends StatelessWidget {
   }
 
   Widget _tutorBody() {
+    // Half-written text is neither selected nor looked up.
+    Widget markdown(String text) => TutorMarkdown(text, selectable: !streaming, lookUp: !streaming);
     final choices = ChatChoices.parse(text);
-    if (choices == null) return TutorMarkdown(text, selectable: !streaming);
+    if (choices == null) return markdown(text);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (choices.text.isNotEmpty) TutorMarkdown(choices.text, selectable: !streaming),
+        if (choices.text.isNotEmpty) markdown(choices.text),
         if (choices.options.isNotEmpty)
           ChoiceButtons(options: choices.options, reply: reply, onChoose: onChoose),
       ],

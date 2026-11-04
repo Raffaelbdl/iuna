@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart' show Icons;
 
+import '../../core/japanese_text.dart';
 import 'tools.dart';
 
 const int kMaxBookmarkWords = 20;
@@ -30,7 +31,6 @@ abstract interface class WordBookmarks {
 /// `会議（かいぎ）`: how the tutor writes a word in chat, so it may pass
 /// one that way too.
 final _withReading = RegExp(r'^(.+?)\s*[（(]\s*(.+?)\s*[）)]$');
-final _kanji = RegExp(r'[㐀-䶿一-鿿々]');
 
 /// The model's word list down to distinct `(word, reading)` pairs, all
 /// checked before a single word is bookmarked. A kana word is its own
@@ -64,7 +64,7 @@ List<(String, String)> parseBookmarkWords(Object? raw) {
       if (reading.isEmpty) reading = paren[2]!;
     }
     if (reading.isEmpty) {
-      if (_kanji.hasMatch(word)) throw ToolError("word $i: $word needs its kana 'reading'");
+      if (kanjiChar.hasMatch(word)) throw ToolError("word $i: $word needs its kana 'reading'");
       reading = word;
     }
     if (!out.contains((word, reading))) out.add((word, reading));

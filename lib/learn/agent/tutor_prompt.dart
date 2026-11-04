@@ -14,6 +14,8 @@ class TutorAssets {
     required this.cards,
     required this.photos,
     required this.askPersona,
+    required this.readingsTap,
+    required this.readingsInline,
     required this.skills,
   });
 
@@ -35,7 +37,16 @@ class TutorAssets {
   /// What to do with an attached photo; both chats can be sent one.
   final String photos;
   final String askPersona;
+
+  /// How to write readings when the learner can tap words for them…
+  final String readingsTap;
+
+  /// …and when there is no dictionary to look them up in.
+  final String readingsInline;
   final Map<String, String> skills;
+
+  String readings({required bool wordLookup}) =>
+      (wordLookup ? readingsTap : readingsInline).trim();
 
   static TutorAssets? _cached;
 
@@ -50,6 +61,8 @@ class TutorAssets {
       cards: await read('prompts/cards.md'),
       photos: await read('prompts/photos.md'),
       askPersona: await read('prompts/ask_persona.md'),
+      readingsTap: await read('prompts/readings_tap.md'),
+      readingsInline: await read('prompts/readings_inline.md'),
       skills: {
         for (final name in skillNames) name: await read('skills/$name.md'),
       },
@@ -59,10 +72,12 @@ class TutorAssets {
   }
 
   /// Everything that never changes between turns. It comes first so the
-  /// provider's prefix cache keeps hitting.
-  String get tutorStatic => [
+  /// provider's prefix cache keeps hitting; [wordLookup] only flips
+  /// when the dictionary is installed or removed.
+  String tutorStatic({required bool wordLookup}) => [
         tutorPersona.trim(),
         tutorBase.trim(),
+        readings(wordLookup: wordLookup),
         choices.trim(),
         cards.trim(),
         photos.trim(),
@@ -83,6 +98,7 @@ class TutorContext {
     required this.today,
     this.chapter,
     this.sessionSummary,
+    required this.wordLookup,
   });
 
   final CourseRow course;
@@ -94,6 +110,9 @@ class TutorContext {
   /// The chapter a lesson session teaches; null in the room.
   final ChapterRow? chapter;
   final String? sessionSummary;
+
+  /// Whether the learner can tap a word for its reading.
+  final bool wordLookup;
 }
 
 // English whatever the app locale: the prompt itself is English.
@@ -103,7 +122,7 @@ String isoDay(DateTime d) => DateFormat('yyyy-MM-dd', 'en_US').format(d);
 
 String buildTutorPrompt(TutorAssets assets, TutorContext c) {
   final b = StringBuffer()
-    ..writeln(assets.tutorStatic)
+    ..writeln(assets.tutorStatic(wordLookup: c.wordLookup))
     ..writeln()
     ..writeln('# This course')
     ..writeln()
@@ -176,6 +195,7 @@ Future<String> tutorSystemPrompt({
   required int courseId,
   required int sessionId,
   required String sessionKey,
+  required bool wordLookup,
   DateTime? now,
 }) async {
   final course = await repo.course(courseId);
@@ -191,6 +211,7 @@ Future<String> tutorSystemPrompt({
       chapter: lessonKey == null ? null : await repo.chapter(courseId, lessonKey),
       sessionSummary: (await repo.sessionById(sessionId))?.summary,
       today: now ?? DateTime.now(),
+      wordLookup: wordLookup,
     ),
   );
 }
@@ -200,9 +221,12 @@ String buildAskPrompt(
   required List<CourseSummary> courses,
   required String preferences,
   required DateTime today,
+  required bool wordLookup,
 }) {
   final b = StringBuffer()
     ..writeln(assets.askPersona.trim())
+    ..writeln()
+    ..writeln(assets.readings(wordLookup: wordLookup))
     ..writeln()
     ..writeln(assets.choices.trim())
     ..writeln()

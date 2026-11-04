@@ -13,6 +13,7 @@ import '../learn.dart';
 import '../widgets/chat_view.dart';
 import '../widgets/tutor_markdown.dart';
 import 'learn_widgets.dart';
+import '../words/tutor_words.dart';
 
 /// A course's room ([chapterKey] null) or one chapter's lesson, which
 /// also gets a Theory tab with the document the tutor writes as it goes.
@@ -80,6 +81,7 @@ class _TutorChatScreenState extends State<TutorChatScreen>
         courseId: widget.courseId,
         sessionId: session.id,
         sessionKey: _sessionKey,
+        wordLookup: await TutorWords.instance.available(),
       ),
       tools: tutorTools(
         TutorScope(repo: _repo, courseId: widget.courseId, sessionKey: _sessionKey),

@@ -1,30 +1,119 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import 'package:markdown/markdown.dart' as md;
 
 import '../../theme/iuna_theme.dart';
+import '../../core/japanese_text.dart';
+import '../words/segmenter.dart';
+import '../words/tutor_words.dart';
+import 'word_sheet.dart';
 
 /// The tutor's markdown in the app's ink and paper. Links render as
 /// text: nothing in a lesson should send the learner out of the app.
-class TutorMarkdown extends StatelessWidget {
+///
+/// With [lookUp], each Japanese word is tappable for its reading and
+/// meanings, so the tutor needn't write readings into its prose.
+class TutorMarkdown extends StatefulWidget {
   const TutorMarkdown(
     this.data, {
     super.key,
     this.fontSize = 14,
     this.selectable = true,
+    this.lookUp = true,
   });
 
   final String data;
   final double fontSize;
   final bool selectable;
 
+  /// Off while a reply streams in, and where a tap would give an
+  /// answer away.
+  final bool lookUp;
+
+  @override
+  State<TutorMarkdown> createState() => _TutorMarkdownState();
+}
+
+const _wordScheme = 'iuna-word:';
+
+class _TutorMarkdownState extends State<TutorMarkdown> {
+  Map<String, List<TextWord>>? _words;
+
+  @override
+  void initState() {
+    super.initState();
+    _read();
+  }
+
+  @override
+  void didUpdateWidget(TutorMarkdown old) {
+    super.didUpdateWidget(old);
+    if (old.data != widget.data || old.lookUp != widget.lookUp) _read();
+  }
+
+  void _read() {
+    _words = null;
+    if (!widget.lookUp) return;
+    final words = TutorWords.instance;
+    _words = words.cached(widget.data);
+    if (_words != null) return;
+    final text = widget.data;
+    words.read(text).then((found) {
+      if (!mounted || found == null || found.isEmpty || widget.data != text || !widget.lookUp) {
+        return;
+      }
+      setState(() => _words = found);
+    });
+  }
+
+  void _onTapLink(String text, String? href, String title) {
+    final words = _words;
+    if (words == null || href == null || !href.startsWith(_wordScheme)) return;
+    // A run is kana and kanji only: it never holds the slash.
+    final [run, at] = href.substring(_wordScheme.length).split('/');
+    showWordSheet(context, text, words[run]![int.parse(at)]);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final words = _words;
     return MarkdownBody(
-      data: data,
-      selectable: selectable,
-      styleSheet: tutorMarkdownStyle(context, fontSize),
-      onTapLink: (text, href, title) {},
+      // The body parses only when its data or style changes; words
+      // arriving for the same text need a fresh parse.
+      key: ValueKey(words),
+      data: widget.data,
+      selectable: widget.selectable,
+      styleSheet: tutorMarkdownStyle(context, widget.fontSize),
+      inlineSyntaxes: words == null ? null : [_WordSyntax(words)],
+      onTapLink: _onTapLink,
     );
+  }
+}
+
+/// Turns each word of a Japanese run into a link whose target names it.
+/// Links are already tappable inside selectable text, and the tutor's
+/// own links lead nowhere.
+class _WordSyntax extends md.InlineSyntax {
+  _WordSyntax(this.words) : super(japaneseRun.pattern);
+
+  final Map<String, List<TextWord>> words;
+
+  @override
+  bool onMatch(md.InlineParser parser, Match match) {
+    final run = match[0]!;
+    final list = words[run] ?? const <TextWord>[];
+    var at = 0;
+    for (var i = 0; i < list.length; i++) {
+      final w = list[i];
+      if (w.start > at) parser.addNode(md.Text(run.substring(at, w.start)));
+      parser.addNode(
+        md.Element('a', [md.Text(run.substring(w.start, w.end))])
+          ..attributes['href'] = '$_wordScheme$run/$i',
+      );
+      at = w.end;
+    }
+    if (at < run.length) parser.addNode(md.Text(run.substring(at)));
+    return true;
   }
 }
 
@@ -42,7 +131,9 @@ MarkdownStyleSheet _buildStyle(ThemeData theme, double size) {
   const rule = Color.fromRGBO(74, 53, 32, 0.12);
   return MarkdownStyleSheet.fromTheme(theme).copyWith(
     p: base,
-    a: base.copyWith(decoration: TextDecoration.underline),
+    // Every Japanese word is a link (see [_WordSyntax]); underlining
+    // them all would bury the text.
+    a: base,
     strong: base.copyWith(fontWeight: FontWeight.w700),
     em: base.copyWith(fontStyle: FontStyle.italic),
     del: base.copyWith(decoration: TextDecoration.lineThrough),

@@ -7,6 +7,7 @@ import '../db/jmdict_lookup.dart';
 import '../db/repository.dart';
 import '../theme/iuna_theme.dart';
 import '../widgets/hex_bg.dart';
+import '../widgets/paper_sheet.dart';
 import '../widgets/search_field.dart';
 import '../widgets/sense_row.dart';
 import '../widgets/vocab_card.dart';
@@ -84,14 +85,9 @@ class _AddCardScreenState extends State<AddCardScreen> {
     final lookup = await _repo.lookupByHeadword(hit.kanji, hit.kana);
     if (!mounted) return;
 
-    final action = await showModalBottomSheet<_SheetAction>(
-      context: context,
-      backgroundColor: IunaPalette.paper,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      isScrollControlled: true,
-      builder: (ctx) => _PreviewSheet(hit: hit, lookup: lookup),
+    final action = await showPaperSheet<_SheetAction>(
+      context,
+      (ctx) => _PreviewSheet(hit: hit, lookup: lookup),
     );
     if (!mounted || action == null || action == _SheetAction.cancel) return;
 
@@ -326,17 +322,7 @@ class _PreviewSheet extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Center(
-              child: Container(
-                width: 36,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: IunaPalette.ink3.withValues(alpha: 0.4),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
+            const SheetHandle(),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -376,7 +362,7 @@ class _PreviewSheet extends StatelessWidget {
               runSpacing: 4,
               children: [
                 if (hit.jlptLevel != null)
-                  _MetaChip(label: 'JLPT N${hit.jlptLevel}'),
+                  MetaChip(label: 'JLPT N${hit.jlptLevel}'),
                 _StatusChip(status: lookup.status),
               ],
             ),
@@ -386,14 +372,7 @@ class _PreviewSheet extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    for (var i = 0; i < hit.senses.length; i++)
-                      SenseRow(
-                        ordinal: i + 1,
-                        gloss: hit.senses[i].gloss,
-                        pos: hit.senses[i].pos,
-                        definition: hit.senses[i].def,
-                        showDivider: i > 0,
-                      ),
+                    JmdictSenseList(hit.senses),
                   ],
                 ),
               ),
@@ -401,30 +380,6 @@ class _PreviewSheet extends StatelessWidget {
             const SizedBox(height: 20),
             _PreviewActions(status: lookup.status),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _MetaChip extends StatelessWidget {
-  const _MetaChip({required this.label});
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: IunaPalette.ink3.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          color: IunaPalette.ink2,
         ),
       ),
     );

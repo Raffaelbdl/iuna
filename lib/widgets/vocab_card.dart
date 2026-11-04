@@ -265,3 +265,24 @@ class RarityChip extends StatelessWidget {
     );
   }
 }
+
+/// A small tag beside a headword, such as its JLPT level.
+class MetaChip extends StatelessWidget {
+  const MetaChip({super.key, required this.label});
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: IunaPalette.ink3.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: IunaPalette.ink2),
+      ),
+    );
+  }
+}

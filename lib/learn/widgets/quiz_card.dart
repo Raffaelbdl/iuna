@@ -106,7 +106,7 @@ class _QuizCardState extends State<QuizCard> {
           _QuizHeader(title: spec.title.isEmpty ? 'Quick check' : spec.title),
           if (spec.note.isNotEmpty) ...[
             const SizedBox(height: 8),
-            TutorMarkdown(spec.note, fontSize: 13),
+            TutorMarkdown(spec.note, fontSize: 13, lookUp: false),
           ],
           for (var i = 0; i < spec.questions.length; i++) ...[
             const SizedBox(height: 14),
@@ -143,7 +143,8 @@ class _QuizCardState extends State<QuizCard> {
                 height: 1.5,
               ),
             ),
-            Expanded(child: TutorMarkdown(q.prompt, selectable: false)),
+            // A card tests what the words mean; looking them up would answer it.
+            Expanded(child: TutorMarkdown(q.prompt, selectable: false, lookUp: false)),
           ],
         ),
         const SizedBox(height: 6),

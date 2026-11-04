@@ -30,6 +30,7 @@ import 'package:iuna/learn/screens/course_screen.dart';
 import 'package:iuna/learn/screens/learn_screen.dart';
 import 'package:iuna/learn/screens/tutor_chat_screen.dart';
 import 'package:iuna/learn/voice/dictation.dart';
+import 'package:iuna/learn/words/tutor_words.dart';
 import 'package:iuna/screens/booster_reveal_screen.dart';
 import 'package:iuna/screens/card_detail_screen.dart';
 import 'package:iuna/screens/collection_screen.dart';
@@ -46,6 +47,7 @@ import 'helpers/fake_path_provider.dart';
 import 'learn/fake_llm.dart';
 import 'learn/fake_photos.dart';
 import 'learn/fake_voice.dart';
+import 'learn/fake_words.dart';
 
 /// The Flutter SDK's cache: from FLUTTER_ROOT when set, else from the
 /// test runner itself (`<sdk>/bin/cache/artifacts/engine/<host>/flutter_tester`).
@@ -497,7 +499,12 @@ Future<(LearnEnv, AppDatabase, LearnDatabase)> _learnEnv(
   LlmClient llm, {
   FakeRecorder? recorder,
   FakeTranscriber? stt,
+  TutorWords? words,
 }) async {
+  // No dictionary unless the scene brings one, so no shot depends on
+  // what is installed.
+  TutorWords.instance = words ?? TutorWords(lexicon: () async => null);
+  addTearDown(() => TutorWords.instance = TutorWords());
   final deckDb = await _emptyDb();
   final learnDb = LearnDatabase.forTesting(NativeDatabase.memory());
   var t = DateTime(2026, 9, 10, 9);
@@ -1105,10 +1112,10 @@ void main() {
     final (env, deckDb, learnDb) = await _learnEnv(
       FakeLlm([
         say(
-          'The sign reads **非常口（ひじょうぐち）** — “emergency exit”.\n\n'
-          'Underneath, 開ける（あける）ときは押す（おす） tells you to *push* to '
-          'open it. 非常 on its own means “emergency”, and you will see it on '
-          '非常階段（ひじょうかいだん）, the emergency stairs, too.',
+          'The sign reads **非常口** — “emergency exit”.\n\n'
+          'Underneath, 開けるときは押す tells you to *push* to open it. 非常 '
+          'on its own means “emergency”, and you will see it on 非常階段, the '
+          'emergency stairs, too.',
         ),
       ]),
     );
@@ -1133,6 +1140,38 @@ void main() {
           ),
         );
         await tester.pump();
+      },
+    );
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+  });
+
+  testWidgets('learn — tapping a word for its reading', (tester) async {
+    final (env, deckDb, learnDb) = await _learnEnv(FakeLlm([]), words: fakeTutorWords());
+    addTearDown(deckDb.close);
+    addTearDown(learnDb.close);
+    final id = await _seedLearnCourses(env.repo);
+    final room = await env.repo.openSession(id, kRoomSessionKey);
+    await env.repo.addMessage(
+      room.id,
+      role: MessageRole.assistant,
+      content:
+          'Here is how a colleague would put it:\n\n'
+          '> 今日は会議があります。\n\n'
+          '*There is a meeting today.* Note the が after 会議: it brings in '
+          'something new to the conversation.',
+    );
+    await _shoot(
+      tester,
+      'learn_word_lookup',
+      TutorChatScreen(env: env, courseId: id),
+      settle: const Duration(milliseconds: 500),
+      act: () async {
+        // Reads go one per frame, so the words land a frame after the bubble.
+        await tester.pump();
+        await tapWord(tester, '会議');
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
       },
     );
     await tester.pumpWidget(const SizedBox());

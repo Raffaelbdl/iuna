@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../db/jmdict_lookup.dart';
 import '../theme/iuna_theme.dart';
 
 /// One numbered sense: gloss, then part of speech, then prose.
@@ -94,6 +95,30 @@ class SenseRow extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// A dictionary entry's senses, numbered, as a preview sheet lists them.
+class JmdictSenseList extends StatelessWidget {
+  const JmdictSenseList(this.senses, {super.key});
+
+  final List<JmdictSense> senses;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var i = 0; i < senses.length; i++)
+          SenseRow(
+            ordinal: i + 1,
+            gloss: senses[i].gloss,
+            pos: senses[i].pos,
+            definition: senses[i].def,
+            showDivider: i > 0,
+          ),
+      ],
     );
   }
 }
