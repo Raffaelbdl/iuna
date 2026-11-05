@@ -18,7 +18,7 @@ class _QuizHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        const Icon(Icons.quiz_rounded, size: 18, color: IunaPalette.ctaBottom),
+        const Icon(Icons.quiz_rounded, size: 18, color: IunaPalette.honeyInk),
         const SizedBox(width: 8),
         Expanded(
           child: Text(

@@ -15,6 +15,7 @@ import '../widgets/booster_pack.dart';
 import '../widgets/hex_bg.dart';
 import '../widgets/iuna_bottom_nav.dart';
 import '../widgets/iuna_icon_button.dart';
+import '../widgets/notice.dart';
 import '../widgets/section_header.dart';
 import '../widgets/snack.dart';
 import '../widgets/tab_header.dart';
@@ -45,6 +46,10 @@ class _HomeScreenState extends State<HomeScreen> {
   late final IunaRepository _repo = IunaRepository(widget.db);
 
   bool _loading = true;
+
+  /// The first load failed: nothing to show but a retry. A later
+  /// refresh that fails keeps what is on screen.
+  bool _failed = false;
   ({int packs, int newCards}) _booster = (packs: 0, newCards: 0);
   int _dueCount = 0;
   int _streak = 0;
@@ -85,18 +90,43 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Reloads in place; only the first load shows the spinner, so a
   /// return from another screen doesn't swap the whole tree out.
   Future<void> _refresh() async {
-    final (preview, due, streak, stats, wishCount, recent, resetHour) = await (
-      _repo.boosterPreview(),
-      _repo.dueCountToday(),
-      _repo.recordStreak(),
-      _repo.collectionStats(),
-      _repo.wishedCount(),
-      _repo.recentlyObtained(limit: 10),
-      _repo.getResetHour(),
-    ).wait;
-    if (!mounted) return;
+    unawaited(refreshTodayCount(widget.db));
+    try {
+      final (preview, due, streak, stats, wishCount, recent, resetHour) =
+          await (
+            _repo.boosterPreview(),
+            _repo.dueCountToday(),
+            _repo.recordStreak(),
+            _repo.collectionStats(),
+            _repo.wishedCount(),
+            _repo.recentlyObtained(limit: 10),
+            _repo.getResetHour(),
+          ).wait;
+      if (!mounted) return;
+      _show(preview, due, streak, stats, wishCount, recent, resetHour);
+    } catch (e, s) {
+      logLoadError('Home', e, s);
+      if (mounted && _loading) {
+        setState(() {
+          _loading = false;
+          _failed = true;
+        });
+      }
+    }
+  }
+
+  void _show(
+    ({int packs, int newCards}) preview,
+    int due,
+    int streak,
+    CollectionStats stats,
+    int wishCount,
+    List<CollectionEntry> recent,
+    int resetHour,
+  ) {
     setState(() {
       _loading = false;
+      _failed = false;
       _booster = preview;
       _dueCount = due;
       _streak = streak;
@@ -204,6 +234,16 @@ class _HomeScreenState extends State<HomeScreen> {
               bottom: false,
               child: _loading
                   ? const Center(child: CircularProgressIndicator())
+                  : _failed
+                  ? LoadErrorNotice(
+                      onRetry: () {
+                        setState(() {
+                          _loading = true;
+                          _failed = false;
+                        });
+                        _refresh();
+                      },
+                    )
                   : _buildContent(),
             ),
             Positioned(
@@ -302,7 +342,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: _LinkPanel(
                     icon: Icons.bookmark_rounded,
                     tint: IunaPalette.raritySuperRareInk,
-                    wash: const Color(0x59C4B2E0),
+                    wash: IunaPalette.lilacWash,
                     title: switch (_wishCount) {
                       0 => 'Your wishlist is empty',
                       1 => '1 card on your wishlist',
@@ -423,96 +463,96 @@ class _HeroPack extends StatelessWidget {
         ? 'Open & review'
         : (dueCount > 0 ? 'Start review' : null);
 
-    return Tappable(
-      onTap: onTap,
-      child: Container(
-        // A floor, not a height: larger text grows the hero instead of
-        // overflowing it.
-        constraints: const BoxConstraints(minHeight: 178),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(IunaRadii.xl),
-          gradient: const LinearGradient(
-            begin: Alignment(-0.4, -1),
-            end: Alignment(0.4, 1),
-            colors: [IunaPalette.heroTop, IunaPalette.bowPink],
-          ),
-          boxShadow: panelShadow(),
+    final hero = Container(
+      // A floor, not a height: larger text grows the hero instead of
+      // overflowing it.
+      constraints: const BoxConstraints(minHeight: 178),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(IunaRadii.xl),
+        gradient: const LinearGradient(
+          begin: Alignment(-0.4, -1),
+          end: Alignment(0.4, 1),
+          colors: [IunaPalette.heroTop, IunaPalette.bowPink],
         ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(IunaRadii.xl),
-          child: Stack(
-            children: [
-              // Soft top-right radial highlight.
-              const Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: RadialGradient(
-                      center: Alignment(0.6, -0.5),
-                      radius: 1.0,
-                      colors: [Color(0x99FFFFFF), Color(0x00FFFFFF)],
-                    ),
+        boxShadow: panelShadow(),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(IunaRadii.xl),
+        child: Stack(
+          children: [
+            // Soft top-right radial highlight.
+            const Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    center: Alignment(0.6, -0.5),
+                    radius: 1.0,
+                    colors: [Color(0x99FFFFFF), Color(0x00FFFFFF)],
                   ),
                 ),
               ),
-              // Mini pack peeking from the right, rotated 8°. Sized so
-              // the "TODAY" eyebrow + Kuma seal + "パック" footer all
-              // read clearly against the hero gradient.
-              Positioned(
-                right: -4,
-                top: 16,
-                child: Transform.rotate(
-                  angle: 8 * math.pi / 180,
-                  alignment: Alignment.center,
-                  child: SizedBox(
+            ),
+            // Mini pack peeking from the right, rotated 8°. Sized so
+            // the "TODAY" eyebrow + Kuma seal + "パック" footer all
+            // read clearly against the hero gradient.
+            Positioned(
+              right: -4,
+              top: 16,
+              child: Transform.rotate(
+                angle: 8 * math.pi / 180,
+                alignment: Alignment.center,
+                child: SizedBox(
+                  width: 120,
+                  height: 170,
+                  child: BoosterPack(
                     width: 120,
-                    height: 170,
-                    child: BoosterPack(
-                      width: 120,
-                      height: 158,
-                      label: 'TODAY',
-                      kumaSize: 60,
-                      elevation: 0.7,
-                      variantSeed: kumaSeed,
-                    ),
+                    height: 158,
+                    label: 'TODAY',
+                    kumaSize: 60,
+                    elevation: 0.7,
+                    variantSeed: kumaSeed,
                   ),
                 ),
               ),
-              // Foreground copy. Reserved width keeps the title clear of
-              // the rotated pack peek on the right.
-              Padding(
-                padding: const EdgeInsets.fromLTRB(22, 18, 122, 18),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      title,
-                      style: IunaText.headline.copyWith(
-                        height: 1.1,
-                        color: IunaPalette.heroInk,
-                      ),
+            ),
+            // Foreground copy. Reserved width keeps the title clear of
+            // the rotated pack peek on the right.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(22, 18, 122, 18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    style: IunaText.headline.copyWith(
+                      height: 1.1,
+                      color: IunaPalette.heroInk,
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      sub,
-                      style: IunaText.bodySmall.copyWith(
-                        fontWeight: FontWeight.w500,
-                        height: 1.3,
-                        color: IunaPalette.heroInk,
-                      ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    sub,
+                    style: IunaText.bodySmall.copyWith(
+                      fontWeight: FontWeight.w500,
+                      height: 1.3,
+                      color: IunaPalette.heroInk,
                     ),
-                    if (cta != null) ...[
-                      const SizedBox(height: 14),
-                      _HeroCta(label: cta),
-                    ],
+                  ),
+                  if (cta != null) ...[
+                    const SizedBox(height: 14),
+                    _HeroCta(label: cta),
                   ],
-                ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
+    // With nothing to open or review, the hero only tells the time of
+    // the next pack: no tap, and nothing for a screen reader to press.
+    return cta == null ? hero : Tappable(onTap: onTap, child: hero);
   }
 }
 
@@ -563,9 +603,8 @@ class _StatsRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      // The streak tile's ring is taller than the plain-digit tiles, so
-      // without IntrinsicHeight + stretch the cream backgrounds end up
-      // mismatched even though the Row reserves the same row height.
+      // IntrinsicHeight + stretch keep the three tiles one height when
+      // large text wraps or shrinks one caption.
       child: IntrinsicHeight(
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -640,13 +679,14 @@ class _StatLabel extends StatelessWidget {
   }
 }
 
+/// The streak as a plain count beside a flame, like the tiles next to
+/// it: no ring filling toward a goal nobody set.
 class _StreakStat extends StatelessWidget {
   const _StreakStat({required this.streak});
   final int streak;
 
   @override
   Widget build(BuildContext context) {
-    final pct = (streak / 14).clamp(0.0, 1.0);
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 14),
       decoration: paperPanelDecoration(
@@ -655,69 +695,29 @@ class _StreakStat extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _StreakRing(progress: pct, value: streak),
+          Row(
+            children: [
+              Text(
+                '$streak',
+                style: IunaText.headline.copyWith(
+                  color: IunaPalette.ink,
+                  height: 1,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Icon(
+                Icons.local_fire_department_rounded,
+                size: MediaQuery.textScalerOf(context).scale(20),
+                color: streak > 0 ? IunaPalette.flame : IunaPalette.inkMute,
+              ),
+            ],
+          ),
           const SizedBox(height: 4),
           const _StatLabel('day streak'),
         ],
       ),
     );
   }
-}
-
-class _StreakRing extends StatelessWidget {
-  const _StreakRing({required this.progress, required this.value});
-  final double progress;
-  final int value;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 36,
-      height: 36,
-      child: CustomPaint(
-        painter: _RingPainter(progress: progress),
-        child: Center(
-          child: Text(
-            '$value',
-            style: IunaText.bodySmall.copyWith(
-              fontWeight: FontWeight.w700,
-              color: IunaPalette.ink,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _RingPainter extends CustomPainter {
-  _RingPainter({required this.progress});
-  final double progress;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final radius = size.width / 2;
-    canvas.drawCircle(
-      center,
-      radius,
-      Paint()..color = const Color.fromRGBO(74, 53, 32, 0.08),
-    );
-    if (progress > 0) {
-      final sweep = 2 * math.pi * progress;
-      canvas.drawArc(
-        Rect.fromCircle(center: center, radius: radius),
-        -math.pi / 2,
-        sweep,
-        true,
-        Paint()..color = IunaPalette.bellGold,
-      );
-    }
-    canvas.drawCircle(center, radius - 3, Paint()..color = IunaPalette.paper);
-  }
-
-  @override
-  bool shouldRepaint(covariant _RingPainter old) => old.progress != progress;
 }
 
 class RecentLearned {

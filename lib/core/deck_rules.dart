@@ -29,6 +29,31 @@ ReviewKind classifyReview({
   return prevIntervalMinutes < 60 * 24 ? ReviewKind.learn : ReviewKind.review;
 }
 
+/// A card's `level` as every screen prints it: one name, "memory
+/// level", shown short.
+String memoryLevelLabel(int level) => 'Lv $level';
+
+/// How settled a card is, from its time between reviews: the groups
+/// Stats counts under "How well you know them". Learning is under 3
+/// days, getting there under a month, well known a month or more.
+enum MemoryStage {
+  learning('learning'),
+  gettingThere('getting there'),
+  wellKnown('well known');
+
+  const MemoryStage(this.label);
+  final String label;
+
+  static const _learningUntil = 3 * 24 * 60;
+  static const _wellKnownFrom = 30 * 24 * 60;
+
+  static MemoryStage ofInterval(int minutes) => minutes < _learningUntil
+      ? learning
+      : minutes < _wellKnownFrom
+      ? gettingThere
+      : wellKnown;
+}
+
 /// Per-rarity column prefix in `daily_stats` (`c_total`, `sr_correct`,
 /// …). Derived from a closed enum, never user input, so it is safe to
 /// interpolate into SQL.

@@ -6,17 +6,6 @@ class _MaturityChart extends StatelessWidget {
   const _MaturityChart({required this.bins});
   final List<MaturityBin> bins;
 
-  static const _stages = [
-    'learn',
-    'learn',
-    'young',
-    'young',
-    'young',
-    'mature',
-    'mature',
-    'mature',
-  ];
-
   @override
   Widget build(BuildContext context) {
     final total = bins.fold<int>(0, (s, b) => s + b.count);
@@ -25,14 +14,17 @@ class _MaturityChart extends StatelessWidget {
         text: 'Nothing to show yet — cards settle as you review them.',
       );
     }
-    final stageTotals = {'learn': 0, 'young': 0, 'mature': 0};
+    // The same groups card detail names beside a card's memory level.
+    final stages = [
+      for (final b in bins) MemoryStage.ofInterval(b.minMinutes),
+    ];
+    final stageTotals = {for (final s in MemoryStage.values) s: 0};
     for (var i = 0; i < bins.length; i++) {
-      final s = _stages[math.min(i, _stages.length - 1)];
-      stageTotals[s] = (stageTotals[s] ?? 0) + bins[i].count;
+      stageTotals[stages[i]] = stageTotals[stages[i]]! + bins[i].count;
     }
     final maturePct = total == 0
         ? 0
-        : ((stageTotals['mature']! / total) * 100).round();
+        : ((stageTotals[MemoryStage.wellKnown]! / total) * 100).round();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -44,24 +36,30 @@ class _MaturityChart extends StatelessWidget {
             _StageTag(
               color: IunaPalette.chartLearning,
               dark: IunaPalette.chartLearningInk,
-              label: 'learning ${stageTotals['learn']}',
+              label:
+                  '${MemoryStage.learning.label} '
+                  '${stageTotals[MemoryStage.learning]}',
             ),
             _StageTag(
               color: IunaPalette.chartBlue,
               dark: IunaPalette.chartMatureInk,
-              label: 'getting there ${stageTotals['young']}',
+              label:
+                  '${MemoryStage.gettingThere.label} '
+                  '${stageTotals[MemoryStage.gettingThere]}',
             ),
             _StageTag(
               color: IunaPalette.chartMatureInk,
               dark: IunaPalette.chartMatureInk,
-              label: 'well known ${stageTotals['mature']}',
+              label:
+                  '${MemoryStage.wellKnown.label} '
+                  '${stageTotals[MemoryStage.wellKnown]}',
               solid: true,
             ),
           ],
         ),
         const SizedBox(height: 4),
         Text(
-          '$maturePct% of $total well known',
+          '$maturePct% of $total ${MemoryStage.wellKnown.label}',
           style: IunaText.caption.copyWith(
             fontWeight: FontWeight.w500,
             color: IunaPalette.ink3,
@@ -74,7 +72,7 @@ class _MaturityChart extends StatelessWidget {
               'Cards by time until their next review: '
               '${[for (final b in bins) '${b.label}: ${b.count}'].join(', ')}.',
           painter: (scaler) =>
-              _MaturityPainter(bins: bins, stages: _stages, scaler: scaler),
+              _MaturityPainter(bins: bins, stages: stages, scaler: scaler),
         ),
       ],
     );
@@ -134,13 +132,13 @@ class _MaturityPainter extends CustomPainter {
     required this.scaler,
   });
   final List<MaturityBin> bins;
-  final List<String> stages;
+  final List<MemoryStage> stages;
   final TextScaler scaler;
 
-  static Color _color(String stage) => switch (stage) {
-    'mature' => IunaPalette.chartMatureInk,
-    'young' => IunaPalette.chartBlue,
-    _ => IunaPalette.chartLearning,
+  static Color _color(MemoryStage stage) => switch (stage) {
+    MemoryStage.wellKnown => IunaPalette.chartMatureInk,
+    MemoryStage.gettingThere => IunaPalette.chartBlue,
+    MemoryStage.learning => IunaPalette.chartLearning,
   };
 
   @override
@@ -161,7 +159,7 @@ class _MaturityPainter extends CustomPainter {
     for (var i = 0; i < bins.length; i++) {
       final b = bins[i];
       final left = i * slot + (slot - bw) / 2;
-      final stage = stages[math.min(i, stages.length - 1)];
+      final stage = stages[i];
       final h = (b.count / maxV) * chartH;
       final top = padT + chartH - h;
       if (b.count > 0) {

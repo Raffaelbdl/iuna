@@ -294,11 +294,13 @@ class MetaChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // The same pill as [CardStatusChip], which often sits beside it.
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: IunaPalette.ink3.withValues(alpha: 0.12),
+        color: IunaPalette.chipBg,
         borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: IunaPalette.hairline, width: 0.5),
       ),
       child: Text(
         label,
@@ -313,30 +315,42 @@ const kNotCollectedLabel = 'Not in your collection yet';
 const kWishlistedLabel = 'On your wishlist';
 const kOwnedLabel = 'In your collection';
 
-/// Where a headword stands in the learner's deck.
+/// Where a headword stands in the learner's deck: the one chip for it,
+/// on card detail, Add card and the tutor's word sheet.
 class CardStatusChip extends StatelessWidget {
   const CardStatusChip({super.key, required this.status});
   final CardLookupStatus status;
 
   @override
   Widget build(BuildContext context) {
-    final (label, color) = switch (status) {
+    final (label, icon) = switch (status) {
       CardLookupStatus.notFound ||
-      CardLookupStatus.available => (kNotCollectedLabel, IunaPalette.pawBrown),
-      CardLookupStatus.wishlisted => (kWishlistedLabel, IunaPalette.ink2),
-      CardLookupStatus.owned => (kOwnedLabel, IunaPalette.ink2),
+      CardLookupStatus.available => (
+        kNotCollectedLabel,
+        Icons.lock_outline_rounded,
+      ),
+      CardLookupStatus.wishlisted => (kWishlistedLabel, Icons.bookmark_rounded),
+      CardLookupStatus.owned => (kOwnedLabel, Icons.check_rounded),
     };
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.14),
+        color: IunaPalette.chipBg,
         borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: IunaPalette.hairline, width: 0.5),
       ),
-      child: Text(
-        label,
-        style: IunaText.chip.copyWith(
-          color: color,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: IunaPalette.ink2),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              label,
+              style: IunaText.chip.copyWith(color: IunaPalette.ink2),
+            ),
+          ),
+        ],
       ),
     );
   }

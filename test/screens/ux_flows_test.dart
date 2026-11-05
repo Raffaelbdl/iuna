@@ -5,11 +5,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:iuna/db/database.dart';
 import 'package:iuna/screens/booster_reveal_screen.dart';
 import 'package:iuna/screens/collection_screen.dart';
+import 'package:iuna/screens/pack_intro_screen.dart';
 import 'package:iuna/screens/review_done_screen.dart';
 import 'package:iuna/screens/review_screen.dart';
 import 'package:iuna/screens/today_flow.dart';
 import 'package:iuna/screens/stats_screen.dart';
 import 'package:iuna/theme/iuna_theme.dart';
+import 'package:iuna/widgets/iuna_bottom_nav.dart';
 
 import '../helpers/fake_path_provider.dart';
 
@@ -79,10 +81,12 @@ void main() {
     final first = _shownKanji(tester);
     final ownedBefore = (await db.select(db.userCards).get()).length;
 
-    await tester.tap(find.text('Suspend & swap'));
+    await tester.tap(find.text('Not for me'));
     await _frames(tester);
     expect(
-      find.text('Suspended and replaced. Find it in Collection › Suspended.'),
+      find.text(
+        'Swapped. The old card is set aside in Collection › Suspended.',
+      ),
       findsOneWidget,
     );
     expect(find.text(first), findsNothing, reason: 'swapped out');
@@ -95,20 +99,64 @@ void main() {
     expect(rows.where((r) => r.suspended), isEmpty);
   });
 
-  testWidgets('system Back in the reveal goes on like Skip', (tester) async {
+  testWidgets('system Back in the reveal goes home; the cards stay '
+      'collected', (tester) async {
     await _seedCards(db, 12);
     final popped = await _openReveal(tester, db);
 
     await tester.binding.handlePopRoute();
     await _frames(tester);
     expect(popped, hasLength(1));
-    expect(popped.single, isNotEmpty, reason: 'finalised, not dropped');
+    expect(popped.single, isNull, reason: 'no review follows');
+    expect(await db.select(db.userCards).get(), isNotEmpty);
+  });
+
+  testWidgets('Skip to review leaves the reveal for the review', (
+    tester,
+  ) async {
+    await _seedCards(db, 12);
+    final popped = await _openReveal(tester, db);
+
+    await tester.tap(find.text('Skip to review'));
+    await _frames(tester);
+    expect(popped, hasLength(1));
+    expect(popped.single, isNotEmpty);
+  });
+
+  testWidgets("the pack intro doesn't call the pack opened before it "
+      'has counted', (tester) async {
+    await _seedCards(db, 12);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildIunaTheme(),
+        home: PackIntroScreen(db: db, kumaSeed: 0),
+      ),
+    );
+    expect(find.text('Pack already opened'), findsNothing);
+    await _frames(tester);
+    expect(find.text('10 new cards await'), findsOneWidget);
+  });
+
+  testWidgets('a screen whose data fails to load offers Retry', (
+    tester,
+  ) async {
+    await db.customStatement('DROP TABLE user_cards');
+    await tester.pumpWidget(
+      MaterialApp(theme: buildIunaTheme(), home: CollectionScreen(db: db)),
+    );
+    await _frames(tester);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.text("Couldn't load this screen."), findsOneWidget);
+    expect(find.text('Retry'), findsOneWidget);
   });
 
   Future<void> openCollection(
     WidgetTester tester, {
     bool wished = false,
   }) async {
+    tester.view.physicalSize = const Size(360 * 2, 780 * 2);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
     await tester.pumpWidget(
       MaterialApp(
         theme: buildIunaTheme(),
@@ -179,7 +227,7 @@ void main() {
     }
   }
 
-  testWidgets('Collection: a search with no match offers Clear filters', (
+  testWidgets('Collection: a search with no match can be cleared', (
     tester,
   ) async {
     await ownAll(await _seedCards(db, 3));
@@ -188,13 +236,60 @@ void main() {
 
     await tester.enterText(find.byType(TextField), 'nothing like this');
     await _frames(tester, 400);
-    expect(find.text('No matching cards.'), findsOneWidget);
-
-    await tester.tap(find.text('Clear filters'));
+    expect(find.text('None in your collection.'), findsOneWidget);
+    await tester.ensureVisible(find.text('Clear search'));
+    await _frames(tester, 300);
+    await tester.tap(find.text('Clear search'));
     await _frames(tester, 400);
-    expect(find.text('No matching cards.'), findsNothing);
+    expect(find.text('None in your collection.'), findsNothing);
     expect(find.text('k0'), findsOneWidget);
     expect(find.text('nothing like this'), findsNothing);
+  });
+
+  testWidgets('Collection: a word not collected yet is one tap from the '
+      'missing cards', (tester) async {
+    final ids = await _seedCards(db, 3);
+    await ownAll(ids.take(2).toList());
+    await openCollection(tester);
+
+    await tester.enterText(find.byType(TextField), 'k2');
+    await _frames(tester, 400);
+    expect(find.text('None in your collection.'), findsOneWidget);
+    expect(
+      find.text('Search the dictionary'),
+      findsNothing,
+      reason: 'no dictionary downloaded',
+    );
+
+    await tester.ensureVisible(find.text('Show missing').last);
+    await _frames(tester, 300);
+    await tester.tap(find.text('Show missing').last);
+    await _frames(tester, 400);
+    expect(find.text('None in your collection.'), findsNothing);
+    expect(find.text('k2'), findsNWidgets(2), reason: 'the query and its card');
+  });
+
+  testWidgets('Collection: a rarity filter with no match offers Clear '
+      'filters', (tester) async {
+    await ownAll(await _seedCards(db, 3));
+    await openCollection(tester);
+
+    await tester.tap(find.text('UR').first);
+    await _frames(tester, 400);
+    expect(find.text('No matching cards.'), findsOneWidget);
+    await tester.tap(find.text('Clear filters'));
+    await _frames(tester, 400);
+    expect(find.text('k0'), findsOneWidget);
+  });
+
+  testWidgets('Collection: + offers the dictionary until it is downloaded', (
+    tester,
+  ) async {
+    await openCollection(tester);
+    await tester.tap(find.byTooltip('Add to wishlist'));
+    await _frames(tester, 400);
+    expect(find.text('Add any word to your wishlist'), findsOneWidget);
+    expect(find.text('Download dictionary'), findsOneWidget);
   });
 
   testWidgets('Collection: shuffle is a toggle', (tester) async {
@@ -255,6 +350,57 @@ void main() {
     final after = await db.select(db.userCards).getSingle();
     expect(after.nextDue, before.nextDue);
     expect(after.level, before.level);
+  });
+
+  testWidgets('Review: a missed card can be reviewed again from the recap', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360 * 2, 1400 * 2);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    await ownAll(
+      await _seedCards(db, 1),
+      due: DateTime.now().subtract(const Duration(hours: 1)),
+    );
+    await tester.pumpWidget(
+      MaterialApp(theme: buildIunaTheme(), home: ReviewScreen(db: db)),
+    );
+    await _frames(tester);
+    await tester.tap(find.text('k0'));
+    await _frames(tester, 400);
+    await tester.tap(find.text('Forgot'));
+    await _frames(tester, 1200);
+    expect(find.byType(ReviewDoneScreen), findsOneWidget);
+    expect(find.textContaining("they'll come back tomorrow"), findsNothing);
+
+    await tester.tap(find.text('Review again · 1 card'));
+    await _frames(tester, 1200);
+    expect(find.byType(ReviewDoneScreen), findsNothing);
+    expect(find.text('k0'), findsOneWidget, reason: 'the missed card again');
+  });
+
+  testWidgets('the Today tab counts what waits behind it', (tester) async {
+    final handle = tester.ensureSemantics();
+    Future<void> nav(int count) => tester.pumpWidget(
+      MaterialApp(
+        theme: buildIunaTheme(),
+        home: Scaffold(
+          body: IunaBottomNav(
+            active: IunaNavTab.home,
+            todayCount: count,
+            onTap: (_) {},
+          ),
+        ),
+      ),
+    );
+    await nav(12);
+    expect(find.text('12'), findsOneWidget);
+    expect(find.bySemanticsLabel('Today, 12 waiting'), findsOneWidget);
+
+    await nav(0);
+    expect(find.text('0'), findsNothing, reason: 'no badge with nothing to do');
+    expect(find.bySemanticsLabel('Today'), findsOneWidget);
+    handle.dispose();
   });
 
   testWidgets('Today with nothing to do shows when the next pack comes', (

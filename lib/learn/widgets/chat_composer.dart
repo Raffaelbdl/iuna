@@ -375,7 +375,7 @@ class _ChatComposerState extends State<ChatComposer> with SingleTickerProviderSt
                   icon: const Icon(
                     Icons.arrow_circle_up_rounded,
                     size: 30,
-                    color: IunaPalette.ctaBottom,
+                    color: IunaPalette.honeyInk,
                   ),
                 )
               else
@@ -392,7 +392,7 @@ class _ChatComposerState extends State<ChatComposer> with SingleTickerProviderSt
                       icon: Icon(
                         Icons.arrow_circle_up_rounded,
                         size: 30,
-                        color: can ? IunaPalette.ctaBottom : IunaPalette.inkMute,
+                        color: can ? IunaPalette.honeyInk : IunaPalette.inkMute,
                       ),
                     );
                   },
@@ -453,11 +453,11 @@ class _ChatComposerState extends State<ChatComposer> with SingleTickerProviderSt
                 child: Icon(
                   _cancelArmed ? Icons.delete_outline_rounded : Icons.mic_rounded,
                   size: active ? 20 : 26,
-                  color: active
+                  color: !active
+                      ? (widget.enabled ? IunaPalette.honeyInk : IunaPalette.inkMute)
+                      : _cancelArmed
                       ? Colors.white
-                      : widget.enabled
-                      ? IunaPalette.ctaBottom
-                      : IunaPalette.inkMute,
+                      : kCtaInk,
                 ),
               ),
             ),

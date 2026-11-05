@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:intl/intl.dart';
 
@@ -17,6 +18,7 @@ import '../../theme/iuna_theme.dart';
 import '../../widgets/confirm_dialog.dart';
 import '../../widgets/section_header.dart';
 import '../../widgets/snack.dart';
+import '../../widgets/time_words.dart';
 
 /// Settings → Backup & restore and Cloud backup: save or restore a
 /// backup file, Drive sign-in, back up now, and restore the collection
@@ -94,13 +96,29 @@ class _BackupSectionState extends State<BackupSection> {
     final path = picked?.files.firstOrNull?.path;
     if (path == null || !mounted) return;
 
+    // Checked before asking, so nobody confirms replacing their
+    // collection with a file that was never going to restore.
+    final file = File(path);
+    final reason = await kLibrarySnapshot.validate(file);
+    if (!mounted) return;
+    if (reason != null) {
+      showErrorSnack(context, "That file isn't an Iuna backup.", reason);
+      return;
+    }
+
     final confirmed = await _confirmReplaceLibrary();
     if (!confirmed || !mounted) return;
 
-    final result = await stagePendingRestore(File(path));
+    final RestoreOutcome result;
+    try {
+      result = await stagePendingRestore(file);
+    } catch (e) {
+      if (mounted) showErrorSnack(context, "Couldn't restore that file.", e);
+      return;
+    }
     if (!mounted) return;
     if (result is RestoreRejected) {
-      showSnack(context, 'Restore failed: ${result.reason}');
+      showErrorSnack(context, "That file isn't an Iuna backup.", result.reason);
       return;
     }
     await _showStagedDialog();
@@ -137,22 +155,38 @@ class _BackupSectionState extends State<BackupSection> {
     }
   }
 
+  /// The restore lands on the next launch. Android can close the app
+  /// from here; elsewhere the learner closes it.
   Future<void> _showStagedDialog({String what = 'collection'}) async {
     if (!mounted) return;
+    final canClose = Platform.isAndroid;
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         title: const Text('Restore ready'),
         content: Text(
-          'Close and reopen Iuna to apply the restored $what. The '
-          'app will swap it in on next launch.',
+          canClose
+              ? 'Iuna swaps in the restored $what the next time it opens. '
+                    'Close it now, then open it again.'
+              : 'Close and reopen Iuna to apply the restored $what. The '
+                    'app will swap it in on next launch.',
         ),
         actions: [
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('OK'),
-          ),
+          if (canClose) ...[
+            OutlinedButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Later'),
+            ),
+            FilledButton(
+              onPressed: () => SystemNavigator.pop(),
+              child: const Text('Close Iuna now'),
+            ),
+          ] else
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('OK'),
+            ),
         ],
       ),
     );
@@ -271,10 +305,8 @@ class _BackupSectionState extends State<BackupSection> {
     );
   }
 
-  static String? _humanDate(DateTime? ts) {
-    if (ts == null) return null;
-    return DateFormat('MMM d, HH:mm').format(ts.toLocal());
-  }
+  static String? _humanDate(DateTime? ts) =>
+      ts == null ? null : stampWords(ts.toLocal());
 
   static String _humanSize(int? bytes) {
     if (bytes == null) return 'unknown size';
@@ -285,8 +317,7 @@ class _BackupSectionState extends State<BackupSection> {
     return '${(bytes / 1024 / 1024).toStringAsFixed(1)} MB';
   }
 
-  static String _stamp(DateTime ts) =>
-      DateFormat('yyyy-MM-dd HH:mm').format(ts);
+  static String _stamp(DateTime ts) => stampWords(ts);
 
   Widget get _spinner => const SizedBox(
     width: 20,

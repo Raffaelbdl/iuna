@@ -8,10 +8,14 @@ import '../../widgets/section_header.dart';
 import '../../widgets/snack.dart';
 import 'remote_install.dart';
 
-/// Settings → Dictionary: download, update or clear the JMdict sidecar
-/// that "Add card" looks words up in.
+/// Settings → Dictionary: download, update or remove the JMdict sidecar
+/// that the wishlist lookup, word taps and sentence games read. Also
+/// offered from Collection's "+" before it is downloaded, where
+/// [onReady] closes the offer once it is in.
 class DictionarySection extends StatefulWidget {
-  const DictionarySection({super.key});
+  const DictionarySection({super.key, this.onReady});
+
+  final VoidCallback? onReady;
 
   @override
   State<DictionarySection> createState() => _DictionarySectionState();
@@ -57,10 +61,10 @@ class _DictionarySectionState extends State<DictionarySection> {
           ? 'Update Japanese dictionary?'
           : 'Download Japanese dictionary?',
       body:
-          'About 17 MB to download, ~45 MB stored locally after '
-          'decompression. Wi-Fi recommended. Used by the experimental '
-          '"Add card" flow to look up any JMdict entry, by tapping words in '
-          'the tutor, and by the sentence games.',
+          'About 17 MB to download, ~45 MB stored on your phone. Wi-Fi '
+          'recommended. It lets you look up any word to add to your '
+          'wishlist, tap words in the tutor for their reading, and play '
+          'the sentence games.',
       confirmLabel: _installed ? 'Update' : 'Download',
     );
     if (!confirmed || !mounted) return;
@@ -75,7 +79,9 @@ class _DictionarySectionState extends State<DictionarySection> {
     setState(() => _install = null);
     if (error == null) {
       await _refresh();
-      if (mounted) showSnack(context, 'Dictionary ready.');
+      if (!mounted) return;
+      showSnack(context, 'Dictionary ready.');
+      widget.onReady?.call();
     } else {
       showErrorSnack(
         context,
@@ -89,17 +95,19 @@ class _DictionarySectionState extends State<DictionarySection> {
   Future<void> _clear() async {
     final confirmed = await showConfirmDialog(
       context,
-      title: 'Clear dictionary cache?',
+      title: 'Remove the dictionary?',
       body:
-          'Removes the offline JMdict lookup. The "Add card" flow, word '
-          'taps in the tutor and the sentence games will be unavailable '
-          'until you download it again. Your collection is not affected.',
-      confirmLabel: 'Clear',
+          'Deletes the offline dictionary from your phone. Looking up '
+          'words for your wishlist, word taps in the tutor and the '
+          'sentence games stop working until you download it again. Your '
+          'collection is not affected.',
+      confirmLabel: 'Remove',
+      destructive: true,
     );
     if (!confirmed) return;
     await DictDownload.uninstall();
     await _refresh();
-    if (mounted) showSnack(context, 'Dictionary cleared.');
+    if (mounted) showSnack(context, 'Dictionary removed.');
   }
 
   Widget _tile() {
@@ -111,8 +119,8 @@ class _DictionarySectionState extends State<DictionarySection> {
         leading: const Icon(icon, color: IunaPalette.pawBrown),
         title: const Text('Download dictionary'),
         subtitle: const Text(
-          '~17 MB · look up any JMdict entry to add to your collection, '
-          'and play the sentence games.',
+          '~17 MB · look up any word to add to your wishlist, and play '
+          'the sentence games.',
         ),
         trailing: FilledButton(
           onPressed: _startInstall,
@@ -143,7 +151,7 @@ class _DictionarySectionState extends State<DictionarySection> {
               Icons.delete_outline_rounded,
               color: IunaPalette.pawBrown,
             ),
-            title: const Text('Clear dictionary cache'),
+            title: const Text('Remove dictionary'),
             subtitle: Text(_bytes > 0 ? '$_sizeMb MB on disk' : ''),
             onTap: _clear,
           ),

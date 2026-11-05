@@ -199,7 +199,7 @@ Future<int> _seedDetailCard(
         .insert(CardExamplesCompanion.insert(cardId: cardId, exampleId: exId));
   }
   if (owned) {
-    final now = DateTime(2026, 4, 26, 9, 30);
+    final now = _detailNow;
     await db
         .into(db.userCards)
         .insert(
@@ -217,6 +217,9 @@ Future<int> _seedDetailCard(
   }
   return cardId;
 }
+
+/// The clock of the card-detail scenes.
+final _detailNow = DateTime(2026, 4, 26, 9, 30);
 
 /// Four due cards for the review loop; 魔法, which `Random(1)` deals
 /// first, carries three senses so the back has a full list. Returns the
@@ -977,7 +980,7 @@ void main() {
     await _shoot(
       tester,
       'card_detail',
-      CardDetailScreen(db: db, cardId: cardId),
+      CardDetailScreen(db: db, cardId: cardId, now: _detailNow),
       logical: const Size(360, 900),
       settle: const Duration(milliseconds: 500),
     );
@@ -990,7 +993,7 @@ void main() {
     await _shoot(
       tester,
       'card_detail_unowned',
-      CardDetailScreen(db: db, cardId: cardId),
+      CardDetailScreen(db: db, cardId: cardId, now: _detailNow),
       logical: const Size(360, 900),
       settle: const Duration(milliseconds: 500),
     );
@@ -1009,7 +1012,12 @@ void main() {
     await _shoot(
       tester,
       'card_detail_translate',
-      CardDetailScreen(db: deckDb, cardId: cardId, learn: env),
+      CardDetailScreen(
+        db: deckDb,
+        cardId: cardId,
+        learn: env,
+        now: _detailNow,
+      ),
       logical: const Size(360, 900),
       settle: const Duration(milliseconds: 500),
       act: () async {
@@ -1024,7 +1032,12 @@ void main() {
     await _shoot(
       tester,
       'card_detail_tutor',
-      CardDetailScreen(db: deckDb, cardId: cardId, learn: env),
+      CardDetailScreen(
+        db: deckDb,
+        cardId: cardId,
+        learn: env,
+        now: _detailNow,
+      ),
       logical: const Size(360, 900),
       settle: const Duration(milliseconds: 500),
     );
@@ -1035,7 +1048,12 @@ void main() {
     await _shoot(
       tester,
       'card_detail_tutor_scrolled',
-      CardDetailScreen(db: deckDb, cardId: cardId, learn: env),
+      CardDetailScreen(
+        db: deckDb,
+        cardId: cardId,
+        learn: env,
+        now: _detailNow,
+      ),
       logical: const Size(360, 900),
       settle: const Duration(milliseconds: 500),
       act: () async {
@@ -1057,7 +1075,12 @@ void main() {
     await _shoot(
       tester,
       'card_detail_kuma_examples',
-      CardDetailScreen(db: deckDb, cardId: cardId, learn: env),
+      CardDetailScreen(
+        db: deckDb,
+        cardId: cardId,
+        learn: env,
+        now: _detailNow,
+      ),
       logical: const Size(360, 900),
       settle: const Duration(milliseconds: 500),
     );
@@ -1096,10 +1119,30 @@ void main() {
     final db = await _emptyDb();
     addTearDown(db.close);
     final ids = await _seedReviewDeck(db);
+    // An earlier session this morning, then this one: three right and
+    // 一瞥 missed, so it is due again in ten minutes.
+    final repo = IunaRepository(db);
+    final now = DateTime(2026, 11, 5, 9, 30);
+    for (final id in ids.take(2)) {
+      await repo.applyReview(
+        cardId: id,
+        correct: true,
+        now: now.subtract(const Duration(hours: 1)),
+      );
+    }
+    for (final id in ids) {
+      await repo.applyReview(cardId: id, correct: id != ids.last, now: now);
+    }
     await _shoot(
       tester,
       'review_done',
-      ReviewDoneScreen(db: db, correct: 3, total: 4, doneCardIds: ids),
+      ReviewDoneScreen(
+        db: db,
+        correct: 3,
+        total: 4,
+        doneCardIds: ids,
+        now: now,
+      ),
       logical: const Size(360, 900),
       settle: const Duration(seconds: 5),
     );
@@ -1288,6 +1331,86 @@ void main() {
       'booster_reveal',
       BoosterRevealScreen(db: db, random: Random(1)),
       settle: const Duration(milliseconds: 500),
+    );
+  });
+
+  testWidgets('booster — card reveal, large text (1.5×), long meaning', (
+    tester,
+  ) async {
+    final db = await _emptyDb();
+    addTearDown(db.close);
+    for (final c in const [
+      ('一瞥', 'いちべつ', Rarity.ur),
+      ('魔法', 'まほう', Rarity.superRare),
+      ('結界', 'けっかい', Rarity.ssr),
+      ('森', 'もり', Rarity.rare),
+      ('猫', 'ねこ', Rarity.common),
+    ]) {
+      await _seedCard(
+        db,
+        kanji: c.$1,
+        kana: c.$2,
+        meaning:
+            'a glance; a glimpse; a quick look at something in passing, '
+            'as one does without stopping',
+        rarity: c.$3,
+      );
+    }
+    await _shoot(
+      tester,
+      'booster_reveal_text_scale',
+      BoosterRevealScreen(db: db, random: Random(1)),
+      settle: const Duration(milliseconds: 500),
+      textScale: 1.5,
+    );
+  });
+
+  testWidgets('review — back of card, large text (1.5×)', (tester) async {
+    final db = await _emptyDb();
+    addTearDown(db.close);
+    await _seedReviewDeck(db);
+    await _shoot(
+      tester,
+      'review_back_text_scale',
+      ReviewScreen(db: db, random: Random(1)),
+      settle: const Duration(milliseconds: 500),
+      textScale: 1.5,
+      act: () async {
+        await tester.tap(find.text('魔法'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+      },
+    );
+  });
+
+  testWidgets('card detail — large text (1.5×)', (tester) async {
+    final db = await _emptyDb();
+    addTearDown(db.close);
+    final cardId = await _seedDetailCard(db);
+    await _shoot(
+      tester,
+      'card_detail_text_scale',
+      CardDetailScreen(db: db, cardId: cardId, now: _detailNow),
+      logical: const Size(360, 900),
+      settle: const Duration(milliseconds: 500),
+      textScale: 1.5,
+    );
+  });
+
+  testWidgets('games — pairs, large text (1.5×)', (tester) async {
+    final db = await _emptyDb();
+    addTearDown(db.close);
+    final ids = await _seedGameDeck(db);
+    await _shoot(
+      tester,
+      'games_pairs_text_scale',
+      PairsScreen(db: db, seed: 7, clock: () => DateTime(2026, 11, 5)),
+      textScale: 1.5,
+      act: () async {
+        final dealt = dealtPairs(ids);
+        await playPair(tester, dealt[0], dealt[1]);
+        await tester.pump(const Duration(milliseconds: 100));
+      },
     );
   });
 

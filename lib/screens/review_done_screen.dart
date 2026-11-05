@@ -16,6 +16,7 @@ import '../widgets/time_words.dart';
 import '../widgets/vocab_card.dart';
 import 'card_detail_screen.dart';
 import 'collection_screen.dart';
+import 'review_screen.dart';
 
 /// End-of-session celebration. Tier copy keys off accuracy:
 /// ≥90% / ≥70% / ≥50% / else, with kicker JP + headline + italic note.
@@ -69,6 +70,10 @@ class _ReviewDoneScreenState extends State<ReviewDoneScreen>
   ({DateTime nextDay, DateTime? nextReview})? _upcoming;
   bool _poolEmpty = false;
 
+  /// Cards due again before the day ends: the ones just missed, back
+  /// after a short gap.
+  int _dueAgain = 0;
+
   @override
   void initState() {
     super.initState();
@@ -77,25 +82,39 @@ class _ReviewDoneScreenState extends State<ReviewDoneScreen>
 
   Future<void> _load() async {
     final now = widget.now;
-    final (streak, today, cards, upcoming, booster) = await (
-      _repo.recordStreak(now: now),
-      _repo.todayStats(now: now),
-      _repo.cardsByIds(widget.doneCardIds),
-      _repo.upcoming(now: now),
-      _repo.boosterPreview(now: now),
-    ).wait;
-    if (!mounted) return;
-    setState(() {
-      _streak = streak;
-      _todayCorrect = today.correct;
-      _todayTotal = today.total;
-      _doneCards = cards.take(5).toList();
-      _upcoming = upcoming;
-      _poolEmpty = booster.packs > 0 && booster.newCards == 0;
-    });
+    try {
+      final (streak, today, cards, upcoming, booster, dueAgain) = await (
+        _repo.recordStreak(now: now),
+        _repo.todayStats(now: now),
+        _repo.cardsByIds(widget.doneCardIds),
+        _repo.upcoming(now: now),
+        _repo.boosterPreview(now: now),
+        _repo.dueCountToday(now: now),
+      ).wait;
+      if (!mounted) return;
+      setState(() {
+        _streak = streak;
+        _todayCorrect = today.correct;
+        _todayTotal = today.total;
+        _doneCards = cards.take(5).toList();
+        _upcoming = upcoming;
+        _poolEmpty = booster.packs > 0 && booster.newCards == 0;
+        _dueAgain = dueAgain;
+      });
+    } catch (e, s) {
+      // The recap still stands on the session's own numbers.
+      debugPrint('Recap failed to load: $e\n$s');
+    }
   }
 
   void _leave() => Navigator.of(context).popUntil((r) => r.isFirst);
+
+  /// A fresh session over the cards due again, in place of this recap
+  /// and the review under it.
+  void _reviewAgain() => Navigator.of(context).pushAndRemoveUntil(
+    MaterialPageRoute(builder: (_) => ReviewScreen(db: widget.db)),
+    (r) => r.isFirst,
+  );
 
   void _openCollection() {
     final navigator = Navigator.of(context);
@@ -118,7 +137,7 @@ class _ReviewDoneScreenState extends State<ReviewDoneScreen>
       IunaPalette.bowPink,
       IunaPalette.bowMint,
       IunaPalette.ctaTop,
-      Color(0xFFC4B2E0),
+      IunaPalette.chartLilac,
       Color(0xFFB4D6EA),
       Color(0xFFFFC49E),
       IunaPalette.bellGold,
@@ -141,16 +160,21 @@ class _ReviewDoneScreenState extends State<ReviewDoneScreen>
     final sessionPct = hasSession
         ? ((widget.correct / widget.total) * 100).round()
         : 0;
-    final todayPct = _todayTotal == 0
+    // The day's tally includes this session, so it never reads less,
+    // even before it has loaded.
+    final todayBehind = _todayTotal < widget.total;
+    final todayCorrect = todayBehind ? widget.correct : _todayCorrect;
+    final todayTotal = todayBehind ? widget.total : _todayTotal;
+    final todayPct = todayTotal == 0
         ? 0
-        : ((_todayCorrect / _todayTotal) * 100).round();
+        : ((todayCorrect / todayTotal) * 100).round();
     // Today's accuracy drives the tier copy: split-session users don't
     // want their last-batch dip ("Every review counts") to overshadow
     // the day's actual performance. Falls back to session pct on the
     // very first session of the day before the daily_stats bump lands.
-    final tierPct = _todayTotal > 0 ? todayPct : sessionPct;
-    final perfect = _todayTotal > 0
-        ? _todayCorrect == _todayTotal
+    final tierPct = todayTotal > 0 ? todayPct : sessionPct;
+    final perfect = todayTotal > 0
+        ? todayCorrect == todayTotal
         : hasSession && widget.correct == widget.total;
     final tier = hasSession
         ? _tierFor(tierPct, perfect: perfect)
@@ -169,7 +193,7 @@ class _ReviewDoneScreenState extends State<ReviewDoneScreen>
           decoration: iunaPageBackground(),
           child: Stack(
             children: [
-              const Positioned.fill(child: HexBg(seed: 9)),
+              const Positioned.fill(child: HexBg(seed: 9, calmTop: 0.6)),
               Positioned.fill(
                 child: IgnorePointer(
                   child: AnimatedBuilder(
@@ -188,6 +212,7 @@ class _ReviewDoneScreenState extends State<ReviewDoneScreen>
                   children: [
                     _TopBar(
                       label: hasSession ? 'Done' : 'Today',
+                      onClose: _leave,
                       onUndo: widget.canUndo
                           ? () => Navigator.of(context).pop(true)
                           : null,
@@ -232,8 +257,8 @@ class _ReviewDoneScreenState extends State<ReviewDoneScreen>
                             sessionCorrect: widget.correct,
                             sessionTotal: widget.total,
                             sessionPct: sessionPct,
-                            todayCorrect: _todayCorrect,
-                            todayTotal: _todayTotal,
+                            todayCorrect: todayCorrect,
+                            todayTotal: todayTotal,
                             todayPct: todayPct,
                             streak: _streak,
                           ),
@@ -268,13 +293,25 @@ class _ReviewDoneScreenState extends State<ReviewDoneScreen>
                             ),
                           ],
                           const SizedBox(height: 20),
-                          IunaCtaButton(label: 'Back home', onTap: _leave),
-                          const SizedBox(height: 10),
-                          IunaGhostButton(
-                            label: 'See in collection',
-                            leadingIcon: Icons.style_rounded,
-                            onTap: _openCollection,
-                          ),
+                          if (_dueAgain > 0) ...[
+                            IunaCtaButton(
+                              label: _dueAgain == 1
+                                  ? 'Review again · 1 card'
+                                  : 'Review again · $_dueAgain cards',
+                              trailingIcon: Icons.arrow_forward_rounded,
+                              onTap: _reviewAgain,
+                            ),
+                            const SizedBox(height: 10),
+                            IunaGhostButton(label: 'Back home', onTap: _leave),
+                          ] else ...[
+                            IunaCtaButton(label: 'Back home', onTap: _leave),
+                            const SizedBox(height: 10),
+                            IunaGhostButton(
+                              label: 'See in collection',
+                              leadingIcon: Icons.style_rounded,
+                              onTap: _openCollection,
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -319,7 +356,7 @@ class _ReviewDoneScreenState extends State<ReviewDoneScreen>
       return const _TierCopy(
         kicker: 'よくできました',
         headline: 'Great session.',
-        note: 'A few tricky ones — they\'ll come back tomorrow.',
+        note: 'A few tricky ones — they\'ll come back soon.',
       );
     } else if (pct >= 50) {
       return const _TierCopy(
@@ -349,23 +386,30 @@ class _TierCopy {
 }
 
 class _TopBar extends StatelessWidget {
-  const _TopBar({required this.label, this.onUndo});
+  const _TopBar({required this.label, required this.onClose, this.onUndo});
   final String label;
+  final VoidCallback onClose;
 
   /// Takes back the session's last card; null with nothing to take back.
   final VoidCallback? onUndo;
 
   @override
   Widget build(BuildContext context) {
+    // Close on the left and undo on the right, as in the review.
     return IunaTopBar(
-      leading: onUndo == null
+      leading: IunaIconButton(
+        icon: Icons.close_rounded,
+        tooltip: 'Close',
+        onTap: onClose,
+      ),
+      title: IunaTopBarTitle(label),
+      trailing: onUndo == null
           ? null
           : IunaIconButton(
               icon: Icons.undo_rounded,
               tooltip: 'Undo last card',
               onTap: onUndo,
             ),
-      title: IunaTopBarTitle(label),
     );
   }
 }
@@ -519,7 +563,7 @@ class _MedallionPainter extends CustomPainter {
         ..shader = const RadialGradient(
           center: Alignment(-0.3, -0.4),
           radius: 0.9,
-          colors: [Color(0xFFFFE9A8), Color(0xFFF3C97A), Color(0xFFC87A3A)],
+          colors: [IunaPalette.honeyPale, Color(0xFFF3C97A), Color(0xFFC87A3A)],
           stops: [0.0, 0.5, 1.0],
         ).createShader(Rect.fromCircle(center: c, radius: r)),
     );
@@ -571,20 +615,23 @@ class _StatsPanel extends StatelessWidget {
             ),
             divider,
           ],
-          _StatsRow(
-            label: 'TODAY',
-            correct: todayCorrect,
-            total: todayTotal,
-            pct: todayPct,
-          ),
-          divider,
+          // The day's first session would repeat itself as Today.
+          if (!hasSession || todayTotal > sessionTotal) ...[
+            _StatsRow(
+              label: 'TODAY',
+              correct: todayCorrect,
+              total: todayTotal,
+              pct: todayPct,
+            ),
+            divider,
+          ],
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const Icon(
                 Icons.local_fire_department_rounded,
                 size: 20,
-                color: Color(0xFFD97A3A),
+                color: IunaPalette.flame,
               ),
               const SizedBox(width: 6),
               Text(

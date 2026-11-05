@@ -29,15 +29,7 @@ class _StatCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Text(
-                  title,
-                  style: IunaText.label.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: IunaPalette.ink,
-                  ),
-                ),
-              ),
+              Expanded(child: IunaPanelTitle(title)),
               ?trailing,
             ],
           ),

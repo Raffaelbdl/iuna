@@ -13,6 +13,7 @@ import '../services/tts.dart';
 import '../theme/iuna_theme.dart';
 import '../widgets/cta_button.dart';
 import '../widgets/section_header.dart';
+import '../widgets/notice.dart';
 import '../widgets/tappable.dart';
 import 'game_draw.dart';
 import 'game_widgets.dart';
@@ -56,6 +57,7 @@ class _SentenceScreenState extends State<SentenceScreen> {
   late final Random _random = Random(widget.seed);
 
   bool _noDictionary = false;
+  bool _failed = false;
   bool _exhausted = false;
   bool _summary = false;
 
@@ -87,12 +89,22 @@ class _SentenceScreenState extends State<SentenceScreen> {
   }
 
   Future<void> _start() async {
-    final (tiler, cards, memory) = await (
-      widget.tiler == null ? _dictionaryTiler() : Future.value(widget.tiler),
-      _repo.gameCards(),
-      _repo.getGameMemory(),
-    ).wait;
+    final SentenceTiler? tiler;
+    final List<DailyDeckEntry> cards;
+    final String? memory;
+    try {
+      (tiler, cards, memory) = await (
+        widget.tiler == null ? _dictionaryTiler() : Future.value(widget.tiler),
+        _repo.gameCards(),
+        _repo.getGameMemory(),
+      ).wait;
+    } catch (e, s) {
+      logLoadError(widget.game.title, e, s);
+      if (mounted) setState(() => _failed = true);
+      return;
+    }
     if (!mounted) return;
+    _failed = false;
     if (tiler == null) {
       setState(() => _noDictionary = true);
       return;
@@ -209,8 +221,16 @@ class _SentenceScreenState extends State<SentenceScreen> {
   }
 
   Widget _body(SentenceTask? task) {
+    if (_failed) {
+      return LoadErrorNotice(
+        onRetry: () {
+          setState(() => _failed = false);
+          _start();
+        },
+      );
+    }
     if (_noDictionary) {
-      return GameNotice(
+      return IunaNotice(
         text:
             'Sentences are split into tiles with the offline dictionary. '
             'Download it in Settings, then come back.',
@@ -221,6 +241,7 @@ class _SentenceScreenState extends State<SentenceScreen> {
       final right = _round.where((r) => r.$2).length;
       final all = right == _round.length;
       return GameSummary(
+        db: widget.db,
         kicker: all ? 'かんぺき' : 'できた',
         headline: all ? 'Every sentence right.' : 'Round done.',
         figures: [(value: '$right / ${_round.length}', label: 'right')],
@@ -263,15 +284,12 @@ class _SentenceScreenState extends State<SentenceScreen> {
                 onTap: _next,
               )
             : task is SentenceBoard
-            ? IunaCtaButton(
-                label: 'Check',
-                onTap: task.complete ? _check : null,
-              )
+            ? _CheckButton(onTap: task.complete ? _check : null)
             : null,
       );
     }
     if (!_exhausted) return const Center(child: CircularProgressIndicator());
-    return const GameNotice(
+    return const IunaNotice(
       text:
           'No more sentences for now. They come from the examples of '
           'the cards you own, so more cards bring more of them.',
@@ -345,6 +363,30 @@ class _Frame extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
             child: action,
           ),
+      ],
+    );
+  }
+}
+
+/// Check, disabled until every tile is placed, and saying so.
+class _CheckButton extends StatelessWidget {
+  const _CheckButton({required this.onTap});
+
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (onTap == null) ...[
+          Text(
+            'Place every tile to check',
+            style: IunaText.caption.copyWith(color: IunaPalette.ink3),
+          ),
+          const SizedBox(height: 8),
+        ],
+        IunaCtaButton(label: 'Check', onTap: onTap),
       ],
     );
   }
@@ -510,9 +552,9 @@ class _Well extends StatelessWidget {
       constraints: const BoxConstraints(minHeight: 112),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0x80FFFDF6),
+        color: IunaPalette.paper.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(IunaRadii.md),
-        border: Border.all(color: const Color(0x294A3520), width: 1),
+        border: Border.all(color: IunaPalette.outline, width: 1),
       ),
       child: child,
     );
@@ -609,13 +651,13 @@ class _Chip extends StatelessWidget {
     final (fill, border, ink) = switch (look) {
       _ChipLook.idle => (
         IunaPalette.paper,
-        const Color(0x1F4A3520),
+        IunaPalette.outline,
         IunaPalette.ink,
       ),
       _ChipLook.ghost => (
-        const Color(0x00000000),
-        const Color(0x1F4A3520),
-        const Color(0x00000000),
+        Colors.transparent,
+        IunaPalette.outline,
+        Colors.transparent,
       ),
       _ChipLook.right => (
         IunaPalette.rarityCommonFill,
@@ -651,7 +693,7 @@ class _Chip extends StatelessWidget {
           boxShadow: look == _ChipLook.idle
               ? const [
                   BoxShadow(
-                    color: Color(0x144A3520),
+                    color: IunaPalette.divider,
                     blurRadius: 6,
                     offset: Offset(0, 2),
                   ),

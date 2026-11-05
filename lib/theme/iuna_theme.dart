@@ -28,13 +28,36 @@ class IunaPalette {
   // The fill of a picked answer or option.
   static const optionPicked = Color(0xFFFDE9C9);
 
-  // Status text that must clear 4.5:1 on paper and bg ("Revise",
+  // Status text that must clear 4.5:1 on paper and bg ("Review again",
   // "Continue", the stats goal line). The pastel accents above do not.
   static const mintInk = Color(0xFF3F6A52);
   static const honeyInk = Color(0xFF8A5A14);
   static const pinkInk = Color(0xFFA8455A);
   // Destructive actions: "Remove key", "Delete course", "Replace".
   static const danger = Color(0xFF9E3B33);
+
+  // ── Right / wrong (review grades, swipe tints) ──
+  static const rightFill = Color(0xFFD9EEE2);
+  static const rightFillDeep = Color(0xFFB6DCC6);
+  static const rightInk = Color(0xFF1F5A40);
+  static const rightWash = Color(0x997BC47F);
+  static const wrongFill = Color(0xFFFDE2E7);
+  static const wrongFillDeep = Color(0xFFF7C0CB);
+  static const wrongInk = Color(0xFF7A2A3A);
+  static const wrongWash = Color(0x99E57373);
+
+  // ── Ink washes for borders and rules ──
+  static const hairline = Color.fromRGBO(74, 53, 32, 0.06);
+  static const divider = Color.fromRGBO(74, 53, 32, 0.08);
+  static const outline = Color.fromRGBO(74, 53, 32, 0.12);
+
+  // ── Misc. tints ──
+  static const lilacWash = Color(0x59C4B2E0);
+  static const honeyPale = Color(0xFFFFE9A8);
+  // Paper laid over a tinted ground: a section on a sheet, a
+  // suspended tile.
+  static const paperGlass = Color(0x66FFFDF6);
+  static const flame = Color(0xFFD97A3A);
 
   // ── Chart fills (Stats) ──
   static const chartMint = Color(0xFFA9D4C2);

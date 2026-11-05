@@ -10,6 +10,7 @@ import '../widgets/cta_button.dart';
 import '../widgets/hex_bg.dart';
 import '../widgets/iuna_bottom_nav.dart';
 import '../widgets/iuna_icon_button.dart';
+import '../widgets/notice.dart';
 import '../widgets/search_field.dart';
 import '../widgets/tab_header.dart';
 import '../widgets/tappable.dart';
@@ -17,6 +18,7 @@ import '../widgets/vocab_card.dart';
 import 'add_card_screen.dart';
 import 'app_nav.dart';
 import 'card_detail_screen.dart';
+import 'settings/dictionary_section.dart';
 
 class CollectionScreen extends StatefulWidget {
   const CollectionScreen({
@@ -46,6 +48,7 @@ class _CollectionScreenState extends State<CollectionScreen> {
   bool _shuffled = false;
 
   bool _loading = true;
+  bool _failed = false;
   CollectionStats? _stats;
   int _wishCount = 0;
   List<CollectionEntry> _entries = const [];
@@ -100,18 +103,48 @@ class _CollectionScreenState extends State<CollectionScreen> {
   Future<void> _refresh() async {
     final gen = ++_entriesGen;
     unawaited(_probeDict());
-    final (stats, wishCount, entries) = await (
-      _repo.collectionStats(),
-      _repo.wishedCount(),
-      _queryOrdered(),
-    ).wait;
+    try {
+      final (stats, wishCount, entries) = await (
+        _repo.collectionStats(),
+        _repo.wishedCount(),
+        _queryOrdered(),
+      ).wait;
+      if (!mounted) return;
+      setState(() {
+        _stats = stats;
+        _wishCount = wishCount;
+        if (gen == _entriesGen) _entries = entries;
+        _loading = false;
+        _failed = false;
+      });
+    } catch (e, s) {
+      logLoadError('Collection', e, s);
+      if (mounted && _stats == null) {
+        setState(() {
+          _loading = false;
+          _failed = true;
+        });
+      }
+    }
+  }
+
+  /// The "+" in the header: the dictionary lookup, or, until the
+  /// dictionary is downloaded, a sheet that offers it.
+  Future<void> _onAdd() async {
+    if (_dictInstalled || await DictDownload.isInstalled()) {
+      await _openAddCard();
+      return;
+    }
     if (!mounted) return;
-    setState(() {
-      _stats = stats;
-      _wishCount = wishCount;
-      if (gen == _entriesGen) _entries = entries;
-      _loading = false;
-    });
+    final ready = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => _DictionaryOffer(
+        onReady: () => Navigator.of(ctx).pop(true),
+      ),
+    );
+    await _probeDict();
+    if (ready == true && mounted) await _openAddCard();
   }
 
   Future<void> _openAddCard() async {
@@ -205,11 +238,21 @@ class _CollectionScreenState extends State<CollectionScreen> {
         decoration: iunaPageBackground(),
         child: Stack(
           children: [
-            const Positioned.fill(child: HexBg(seed: 5)),
+            const Positioned.fill(child: HexBg(seed: 5, calmTop: 0.4)),
             SafeArea(
               bottom: false,
               child: _loading
                   ? const Center(child: CircularProgressIndicator())
+                  : _failed
+                  ? LoadErrorNotice(
+                      onRetry: () {
+                        setState(() {
+                          _loading = true;
+                          _failed = false;
+                        });
+                        _refresh();
+                      },
+                    )
                   : _buildBody(),
             ),
             const Positioned(
@@ -243,19 +286,18 @@ class _CollectionScreenState extends State<CollectionScreen> {
         IunaTabHeader(
           'Collection',
           actions: [
-            if (_dictInstalled)
-              IunaIconButton(
-                icon: Icons.add_rounded,
-                tooltip: 'Add to wishlist',
-                onTap: _openAddCard,
-              ),
+            IunaIconButton(
+              icon: Icons.add_rounded,
+              tooltip: 'Add to wishlist',
+              onTap: _onAdd,
+            ),
             IunaIconButton(
               icon: _shuffled
                   ? Icons.shuffle_on_rounded
                   : Icons.shuffle_rounded,
               tooltip: 'Shuffle',
               selected: _shuffled,
-              tint: _shuffled ? IunaPalette.ctaBottom : null,
+              tint: _shuffled ? IunaPalette.honeyInk : null,
               onTap: _toggleShuffle,
             ),
           ],
@@ -293,13 +335,25 @@ class _CollectionScreenState extends State<CollectionScreen> {
                   hasScrollBody: false,
                   child: Padding(
                     padding: const EdgeInsets.only(bottom: 90),
-                    child: _EmptyState(
-                      narrowed: _selected.isNotEmpty || _query.isNotEmpty,
-                      wishedOnly: _wishedOnly,
-                      suspendedOnly: _suspendedOnly,
-                      showMissing: _showMissing,
-                      onClearFilters: _filtered ? _clearFilters : null,
-                    ),
+                    child: _query.trim().isNotEmpty &&
+                            !_showMissing &&
+                            !_wishedOnly &&
+                            !_suspendedOnly
+                        ? _NotCollected(
+                            onShowMissing: _toggleShowMissing,
+                            onSearchDictionary: _dictInstalled
+                                ? _openAddCard
+                                : null,
+                            onClearSearch: _clearFilters,
+                          )
+                        : _EmptyState(
+                            narrowed:
+                                _selected.isNotEmpty || _query.isNotEmpty,
+                            wishedOnly: _wishedOnly,
+                            suspendedOnly: _suspendedOnly,
+                            showMissing: _showMissing,
+                            onClearFilters: _filtered ? _clearFilters : null,
+                          ),
                   ),
                 )
               else
@@ -365,12 +419,16 @@ class _RarityFilters extends StatelessWidget {
             children: [
               _Chip(label: 'All', active: selected.isEmpty, onTap: onClear),
               for (final r in Rarity.values)
-                _Chip(
-                  label: rarityCode(r),
-                  semanticLabel: rarityName(r),
-                  rarity: r,
-                  active: selected.contains(r),
-                  onTap: () => onToggle(r),
+                Tooltip(
+                  message: rarityName(r),
+                  excludeFromSemantics: true,
+                  child: _Chip(
+                    label: rarityCode(r),
+                    semanticLabel: rarityName(r),
+                    rarity: r,
+                    active: selected.contains(r),
+                    onTap: () => onToggle(r),
+                  ),
                 ),
             ],
           ),
@@ -418,16 +476,16 @@ class _Chip extends StatelessWidget {
   Widget build(BuildContext context) {
     Color bg;
     Color fg;
-    Color border = const Color.fromRGBO(74, 53, 32, 0.06);
+    Color border = IunaPalette.hairline;
     if (active) {
       bg = IunaPalette.honey;
       fg = IunaPalette.heroInk;
-      border = const Color.fromRGBO(120, 70, 20, 0.15);
+      border = IunaPalette.honeyInk.withValues(alpha: 0.2);
     } else if (rarity != null) {
       bg = rarityFill(rarity!);
       fg = rarityInk(rarity!);
     } else {
-      bg = const Color(0x0F4A3520);
+      bg = IunaPalette.chipBg;
       fg = IunaPalette.ink2;
     }
     final glyph = active ? Icons.check_rounded : icon;
@@ -555,7 +613,7 @@ class _ProgressStrip extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Wrap(
-              spacing: 10,
+              spacing: 12,
               runSpacing: 4,
               children: [
                 for (final r in Rarity.values)
@@ -597,7 +655,7 @@ class _RaritySegment extends StatelessWidget {
   Widget build(BuildContext context) {
     final ratio = total == 0 ? 0.0 : owned / total;
     return Container(
-      color: const Color.fromRGBO(74, 53, 32, 0.06),
+      color: IunaPalette.chipBg,
       child: FractionallySizedBox(
         alignment: Alignment.centerLeft,
         widthFactor: ratio.clamp(0.0, 1.0),
@@ -607,6 +665,8 @@ class _RaritySegment extends StatelessWidget {
   }
 }
 
+/// One tier in the progress legend: its code as the cards print it,
+/// its name, and how many of it are collected.
 class _LegendChip extends StatelessWidget {
   const _LegendChip({
     required this.rarity,
@@ -637,6 +697,11 @@ class _LegendChip extends StatelessWidget {
             fontWeight: FontWeight.w800,
             color: IunaPalette.ink2,
           ),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          rarityName(rarity),
+          style: IunaText.caption.copyWith(color: IunaPalette.ink2),
         ),
         const SizedBox(width: 4),
         Text(
@@ -702,10 +767,7 @@ class _HexTile extends StatelessWidget {
         ),
         borderRadius: BorderRadius.circular(IunaRadii.md),
         boxShadow: panelShadow(),
-        border: Border.all(
-          color: const Color.fromRGBO(74, 53, 32, 0.06),
-          width: 0.5,
-        ),
+        border: Border.all(color: IunaPalette.hairline, width: 0.5),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(IunaRadii.md),
@@ -781,7 +843,9 @@ class _HexTile extends StatelessWidget {
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      Container(color: const Color(0xF2FFFDF6)),
+                      Container(
+                        color: IunaPalette.paper.withValues(alpha: 0.95),
+                      ),
                       const Center(
                         child: Text(
                           '？',
@@ -810,7 +874,7 @@ class _HexTile extends StatelessWidget {
               // "missing" overlay does.
               Positioned.fill(
                 child: IgnorePointer(
-                  child: Container(color: const Color(0x66FFFDF6)),
+                  child: Container(color: IunaPalette.paperGlass),
                 ),
               ),
             if (suspended)
@@ -836,19 +900,19 @@ class _SuspendedBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
       decoration: BoxDecoration(
-        color: const Color.fromRGBO(74, 53, 32, 0.85),
+        color: IunaPalette.ink.withValues(alpha: 0.85),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.pause_rounded, size: 12, color: Color(0xFFFFE9A8)),
+          Icon(Icons.pause_rounded, size: 12, color: IunaPalette.honeyPale),
           SizedBox(width: 3),
           Text(
             'Suspended',
             style: IunaText.chip.copyWith(
               fontWeight: FontWeight.w700,
-              color: Color(0xFFFFE9A8),
+              color: IunaPalette.honeyPale,
               letterSpacing: 0.3,
             ),
           ),
@@ -868,6 +932,8 @@ Widget _kanjiFlightShuttle(
   return Material(color: Colors.transparent, child: toHeroContext.widget);
 }
 
+/// The card's memory level, quiet beside the rarity chip: the same
+/// "Lv" card detail shows.
 class _LevelPill extends StatelessWidget {
   const _LevelPill({required this.level});
   final int level;
@@ -875,18 +941,15 @@ class _LevelPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
       decoration: BoxDecoration(
-        color: const Color.fromRGBO(74, 53, 32, 0.85),
+        color: IunaPalette.paper.withValues(alpha: 0.7),
         borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: IunaPalette.outline, width: 0.5),
       ),
       child: Text(
-        'Lv $level',
-        style: IunaText.chip.copyWith(
-          fontWeight: FontWeight.w700,
-          color: Color(0xFFFFE9A8),
-          letterSpacing: 0.4,
-        ),
+        memoryLevelLabel(level),
+        style: IunaText.chip.copyWith(color: IunaPalette.ink2),
       ),
     );
   }
@@ -954,6 +1017,106 @@ class _EmptyState extends StatelessWidget {
                 onTap: onClearFilters,
               ),
             ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A search with no match among the cards collected: look among all
+/// cards, or in the dictionary, rather than stop at "no match".
+class _NotCollected extends StatelessWidget {
+  const _NotCollected({
+    required this.onShowMissing,
+    required this.onSearchDictionary,
+    required this.onClearSearch,
+  });
+
+  final VoidCallback onShowMissing;
+
+  /// Null without the dictionary.
+  final VoidCallback? onSearchDictionary;
+  final VoidCallback onClearSearch;
+
+  @override
+  Widget build(BuildContext context) {
+    final dictionary = onSearchDictionary;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'None in your collection.',
+              textAlign: TextAlign.center,
+              style: IunaText.body.copyWith(color: IunaPalette.ink3),
+            ),
+            const SizedBox(height: 16),
+            IunaGhostButton(
+              label: 'Show missing',
+              leadingIcon: Icons.help_outline_rounded,
+              shrinkWrap: true,
+              onTap: onShowMissing,
+            ),
+            if (dictionary != null) ...[
+              const SizedBox(height: 10),
+              IunaGhostButton(
+                label: 'Search the dictionary',
+                leadingIcon: Icons.menu_book_rounded,
+                shrinkWrap: true,
+                onTap: dictionary,
+              ),
+            ],
+            const SizedBox(height: 4),
+            TextButton(
+              onPressed: onClearSearch,
+              style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+              child: const Text('Clear search'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The "+" without the dictionary: what it would do, and the download.
+class _DictionaryOffer extends StatelessWidget {
+  const _DictionaryOffer({required this.onReady});
+
+  final VoidCallback onReady;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+              child: Text(
+                'Add any word to your wishlist',
+                style: IunaText.title.copyWith(color: IunaPalette.ink),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 6, 20, 4),
+              child: Text(
+                'Look a word up in the offline dictionary and bookmark it. '
+                'It shows up in a pack soon. The dictionary is a one-time '
+                'download.',
+                style: IunaText.body.copyWith(
+                  color: IunaPalette.ink2,
+                  height: 1.4,
+                ),
+              ),
+            ),
+            DictionarySection(onReady: onReady),
           ],
         ),
       ),

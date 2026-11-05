@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../db/database.dart';
+import '../screens/card_detail_screen.dart';
 import '../theme/iuna_theme.dart';
 import '../widgets/cta_button.dart';
 import '../widgets/hex_bg.dart';
+import '../widgets/iuna_bottom_nav.dart';
 import '../widgets/iuna_icon_button.dart';
 import '../widgets/section_header.dart';
+import '../widgets/tappable.dart';
 import 'pairs.dart' show shortGloss;
 
 /// A games page: the background, a top bar with [leadingIcon] (it
@@ -75,11 +78,12 @@ class GamePage extends StatelessWidget {
   }
 }
 
-/// The end of a round: a headline, its figures, the words missed, and
-/// the way on.
+/// The end of a round: a headline, its figures, the words missed (each
+/// opens its card), and the way on.
 class GameSummary extends StatelessWidget {
   const GameSummary({
     super.key,
+    required this.db,
     required this.kicker,
     required this.headline,
     required this.figures,
@@ -88,6 +92,7 @@ class GameSummary extends StatelessWidget {
     required this.onDone,
   });
 
+  final AppDatabase db;
   final String kicker;
   final String headline;
   final List<({String value, String label})> figures;
@@ -139,10 +144,24 @@ class GameSummary extends StatelessWidget {
             child: IunaEyebrow('Worth another look'),
           ),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            padding: const EdgeInsets.symmetric(vertical: 6),
             decoration: paperPanelDecoration(),
             child: Column(
-              children: [for (final c in missed) _MissedRow(card: c)],
+              children: [
+                for (final c in missed)
+                  _MissedRow(
+                    card: c,
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => CardDetailScreen(
+                          db: db,
+                          cardId: c.id,
+                          from: IunaNavTab.home,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
         ],
@@ -190,76 +209,58 @@ class _Figure extends StatelessWidget {
 }
 
 class _MissedRow extends StatelessWidget {
-  const _MissedRow({required this.card});
+  const _MissedRow({required this.card, required this.onTap});
   final CardRow card;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.baseline,
-        textBaseline: TextBaseline.alphabetic,
-        children: [
-          Text(
-            card.kanji,
-            style: IunaText.title.copyWith(color: IunaPalette.ink),
-          ),
-          if (card.kana != card.kanji) ...[
-            const SizedBox(width: 8),
-            Text(
-              card.kana,
-              style: IunaText.bodySmall.copyWith(color: IunaPalette.ink3),
-            ),
-          ],
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              shortGloss(card.meaning),
-              textAlign: TextAlign.right,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: IunaText.bodySmall.copyWith(color: IunaPalette.ink2),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// A centred note in place of a game, with an optional way out.
-class GameNotice extends StatelessWidget {
-  const GameNotice({super.key, required this.text, this.action});
-
-  final String text;
-  final ({String label, VoidCallback onTap})? action;
-
-  @override
-  Widget build(BuildContext context) {
-    final action = this.action;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+    return Tappable(
+      onTap: onTap,
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 48),
+        padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+        child: Row(
           children: [
-            Text(
-              text,
-              textAlign: TextAlign.center,
-              style: IunaText.body.copyWith(
-                color: IunaPalette.ink3,
-                height: 1.4,
+            Expanded(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Text(
+                    card.kanji,
+                    style: IunaText.title.copyWith(color: IunaPalette.ink),
+                  ),
+                  if (card.kana != card.kanji) ...[
+                    const SizedBox(width: 8),
+                    Text(
+                      card.kana,
+                      style: IunaText.bodySmall.copyWith(
+                        color: IunaPalette.ink3,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      shortGloss(card.meaning),
+                      textAlign: TextAlign.right,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: IunaText.bodySmall.copyWith(
+                        color: IunaPalette.ink2,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-            if (action != null) ...[
-              const SizedBox(height: 18),
-              IunaCtaButton(
-                label: action.label,
-                shrinkWrap: true,
-                onTap: action.onTap,
-              ),
-            ],
+            const SizedBox(width: 4),
+            const Icon(
+              Icons.chevron_right_rounded,
+              size: 20,
+              color: IunaPalette.ink3,
+            ),
           ],
         ),
       ),

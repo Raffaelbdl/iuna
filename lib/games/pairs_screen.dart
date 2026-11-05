@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../db/database.dart';
 import '../db/repository.dart';
@@ -9,6 +10,7 @@ import '../screens/today_flow.dart';
 import '../services/tts.dart';
 import '../theme/iuna_theme.dart';
 import '../widgets/section_header.dart';
+import '../widgets/notice.dart';
 import '../widgets/tappable.dart';
 import 'game_draw.dart';
 import 'game_widgets.dart';
@@ -46,6 +48,7 @@ class _PairsScreenState extends State<PairsScreen> {
   late final Random _random = Random(widget.seed);
 
   bool _loading = true;
+  bool _failed = false;
   List<DailyDeckEntry> _cards = const [];
   Map<int, DailyDeckEntry> _byId = const {};
   GameMemory _memory = GameMemory();
@@ -75,18 +78,40 @@ class _PairsScreenState extends State<PairsScreen> {
   }
 
   Future<void> _load() async {
-    final (cards, memory) = await (
-      _repo.gameCards(),
-      _repo.getGameMemory(),
-    ).wait;
+    final List<DailyDeckEntry> cards;
+    final String? memory;
+    try {
+      (cards, memory) = await (
+        _repo.gameCards(),
+        _repo.getGameMemory(),
+      ).wait;
+    } catch (e, s) {
+      logLoadError('Pairs', e, s);
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _failed = true;
+        });
+      }
+      return;
+    }
     if (!mounted) return;
     _cards = cards;
     _byId = {for (final c in cards) c.card.id: c};
     _memory = GameMemory.parse(memory)..startSession();
     setState(() {
       _loading = false;
+      _failed = false;
       _deal();
     });
+  }
+
+  void _retry() {
+    setState(() {
+      _loading = true;
+      _failed = false;
+    });
+    _load();
   }
 
   Future<void> _openToday() async {
@@ -148,8 +173,9 @@ class _PairsScreenState extends State<PairsScreen> {
           _memory.missed(first!.cardId);
           _save();
           _wrong = {first, tile};
+          HapticFeedback.lightImpact();
           _wrongTimer?.cancel();
-          _wrongTimer = Timer(const Duration(milliseconds: 450), () {
+          _wrongTimer = Timer(const Duration(milliseconds: 700), () {
             if (mounted) setState(() => _wrong = const {});
           });
         case PairsTap.match when round.finished:
@@ -176,8 +202,10 @@ class _PairsScreenState extends State<PairsScreen> {
       onSkip: round == null || round.finished ? null : _skip,
       body: _loading
           ? const Center(child: CircularProgressIndicator())
+          : _failed
+          ? LoadErrorNotice(onRetry: _retry)
           : round == null
-          ? GameNotice(
+          ? IunaNotice(
               text:
                   'Pairs needs at least $kMinPairs cards you have met. '
                   'Open a pack and reveal its cards to start.',
@@ -192,6 +220,7 @@ class _PairsScreenState extends State<PairsScreen> {
   Widget _summary(PairsRound round) {
     final seconds = (_took ?? Duration.zero).inSeconds;
     return GameSummary(
+      db: widget.db,
       kicker: round.misses == 0 ? 'かんぺき' : 'できた',
       headline: round.misses == 0 ? 'A clean sweep.' : 'All pairs found.',
       figures: [
@@ -283,8 +312,8 @@ class _Tile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (fill, border) = switch (look) {
-      _TileLook.idle => (IunaPalette.paper, const Color(0x0F4A3520)),
-      _TileLook.selected => (const Color(0xFFFFF1D6), IunaPalette.bellGold),
+      _TileLook.idle => (IunaPalette.paper, IunaPalette.hairline),
+      _TileLook.selected => (IunaPalette.optionPicked, IunaPalette.ctaBottom),
       _TileLook.matched => (
         IunaPalette.rarityCommonFill,
         IunaPalette.rarityCommon,
@@ -294,7 +323,7 @@ class _Tile extends StatelessWidget {
     final ink = look == _TileLook.wrong
         ? IunaPalette.raritySsrInk
         : IunaPalette.ink;
-    final Widget face = tile.sound
+    final Widget word = tile.sound
         ? Icon(Icons.volume_up_rounded, size: 28, color: ink)
         : tile.japanese
         ? FittedBox(
@@ -321,6 +350,18 @@ class _Tile extends StatelessWidget {
               height: 1.25,
               color: ink,
             ),
+          );
+    // A mark beside the colour, as in the sentence games, so a miss
+    // doesn't rest on hue alone.
+    final Widget face = look != _TileLook.wrong
+        ? word
+        : Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.close_rounded, size: 18, color: ink),
+              const SizedBox(width: 4),
+              Flexible(child: word),
+            ],
           );
     return Tappable(
       key: ValueKey('pair-${tile.side.name}-${tile.cardId}'),

@@ -216,8 +216,9 @@ void main() {
     await tester.pageBack();
     await tester.pump();
     await tester.pump(const Duration(seconds: 1));
-    expect(find.byIcon(Icons.bookmark_rounded), findsOneWidget,
+    expect(find.byTooltip('Remove from wishlist'), findsOneWidget,
         reason: 'the card shows the bookmark the tutor made');
+    expect(find.text('On your wishlist'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
     await tester.pump();

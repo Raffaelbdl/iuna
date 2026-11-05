@@ -35,8 +35,10 @@ class IunaSectionHeader extends StatelessWidget {
   }
 }
 
-/// The small upper-cased caption over a card's section (home strip, card
-/// detail, review sheet, session recap).
+/// The small upper-cased caption over a group of things outside a
+/// panel (Home's recent cards, the session recap, a game's misses), as
+/// [IunaSectionHeader] is in Settings. Inside a panel, the title is an
+/// [IunaPanelTitle].
 class IunaEyebrow extends StatelessWidget {
   const IunaEyebrow(this.label, {super.key});
 
@@ -87,6 +89,25 @@ class IunaGroup extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// The title inside a paper panel (Stats cards, card detail's
+/// sections, the review sheet): title case, bold, in ink.
+class IunaPanelTitle extends StatelessWidget {
+  const IunaPanelTitle(this.title, {super.key});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      title,
+      style: IunaText.label.copyWith(
+        fontWeight: FontWeight.w700,
+        color: IunaPalette.ink,
+      ),
     );
   }
 }

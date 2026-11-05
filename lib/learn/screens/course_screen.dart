@@ -205,7 +205,7 @@ class _CourseScreenState extends State<CourseScreen> {
                   onTap: _openRoom,
                   child: _RowTile(
                     icon: Icons.forum_rounded,
-                    iconColor: IunaPalette.ctaBottom,
+                    iconColor: IunaPalette.honeyInk,
                     title: 'Course room',
                     subtitle: _chapters.isEmpty
                         ? 'Start here: Kuma-sensei checks what you already know, then proposes a plan.'
@@ -334,12 +334,12 @@ class _ChapterTile extends StatelessWidget {
       ChapterStatus.passed => (
         Icons.check_circle_rounded,
         IunaPalette.mintInk,
-        'Revise',
+        'Review again',
         IunaPalette.mintInk,
       ),
       ChapterStatus.unlocked => (
         Icons.play_circle_fill_rounded,
-        IunaPalette.ctaBottom,
+        IunaPalette.honeyInk,
         'Continue',
         IunaPalette.honeyInk,
       ),

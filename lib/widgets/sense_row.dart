@@ -40,10 +40,14 @@ class SenseRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Grows with the text, so a large font doesn't break "1."
+          // over two lines.
           SizedBox(
-            width: 18,
+            width: MediaQuery.textScalerOf(context).scale(18),
             child: Text(
               '$ordinal.',
+              maxLines: 1,
+              softWrap: false,
               style: IunaText.bodySmall.copyWith(
                 fontWeight: FontWeight.w700,
                 color: IunaPalette.ink3,

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:intl/intl.dart';
 
 import '../db/database.dart';
 import '../db/repository.dart';
@@ -16,10 +15,12 @@ import '../widgets/example_line.dart';
 import '../widgets/hex_bg.dart';
 import '../widgets/iuna_bottom_nav.dart';
 import '../widgets/iuna_icon_button.dart';
+import '../widgets/notice.dart';
 import '../widgets/section_header.dart';
 import '../widgets/sense_row.dart';
 import '../widgets/snack.dart';
 import '../widgets/tappable.dart';
+import '../widgets/time_words.dart';
 import '../widgets/vocab_card.dart';
 import 'app_nav.dart';
 
@@ -30,6 +31,7 @@ class CardDetailScreen extends StatefulWidget {
     required this.cardId,
     this.from = IunaNavTab.collection,
     this.learn,
+    this.now,
   });
 
   final AppDatabase db;
@@ -42,6 +44,9 @@ class CardDetailScreen extends StatefulWidget {
   /// [LearnSettings.available]; tests pass their own.
   final LearnEnv? learn;
 
+  /// The clock for "Next review"; goldens pin it.
+  final DateTime? now;
+
   @override
   State<CardDetailScreen> createState() => _CardDetailScreenState();
 }
@@ -50,6 +55,7 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
   late final IunaRepository _repo = IunaRepository(widget.db);
 
   bool _loading = true;
+  bool _failed = false;
   CardRow? _card;
   UserCardRow? _userCard;
   List<CardSenseRow> _senses = const [];
@@ -72,14 +78,29 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
   }
 
   Future<void> _load() async {
-    final (entry, senses, examples, wished) = await (
-      _repo.cardWithState(widget.cardId),
-      _repo.sensesForCard(widget.cardId),
-      _repo.examplesForCard(widget.cardId),
-      _repo.isWished(widget.cardId),
-    ).wait;
+    final (CollectionEntry?, List<CardSenseRow>, List<ExampleRow>, bool)
+    loaded;
+    try {
+      loaded = await (
+        _repo.cardWithState(widget.cardId),
+        _repo.sensesForCard(widget.cardId),
+        _repo.examplesForCard(widget.cardId),
+        _repo.isWished(widget.cardId),
+      ).wait;
+    } catch (e, s) {
+      logLoadError('Card detail', e, s);
+      if (mounted && _card == null) {
+        setState(() {
+          _loading = false;
+          _failed = true;
+        });
+      }
+      return;
+    }
+    final (entry, senses, examples, wished) = loaded;
     if (!mounted) return;
     setState(() {
+      _failed = false;
       _card = entry?.card;
       _userCard = entry?.userCard;
       _senses = senses;
@@ -256,6 +277,16 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
                   Expanded(
                     child: _loading
                         ? const Center(child: CircularProgressIndicator())
+                        : _failed
+                        ? LoadErrorNotice(
+                            onRetry: () {
+                              setState(() {
+                                _loading = true;
+                                _failed = false;
+                              });
+                              _load();
+                            },
+                          )
                         : card == null
                         ? const Center(
                             child: Text(
@@ -300,6 +331,7 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
           _Hero(
             card: card,
             owned: _userCard != null,
+            wished: _wished,
             onSpeak: _onSpeakerTap,
           ),
           const SizedBox(height: 14),
@@ -330,18 +362,25 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
             const SizedBox(height: 14),
             _Section(
               title: 'Examples',
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (untranslated)
-                    _PanelAction(
-                      label: _job == _TutorJob.translate ? 'Translating…' : 'Translate',
-                      onPressed: _job == null ? _translateExamples : null,
+              trailing: !untranslated && !_examples.any((e) => e.generated)
+                  ? null
+                  : Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (untranslated)
+                          _PanelAction(
+                            label: _job == _TutorJob.translate
+                                ? 'Translating…'
+                                : 'Translate',
+                            onPressed: _job == null ? _translateExamples : null,
+                          ),
+                        if (_examples.any((e) => e.generated))
+                          _PanelAction(
+                            label: 'Clear',
+                            onPressed: _clearExamples,
+                          ),
+                      ],
                     ),
-                  if (_examples.any((e) => e.generated))
-                    _PanelAction(label: 'Clear', onPressed: _clearExamples),
-                ],
-              ),
               child: _examples.isEmpty && _job != _TutorJob.write
                   ? _NoExamples(onWrite: _writeExamples)
                   : _examples.isEmpty
@@ -366,7 +405,7 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
                     ),
             ),
           ],
-          if (_userCard != null) ...[
+          if (_userCard case final user?) ...[
             const SizedBox(height: 14),
             _Section(
               title: 'Review state',
@@ -374,26 +413,30 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
                 children: [
                   _Kv(
                     label: 'Memory level',
-                    value: '${_userCard!.level}',
+                    value: user.intervalMinutes <= 0
+                        ? memoryLevelLabel(user.level)
+                        : '${memoryLevelLabel(user.level)} · '
+                              '${MemoryStage.ofInterval(user.intervalMinutes).label}',
                   ),
                   _Kv(
                     label: 'Time between reviews',
-                    value: _formatInterval(_userCard!.intervalMinutes),
+                    value: _formatInterval(user.intervalMinutes),
                   ),
                   _Kv(
                     label: 'Last reviewed',
-                    value: _formatDate(_userCard!.lastReviewed) ?? 'Never',
+                    value: user.lastReviewed == null
+                        ? 'Never'
+                        : dayWords(user.lastReviewed!),
                   ),
                   _Kv(
                     label: 'Next review',
-                    value: _formatDate(_userCard!.nextDue) ?? '—',
+                    value: _capitalized(
+                      whenWords(user.nextDue, widget.now ?? DateTime.now()),
+                    ),
                   ),
-                  _Kv(
-                    label: 'Collected',
-                    value: _formatDate(_userCard!.obtainedAt) ?? '—',
-                  ),
+                  _Kv(label: 'Collected', value: dayWords(user.obtainedAt)),
                   _SuspendRow(
-                    suspended: _userCard!.suspended,
+                    suspended: user.suspended,
                     onTap: _onSuspendTap,
                   ),
                 ],
@@ -413,10 +456,8 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
     return plural((minutes / (60 * 24)).round(), 'day');
   }
 
-  static String? _formatDate(DateTime? dt) {
-    if (dt == null) return null;
-    return DateFormat('MMM d, y · HH:mm').format(dt);
-  }
+  static String _capitalized(String s) =>
+      s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
 }
 
 class _TopBar extends StatelessWidget {
@@ -455,16 +496,22 @@ class _TopBar extends StatelessWidget {
               tooltip: wished ? 'Remove from wishlist' : 'Add to wishlist',
               selected: wished,
               onTap: onWishlistTap,
-              tint: wished ? IunaPalette.bellGold : null,
+              tint: wished ? IunaPalette.honeyInk : null,
             ),
     );
   }
 }
 
 class _Hero extends StatelessWidget {
-  const _Hero({required this.card, required this.owned, required this.onSpeak});
+  const _Hero({
+    required this.card,
+    required this.owned,
+    required this.wished,
+    required this.onSpeak,
+  });
   final CardRow card;
   final bool owned;
+  final bool wished;
   final VoidCallback onSpeak;
 
   @override
@@ -504,14 +551,21 @@ class _Hero extends StatelessWidget {
                         tag: 'card-kanji-${card.id}',
                         child: Material(
                           color: Colors.transparent,
-                          child: Text(
-                            card.kanji,
-                            style: const TextStyle(
-                              fontSize: 54,
-                              fontWeight: FontWeight.w700,
-                              height: 1,
-                              color: IunaPalette.ink,
-                              letterSpacing: -0.5,
+                          // A word shrinks to one line rather than
+                          // breaking between its characters.
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              card.kanji,
+                              maxLines: 1,
+                              style: const TextStyle(
+                                fontSize: 54,
+                                fontWeight: FontWeight.w700,
+                                height: 1,
+                                color: IunaPalette.ink,
+                                letterSpacing: -0.5,
+                              ),
                             ),
                           ),
                         ),
@@ -586,52 +640,17 @@ class _Hero extends StatelessWidget {
               runSpacing: 6,
               children: [
                 if (!owned)
-                  const _BasicChip(
-                    label: kNotCollectedLabel,
-                    icon: Icons.lock_outline_rounded,
+                  CardStatusChip(
+                    status: wished
+                        ? CardLookupStatus.wishlisted
+                        : CardLookupStatus.available,
                   ),
                 if (card.jlptLevel != null)
-                  _BasicChip(label: 'JLPT N${card.jlptLevel}'),
+                  MetaChip(label: 'JLPT N${card.jlptLevel}'),
               ],
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _BasicChip extends StatelessWidget {
-  const _BasicChip({required this.label, this.icon});
-  final String label;
-  final IconData? icon;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: const Color(0x0F4A3520),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: const Color.fromRGBO(74, 53, 32, 0.06),
-          width: 0.5,
-        ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (icon != null) ...[
-            Icon(icon, size: 13, color: IunaPalette.ink2),
-            const SizedBox(width: 4),
-          ],
-          Text(
-            label,
-            style: IunaText.chip.copyWith(
-              color: IunaPalette.ink2,
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -645,25 +664,40 @@ class _Section extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final trailing = this.trailing;
+    final panel = Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: paperPanelDecoration(
+        borderRadius: BorderRadius.circular(IunaRadii.md),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          IunaPanelTitle(title),
+          const SizedBox(height: 8),
+          child,
+        ],
+      ),
+    );
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-        decoration: paperPanelDecoration(
-          borderRadius: BorderRadius.circular(IunaRadii.md),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (trailing == null)
-              IunaEyebrow(title)
-            else
-              Row(children: [Expanded(child: IunaEyebrow(title)), trailing!]),
-            const SizedBox(height: 8),
-            child,
-          ],
-        ),
-      ),
+      // The actions float over the panel's corner, centred on the
+      // title, so a panel with them starts its content where one
+      // without does.
+      child: trailing == null
+          ? panel
+          : Stack(
+              fit: StackFit.passthrough,
+              children: [
+                panel,
+                Positioned(
+                  top: 0,
+                  right: 6,
+                  height: IunaIconButton.size,
+                  child: trailing,
+                ),
+              ],
+            ),
     );
   }
 }

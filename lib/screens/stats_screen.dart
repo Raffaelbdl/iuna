@@ -5,8 +5,12 @@ import 'package:flutter/material.dart';
 import '../db/database.dart';
 import '../db/repository.dart';
 import '../theme/iuna_theme.dart';
+import '../widgets/iuna_bottom_nav.dart';
 import '../widgets/iuna_page.dart';
+import '../widgets/notice.dart';
+import '../widgets/section_header.dart';
 import '../widgets/tappable.dart';
+import 'card_detail_screen.dart';
 
 part 'stats/common.dart';
 part 'stats/headline.dart';
@@ -57,6 +61,7 @@ class _StatsScreenState extends State<StatsScreen> {
   late final IunaRepository _repo = IunaRepository(widget.db);
 
   bool _loading = true;
+  bool _failed = false;
   late bool _detailsOpen = widget.detailsOpen;
   _RetWindow _retWindow = _RetWindow.d90;
 
@@ -92,6 +97,33 @@ class _StatsScreenState extends State<StatsScreen> {
   }
 
   Future<void> _loadAll() async {
+    try {
+      await _loadCharts();
+    } catch (e, s) {
+      logLoadError('Stats', e, s);
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _failed = true;
+        });
+      }
+    }
+  }
+
+  Future<void> _openCard(int cardId) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CardDetailScreen(
+          db: widget.db,
+          cardId: cardId,
+          from: IunaNavTab.home,
+        ),
+      ),
+    );
+    if (mounted) await _loadAll();
+  }
+
+  Future<void> _loadCharts() async {
     // Launch in parallel; record `.wait` caps at 9 elements, so split.
     final fBreakdown = _repo.reviewBreakdown();
     final fByJlpt = _repo.jlptProgress();
@@ -144,6 +176,7 @@ class _StatsScreenState extends State<StatsScreen> {
       _leeches = r2.$5;
       _byPack = r2.$6;
       _loading = false;
+      _failed = false;
     });
   }
 
@@ -164,6 +197,16 @@ class _StatsScreenState extends State<StatsScreen> {
       title: 'Stats',
       body: _loading
           ? const Center(child: CircularProgressIndicator())
+          : _failed
+          ? LoadErrorNotice(
+              onRetry: () {
+                setState(() {
+                  _loading = true;
+                  _failed = false;
+                });
+                _loadAll();
+              },
+            )
           : ListView(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
               children: [
@@ -196,8 +239,8 @@ class _StatsScreenState extends State<StatsScreen> {
                   title: 'Tricky cards',
                   subtitle: _leeches.isEmpty
                       ? "No tricky cards yet — they'll show up here once you miss the same word a few times."
-                      : 'Cards you keep missing. Worth a closer look.',
-                  child: _LeechList(entries: _leeches),
+                      : 'Cards you keep missing. Tap one for a closer look.',
+                  child: _LeechList(entries: _leeches, onOpen: _openCard),
                 ),
                 const SizedBox(height: 14),
                 _StatCard(
@@ -269,7 +312,11 @@ class _StatsScreenState extends State<StatsScreen> {
     const SizedBox(height: 14),
     _StatCard(
       title: 'How well you know them',
-      subtitle: 'How settled each card is, from still learning to well known.',
+      subtitle:
+          'How settled each card is, by its time between reviews: learning '
+          'under 3 days, getting there under a month, well known beyond. '
+          'Each right answer raises a card\'s memory level and stretches '
+          'that time.',
       child: _MaturityChart(bins: _maturity),
     ),
     const SizedBox(height: 14),

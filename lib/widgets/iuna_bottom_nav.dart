@@ -16,10 +16,15 @@ class IunaBottomNav extends StatelessWidget {
     required this.active,
     required this.onTap,
     this.showLearn = false,
+    this.todayCount = 0,
   });
 
   final IunaNavTab active;
   final ValueChanged<IunaNavTab> onTap;
+
+  /// What waits behind Today (new cards and due reviews), shown as a
+  /// badge so the tab reads as something to do.
+  final int todayCount;
 
   /// The Learn tab exists only while an OpenRouter key is saved.
   final bool showLearn;
@@ -58,6 +63,7 @@ class IunaBottomNav extends StatelessWidget {
                   child: _NavBtn(
                     icon: Icons.card_giftcard_rounded,
                     label: 'Today',
+                    badge: todayCount,
                     active: active == IunaNavTab.today,
                     onTap: () => onTap(IunaNavTab.today),
                   ),
@@ -94,58 +100,108 @@ class _NavBtn extends StatelessWidget {
     required this.label,
     required this.active,
     required this.onTap,
+    this.badge = 0,
   });
 
   final IconData icon;
   final String label;
   final bool active;
   final VoidCallback onTap;
+  final int badge;
 
   @override
   Widget build(BuildContext context) {
+    final glyph = Icon(
+      icon,
+      size: 20,
+      color: active ? IunaPalette.ink : IunaPalette.ink3,
+    );
     return Tappable(
       onTap: onTap,
       selected: active,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 220),
-        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
-        decoration: BoxDecoration(
-          gradient: active
-              ? const LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Color(0xFFFFF8E5), Color(0xFFFDE9C9)],
-                )
-              : null,
-          borderRadius: BorderRadius.circular(999),
-          boxShadow: active
-              ? const [
-                  BoxShadow(
-                    color: Color.fromRGBO(232, 185, 107, 0.6),
-                    blurRadius: 14,
-                    offset: Offset(0, 6),
-                    spreadRadius: -8,
-                  ),
-                ]
-              : null,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              size: 20,
-              color: active ? IunaPalette.ink : IunaPalette.ink3,
-            ),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              style: IunaText.chip.copyWith(
-                color: active ? IunaPalette.ink : IunaPalette.ink3,
-                height: 1,
+      label: badge > 0 ? '$label, $badge waiting' : null,
+      child: ExcludeSemantics(
+        excluding: badge > 0,
+          child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+          decoration: BoxDecoration(
+            gradient: active
+                ? const LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Color(0xFFFFF8E5), IunaPalette.optionPicked],
+                  )
+                : null,
+            borderRadius: BorderRadius.circular(999),
+            boxShadow: active
+                ? const [
+                    BoxShadow(
+                      color: Color.fromRGBO(232, 185, 107, 0.6),
+                      blurRadius: 14,
+                      offset: Offset(0, 6),
+                      spreadRadius: -8,
+                    ),
+                  ]
+                : null,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (badge == 0)
+                glyph
+              else
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    glyph,
+                    Positioned(
+                      left: 13,
+                      top: -5,
+                      child: _Badge(count: badge),
+                    ),
+                  ],
+                ),
+              const SizedBox(height: 2),
+              Text(
+                label,
+                style: IunaText.chip.copyWith(
+                  color: active ? IunaPalette.ink : IunaPalette.ink3,
+                  height: 1,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A small honey count on a nav icon.
+class _Badge extends StatelessWidget {
+  const _Badge({required this.count});
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+      decoration: BoxDecoration(
+        color: IunaPalette.honey,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: IunaPalette.paper, width: 1.5),
+      ),
+      child: Text(
+        count > 99 ? '99+' : '$count',
+        textAlign: TextAlign.center,
+        // Fixed, not scaled: it rides on a 20 px icon.
+        textScaler: TextScaler.noScaling,
+        style: IunaText.chip.copyWith(
+          fontWeight: FontWeight.w800,
+          color: IunaPalette.heroInk,
+          height: 1.1,
         ),
       ),
     );

@@ -11,16 +11,17 @@ import '../widgets/booster_pack.dart';
 import '../widgets/cta_button.dart';
 import '../widgets/hex_bg.dart';
 import '../widgets/iuna_icon_button.dart';
+import '../widgets/notice.dart';
 import '../widgets/progress_dots.dart';
 import '../widgets/snack.dart';
 import '../widgets/tappable.dart';
 import '../widgets/vocab_card.dart';
 
 /// One-by-one card reveal after the pack-intro splash. Tap or press
-/// "Next card" to advance; the final card pops the screen with the
-/// picked ids so the caller can route into the review flow. The cards
-/// are already in the collection, so leaving early (the skip button or
-/// system Back) takes the same route. When the
+/// "Next card" to advance; the final card, or "Skip to review", pops
+/// the screen with the picked ids so the caller can route into the
+/// review flow. System Back pops with null and goes home: the cards are
+/// already in the collection and their review stays due. When the
 /// user has more than one daily pack remaining, all of them are claimed
 /// upfront and revealed in one chained sequence — a short pack-tear
 /// animation plays between packs so the boundary stays felt.
@@ -44,6 +45,7 @@ class _BoosterRevealScreenState extends State<BoosterRevealScreen>
   );
 
   bool _loading = true;
+  bool _failed = false;
   List<CardRow> _cards = const [];
 
   /// Card indices where a new pack starts. Used to fire the inline
@@ -99,7 +101,14 @@ class _BoosterRevealScreenState extends State<BoosterRevealScreen>
   }
 
   Future<void> _bootstrap() async {
-    final claims = await _repo.claimAllAvailableBoosters();
+    final List<BoosterClaim> claims;
+    try {
+      claims = await _repo.claimAllAvailableBoosters();
+    } catch (e, s) {
+      logLoadError('Booster reveal', e, s);
+      if (mounted) setState(() => _failed = true);
+      return;
+    }
     if (!mounted) return;
     final cards = <CardRow>[];
     for (var i = 0; i < claims.length; i++) {
@@ -229,9 +238,9 @@ class _BoosterRevealScreenState extends State<BoosterRevealScreen>
     showSnack(
       context,
       swap.replacements.isEmpty
-          ? 'Suspended. No unseen cards were left to swap in. Find it in '
+          ? 'Set aside. No unseen cards were left to swap in. Find it in '
                 'Collection › Suspended.'
-          : 'Suspended and replaced. Find it in Collection › Suspended.',
+          : 'Swapped. The old card is set aside in Collection › Suspended.',
       action: SnackBarAction(
         label: 'Undo',
         onPressed: () async {
@@ -246,27 +255,30 @@ class _BoosterRevealScreenState extends State<BoosterRevealScreen>
 
   /// End-of-session pop. Suspensions and replacements were already
   /// committed in-line by [_suspendCurrent], so the payload here is
-  /// just a "did the reveal happen?" sentinel for the parent route.
-  Future<void> _finalizeAndPop() async {
+  /// just a "did the reveal happen?" sentinel for the parent route;
+  /// without [toReview] it pops null, and the caller goes home.
+  Future<void> _finalizeAndPop({bool toReview = true}) async {
     if (_finalizing) return;
     setState(() => _finalizing = true);
     if (!mounted) return;
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    Navigator.of(context).pop(_cards.map((c) => c.id).toList());
+    Navigator.of(
+      context,
+    ).pop(toReview ? _cards.map((c) => c.id).toList() : null);
   }
 
   @override
   Widget build(BuildContext context) {
-    // System Back skips to the review like the top bar's button, rather
-    // than dropping the learner home with the pack half-seen.
+    // System Back goes home: the cards are collected, and the review
+    // waits on Home and Today. "Skip to review" is the way on to it.
     return PopScope<Object?>(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
-        if (_loading) {
+        if (_loading || _failed) {
           Navigator.of(context).pop();
         } else {
-          _finalizeAndPop();
+          _finalizeAndPop(toReview: false);
         }
       },
       child: Scaffold(
@@ -277,7 +289,14 @@ class _BoosterRevealScreenState extends State<BoosterRevealScreen>
             children: [
               const Positioned.fill(child: HexBg(seed: 41)),
               SafeArea(
-                child: _loading
+                child: _failed
+                    ? LoadErrorNotice(
+                        onRetry: () {
+                          setState(() => _failed = false);
+                          _bootstrap();
+                        },
+                      )
+                    : _loading
                     ? const Center(child: CircularProgressIndicator())
                     : _buildBody(),
               ),
@@ -490,24 +509,25 @@ class _SuspendPill extends StatelessWidget {
     final disabled = onTap == null;
     return Tappable(
       onTap: onTap,
+      label: 'Swap this card for another',
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
         constraints: const BoxConstraints(minHeight: 48),
         padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
         decoration: disabled
-            ? ghostPillDecoration(color: const Color(0x33B8D8C9))
+            ? ghostPillDecoration(color: IunaPalette.chipBg)
             : ghostPillDecoration(boxShadow: panelShadow()),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              Icons.pause_circle_outline_rounded,
+              Icons.swap_horiz_rounded,
               size: 18,
               color: disabled ? IunaPalette.ink3 : IunaPalette.ink2,
             ),
             const SizedBox(width: 6),
             Text(
-              'Suspend & swap',
+              'Not for me',
               style: IunaText.bodySmall.copyWith(
                 fontWeight: FontWeight.w600,
                 color: disabled ? IunaPalette.ink3 : IunaPalette.ink2,
@@ -528,20 +548,15 @@ class _TopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return IunaTopBar(
-      // The cards are already collected, so leaving goes on to the
-      // review, and the button says so.
-      trailing: Semantics(
-        label: 'Skip to review',
-        excludeSemantics: true,
-        button: true,
-        child: TextButton(
-          onPressed: onClose,
-          style: TextButton.styleFrom(
-            minimumSize: const Size(IunaIconButton.size, IunaIconButton.size),
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-          ),
-          child: const Text('Skip'),
+      // The cards are already collected, so skipping goes on to the
+      // review.
+      trailing: TextButton(
+        onPressed: onClose,
+        style: TextButton.styleFrom(
+          minimumSize: const Size(IunaIconButton.size, IunaIconButton.size),
+          padding: const EdgeInsets.symmetric(horizontal: 8),
         ),
+        child: const Text('Skip to review'),
       ),
       title: Text(
         label,
@@ -571,7 +586,6 @@ class _RevealCard extends StatelessWidget {
           child: VocabCard(
             rarity: card.rarity,
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -586,40 +600,49 @@ class _RevealCard extends StatelessWidget {
                       ),
                   ],
                 ),
-                Column(
-                  children: [
-                    FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(
-                        card.kanji,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontSize: 56,
-                          fontWeight: FontWeight.w700,
-                          color: IunaPalette.ink,
-                          height: 1,
-                        ),
+                // Scrolls rather than overflows a long meaning at large
+                // text, as the review card does.
+                Expanded(
+                  child: Center(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Column(
+                        children: [
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              card.kanji,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                fontSize: 56,
+                                fontWeight: FontWeight.w700,
+                                color: IunaPalette.ink,
+                                height: 1,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            card.kana,
+                            textAlign: TextAlign.center,
+                            style: IunaText.body.copyWith(
+                              color: IunaPalette.ink3,
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          Text(
+                            card.meaning,
+                            textAlign: TextAlign.center,
+                            style: IunaText.bodySmall.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: IunaPalette.ink2,
+                              height: 1.3,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 6),
-                    Text(
-                      card.kana,
-                      textAlign: TextAlign.center,
-                      style: IunaText.body.copyWith(
-                        color: IunaPalette.ink3,
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    Text(
-                      card.meaning,
-                      textAlign: TextAlign.center,
-                      style: IunaText.bodySmall.copyWith(
-                        fontWeight: FontWeight.w600,
-                        color: IunaPalette.ink2,
-                        height: 1.3,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
