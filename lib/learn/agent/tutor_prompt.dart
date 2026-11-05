@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 import '../db/learn_database.dart';
 import '../db/learn_repository.dart';
+import '../deck.dart';
 
 /// Persona, harness notes and the three guu-teach skills, bundled as
 /// assets so they diff like prose.
@@ -14,6 +15,8 @@ class TutorAssets {
     required this.cards,
     required this.photos,
     required this.askPersona,
+    required this.examples,
+    required this.translate,
     required this.readingsTap,
     required this.readingsInline,
     required this.skills,
@@ -38,6 +41,12 @@ class TutorAssets {
   final String photos;
   final String askPersona;
 
+  /// The one-shot brief behind a card's "Give me examples".
+  final String examples;
+
+  /// The one-shot brief behind the Examples panel's "Translate".
+  final String translate;
+
   /// How to write readings when the learner can tap words for them…
   final String readingsTap;
 
@@ -61,6 +70,8 @@ class TutorAssets {
       cards: await read('prompts/cards.md'),
       photos: await read('prompts/photos.md'),
       askPersona: await read('prompts/ask_persona.md'),
+      examples: await read('prompts/examples.md'),
+      translate: await read('prompts/translate.md'),
       readingsTap: await read('prompts/readings_tap.md'),
       readingsInline: await read('prompts/readings_inline.md'),
       skills: {
@@ -222,6 +233,7 @@ String buildAskPrompt(
   required String preferences,
   required DateTime today,
   required bool wordLookup,
+  FocusCard? card,
 }) {
   final b = StringBuffer()
     ..writeln(assets.askPersona.trim())
@@ -252,7 +264,45 @@ String buildAskPrompt(
       ..writeln('## Teaching preferences')
       ..writeln('<preferences>\n${preferences.trim()}\n</preferences>');
   }
+  if (card != null) _writeFocusCard(b, card);
   return b.toString().trimRight();
+}
+
+void _writeFocusCard(StringBuffer b, FocusCard card) {
+  final String standing;
+  if (card.owned) {
+    final fails = switch (card.failCount) {
+      0 => 'never failed',
+      1 => 'failed once',
+      final n => 'failed $n times',
+    };
+    standing = 'in their collection, review level ${card.level}, $fails';
+  } else if (card.wished) {
+    standing = 'bookmarked, not drawn yet';
+  } else {
+    standing = 'not in their collection';
+  }
+  b
+    ..writeln()
+    ..writeln('## The card they asked from')
+    ..writeln()
+    ..writeln('They opened this chat from the card for ${card.headword}, so "this word" '
+        'means it. The card shows them its reading and the senses below, so '
+        'build on those rather than repeat them.')
+    ..writeln()
+    ..writeln('- Card: $standing')
+    ..writeln('- JLPT: ${card.jlptLabel}');
+  if (card.senses.isNotEmpty) {
+    b
+      ..writeln('- Senses on the card:')
+      ..writeln(card.numberedSenses(indent: '  '));
+  }
+  if (card.failCount > 1) {
+    b
+      ..writeln()
+      ..writeln('They keep failing it in review: if the question leaves room, '
+          'give them a hook to remember it by.');
+  }
 }
 
 String roomKickoffNote(CourseRow course) {

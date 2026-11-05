@@ -5,7 +5,7 @@ a rarity-tiered collection, spaced-repetition reviews and stats, plus an
 optional Learn tab where Kuma-sensei, an on-device AI tutor, runs
 courses against OpenRouter with the learner's own key. There is no Iuna
 server. Two SQLite files hold everything: `iuna.sqlite`, the deck (Drift,
-schema v7), and `learn.sqlite`, the tutor (schema v3).
+schema v8), and `learn.sqlite`, the tutor (schema v3).
 
 Read before changing things:
 

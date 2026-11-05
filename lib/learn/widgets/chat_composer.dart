@@ -30,9 +30,11 @@ class ChatComposer extends StatefulWidget {
     this.picker,
     this.photo,
     this.onPhoto,
+    this.autofocus = false,
   });
 
   final TextEditingController controller;
+  final bool autofocus;
   final String hint;
   final VoidCallback onSend;
   final bool enabled;
@@ -304,6 +306,7 @@ class _ChatComposerState extends State<ChatComposer> with SingleTickerProviderSt
                       maintainSize: true,
                       child: TextField(
                         controller: widget.controller,
+                        autofocus: widget.autofocus,
                         enabled: widget.enabled,
                         minLines: 1,
                         maxLines: 5,

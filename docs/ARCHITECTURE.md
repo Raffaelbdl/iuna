@@ -11,7 +11,7 @@ network use: card packs and the dictionary are downloaded from a public
 data repository, backups go to the user's own Google Drive, and the tutor
 talks to OpenRouter with the user's own key.
 
-## The deck database (`lib/db/`, Drift, schema v7)
+## The deck database (`lib/db/`, Drift, schema v8)
 
 ```text
 cards         id, kanji, kana, furigana?, meaning (first-sense headline),
@@ -20,7 +20,8 @@ cards         id, kanji, kana, furigana?, meaning (first-sense headline),
               UNIQUE(kanji, kana).
 card_senses   card_id, ordinal (1..N), pos (CSV), gloss (CSV),
               definition?. UNIQUE(card_id, ordinal); ordered by ordinal.
-examples      id, sentence, source_title?
+examples      id, sentence, source_title?, translation?, generated
+              (written by Kuma-sensei for one card; clearable).
 card_examples (card_id, example_id).
 user_cards    PK card_id; level, ease (2.0), interval_minutes,
               last_reviewed?, next_due, obtained_at, is_new, fail_count,
@@ -36,9 +37,14 @@ meta          K/V settings and gates (last_booster_date, last_seen_ts,
 ```
 
 `lib/db/database.dart` is the authoritative shape and holds every
-migration (v1 → v7). The bundled `assets/db/seed.sqlite` (26.7k cards
+migration (v1 → v8). The bundled `assets/db/seed.sqlite` (26.7k cards
 built from JMdict) is copied in on first open; `onCreate` patches in the
-columns added since the seed was built.
+columns added since the seed was built. Its Tatoeba examples carry their
+English; a deck copied from an older seed takes it in once after launch
+(`example_english.dart`: one UPDATE against the seed attached, gated by
+the `example_english` meta flag rather than the schema version, so a
+restored backup gets it again; `onCreate` sets the flag, since a fresh
+copy is the current seed).
 
 - `lib/core/deck_rules.dart` — pure Dart, shared with `tools/`: `Rarity`,
   `ReviewKind`, `classifyReview`, the logical day (`logicalDayKey`,
@@ -236,8 +242,19 @@ answer buttons.
 session is summarised into `chat_sessions.summary`. Archived messages stay
 visible to the learner.
 
-**Ask.** Each message from the chat bar on the Learn hub opens a
-throwaway in-memory chat. Its only tool is `bookmark_words`.
+**Ask.** Each message from the chat bar (`AskBar`) on the Learn hub opens a
+throwaway in-memory chat. Its only tool is `bookmark_words`. Card detail
+carries the same bar while a key is saved; its chats also get the card
+(`FocusCard`: senses, JLPT, owned level and fail count, or wishlisted)
+at the end of the prompt, after the cacheable part. On a card without
+examples the bar folds into two buttons: *Kuma teach* opens it, and *Give
+me examples* makes one call (`LearnEnv.writeExamples`, the
+`prompts/examples.md` brief, usage kind `examples`) whose JSON reply the
+screen saves as `generated` examples with translations. *Clear* on the
+Examples panel deletes only those. *Translate* there fills the English of
+any example still without it (`translateExamples`, `prompts/translate.md`,
+usage kind `translate`); the brief numbers the sentences and the reply
+answers by number, so it never has to copy the Japanese back.
 
 ### Tapping a word (`words/`)
 
@@ -321,6 +338,7 @@ shown only under Settings → AI tutor.
 | Tool | What it does |
 |---|---|
 | `build_dict.dart` + `dict_importer.dart` + `seed_schema.dart` | Build the seed from JMdict, with JLPT and frequency overlays. |
+| `seed_example_english.dart` | Add Tatoeba's English to an existing seed's examples without rebuilding it. |
 | `build_jmdict_sidecar.dart` | Build the downloadable dictionary and its `jmdict.LICENSE.txt`. |
 | `build_science_pack.dart` + `anki/` | Turn an Anki deck into `packs/science.json`. |
 | `package_packs.dart` + `pack_format.dart` | Gzip the packs and write the catalogue. |

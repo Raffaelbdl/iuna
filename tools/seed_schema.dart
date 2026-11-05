@@ -37,7 +37,9 @@ void createSchema(Database db) {
     CREATE TABLE examples (
       id           INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
       sentence     TEXT NOT NULL,
-      source_title TEXT
+      source_title TEXT,
+      translation  TEXT,
+      generated    INTEGER NOT NULL DEFAULT 0 CHECK ("generated" IN (0, 1))
     );
   ''');
   db.execute('''

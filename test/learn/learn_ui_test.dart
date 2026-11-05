@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -15,6 +16,7 @@ import 'package:iuna/learn/screens/learn_screen.dart';
 import 'package:iuna/learn/widgets/chat_view.dart';
 import 'package:iuna/learn/widgets/choice_buttons.dart';
 import 'package:iuna/screens/app_nav.dart';
+import 'package:iuna/screens/card_detail_screen.dart';
 import 'package:iuna/screens/settings_screen.dart';
 import 'package:iuna/widgets/iuna_bottom_nav.dart';
 
@@ -171,6 +173,154 @@ void main() {
 
     await tester.pumpWidget(const SizedBox());
     await tester.pump();
+  });
+
+  testWidgets("a card's chat bar asks Kuma-sensei about that card", (tester) async {
+    final db = AppDatabase.forTesting(NativeDatabase.memory());
+    addTearDown(db.close);
+    final deck = IunaRepository(db);
+    final id = await db
+        .into(db.cards)
+        .insert(CardsCompanion.insert(kanji: '会議', kana: 'かいぎ', meaning: 'meeting'));
+    final llm = FakeLlm([
+      callTool('bookmark_words', {
+        'words': [
+          {'word': '会議', 'reading': 'かいぎ'},
+        ],
+      }),
+      say('Bookmarked: it will turn up soon.'),
+    ]);
+    final env = testLearnEnv(llm, settings: settings, bookmarks: DeckBookmarks(deck));
+
+    await tester.pumpWidget(MaterialApp(home: CardDetailScreen(db: db, cardId: id, learn: env)));
+    await tester.pump();
+    expect(find.text('Kuma teach'), findsNothing, reason: 'no key, no tutor');
+
+    await settings.setApiKey('sk-or-v1-abc');
+    await tester.pump();
+    expect(find.byType(TextField), findsNothing, reason: 'folded until asked');
+    await tester.tap(find.text('Kuma teach'));
+    await tester.pump();
+    expect(find.text('Ask about 会議…'), findsOneWidget);
+    expect(find.byIcon(Icons.bookmark_outline_rounded), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), 'Keep this one for me');
+    await tester.pump();
+    await tester.tap(find.byTooltip('Send'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+
+    expect(find.byType(AskScreen), findsOneWidget);
+    final messages = llm.requests.first.messages;
+    expect(messages.first['content'], contains('the card for 会議（かいぎ）'));
+    expect(messages.first['content'], contains('- Card: not in their collection'));
+    expect(messages[1]['content'], 'Keep this one for me');
+
+    await tester.pageBack();
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.byIcon(Icons.bookmark_rounded), findsOneWidget,
+        reason: 'the card shows the bookmark the tutor made');
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+  });
+
+  testWidgets('Kuma-sensei writes examples onto a card without any, and they clear', (
+    tester,
+  ) async {
+    final db = AppDatabase.forTesting(NativeDatabase.memory());
+    addTearDown(db.close);
+    final deck = IunaRepository(db);
+    final id = await db
+        .into(db.cards)
+        .insert(CardsCompanion.insert(kanji: '会議', kana: 'かいぎ', meaning: 'meeting', jlptLevel: const Value(3)));
+    final llm = FakeLlm([
+      say('```json\n[{"ja": "会議は三時からです。", "en": "The meeting starts at three."},'
+          ' {"ja": "会議が長引いた。", "en": "The meeting ran long."}]\n```'),
+    ]);
+    final env = testLearnEnv(llm, settings: settings);
+    await settings.setApiKey('sk-or-v1-abc');
+
+    await tester.pumpWidget(MaterialApp(home: CardDetailScreen(db: db, cardId: id, learn: env)));
+    await tester.pump();
+    await tester.tap(find.text('Give me examples'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+
+    final request = llm.requests.single;
+    expect(request.tools, isEmpty);
+    expect(request.messages.first['content'], contains('Reply with only a JSON array'));
+    expect(request.messages.last['content'], 'Word: 会議（かいぎ）\nJLPT: N3\nSenses:\n1. meeting');
+    expect(find.text('・会議は三時からです。'), findsOneWidget);
+    expect(find.text('The meeting ran long.'), findsOneWidget);
+    expect(find.text('Give me examples'), findsNothing, reason: 'the card has examples now');
+    expect(find.text('Kuma teach'), findsNothing);
+    expect(find.text('Ask Kuma-sensei about 会議…'), findsOneWidget, reason: 'the plain chat bar');
+    final kinds = await env.repo.db.select(env.repo.db.usageLog).get();
+    expect([for (final u in kinds) u.kind], ['examples']);
+
+    await tester.tap(find.text('Clear'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(await deck.examplesForCard(id), isEmpty);
+    expect(find.text('Give me examples'), findsOneWidget);
+    expect(find.text('Kuma teach'), findsOneWidget, reason: 'folded again');
+
+    await tester.tap(find.text('Undo'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect([for (final e in await deck.examplesForCard(id)) e.translation],
+        ['The meeting starts at three.', 'The meeting ran long.']);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 5));
+  });
+
+  testWidgets('Kuma-sensei translates the examples a card shows without English', (tester) async {
+    final db = AppDatabase.forTesting(NativeDatabase.memory());
+    addTearDown(db.close);
+    final deck = IunaRepository(db);
+    final id = await db
+        .into(db.cards)
+        .insert(CardsCompanion.insert(kanji: 'おごる', kana: 'おごる', meaning: 'to treat'));
+    for (final (sentence, english) in const [
+      ('ＯＫ！休みを取ってお前におごるよ。', null),
+      ('一杯おごるから。', null),
+      ('彼女がおごってくれた。', 'She treated me.'),
+    ]) {
+      final ex = await db
+          .into(db.examples)
+          .insert(ExamplesCompanion.insert(sentence: sentence, translation: Value(english)));
+      await db.into(db.cardExamples).insert(CardExamplesCompanion.insert(cardId: id, exampleId: ex));
+    }
+    final llm = FakeLlm([
+      say('[{"n": 2, "en": "I\'ll buy you a drink."}, {"n": 1, "en": "OK! Take a break, it\'s on me."}]'),
+    ]);
+    final env = testLearnEnv(llm, settings: settings);
+
+    await tester.pumpWidget(MaterialApp(home: CardDetailScreen(db: db, cardId: id, learn: env)));
+    await tester.pump();
+    expect(find.text('Translate'), findsNothing, reason: 'no key, no tutor');
+
+    await settings.setApiKey('sk-or-v1-abc');
+    await tester.pump();
+    await tester.tap(find.text('Translate'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+
+    final request = llm.requests.single;
+    expect(request.messages.first['content'], contains('tapped "Translate"'));
+    expect(request.messages.last['content'],
+        endsWith('Sentences:\n1. ＯＫ！休みを取ってお前におごるよ。\n2. 一杯おごるから。'));
+    expect([for (final e in await deck.examplesForCard(id)) e.translation],
+        ["OK! Take a break, it's on me.", "I'll buy you a drink.", 'She treated me.']);
+    expect(find.text("I'll buy you a drink."), findsOneWidget);
+    expect(find.text('Translate'), findsNothing, reason: 'every example has English now');
+    expect([for (final u in await env.repo.db.select(env.repo.db.usageLog).get()) u.kind], ['translate']);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 5));
   });
 
   testWidgets('a photo attached in a chat is sent with the message', (tester) async {

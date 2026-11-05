@@ -224,8 +224,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: _Attribution(
                     title: 'Example sentences',
                     body:
-                        'Example sentences come from the Tatoeba Project, '
-                        'via JMdict\'s example index, used under the Creative '
+                        'Example sentences and their English translations come '
+                        'from the Tatoeba Project, via JMdict\'s example index, '
+                        'used under the Creative '
                         'Commons Attribution 2.0 France licence.\n\n'
                         'Licence: https://creativecommons.org/licenses/by/2.0/fr/\n'
                         'Source: https://tatoeba.org',

@@ -3,7 +3,9 @@ import '../db/repository.dart';
 import '../db/sqlite_open.dart';
 import 'agent/chat_controller.dart';
 import 'agent/chat_store.dart';
+import 'agent/example_writer.dart';
 import 'agent/tools.dart';
+import 'agent/tutor_prompt.dart';
 import 'db/learn_database.dart';
 import 'db/learn_repository.dart';
 import 'deck.dart';
@@ -64,6 +66,7 @@ class LearnEnv {
       repo: Learn.instance.repo,
       llm: OpenRouterClient(apiKey: settings.apiKey),
       settings: settings,
+      vision: _sharedVision,
       bookmarks: DeckBookmarks(IunaRepository(deck)),
       dictation: Dictation(
         recorder: MicRecorder.new,
@@ -72,6 +75,10 @@ class LearnEnv {
       photos: const ImagePickerPhotos(),
     );
   }
+
+  /// One per process, so what OpenRouter said about a model holds across
+  /// screens.
+  static final VisionModels _sharedVision = VisionModels();
 
   final LearnRepository repo;
   final LlmClient llm;
@@ -122,6 +129,45 @@ class LearnEnv {
         onUsage: (u, {required model, required kind}) =>
             recordUsage(u, model: model, kind: kind, courseId: courseId),
       );
+
+  /// One call, no chat: example sentences for [card], booked as
+  /// `examples`. Fails only with [ExampleWriterError].
+  Future<List<ExampleText>> writeExamples(FocusCard card) async =>
+      parseWrittenExamples(await _oneShot(
+        (await TutorAssets.load()).examples,
+        exampleBrief(card),
+        kind: 'examples',
+      ));
+
+  /// English for the [sentences] of [card], by index; one the model
+  /// skipped is absent. Booked as `translate`; fails only with
+  /// [ExampleWriterError].
+  Future<Map<int, String>> translateExamples(FocusCard card, List<String> sentences) async =>
+      parseNumberedEnglish(
+        await _oneShot(
+          (await TutorAssets.load()).translate,
+          translateBrief(card, sentences),
+          kind: 'translate',
+        ),
+        sentences.length,
+      );
+
+  Future<String> _oneShot(String system, String user, {required String kind}) async {
+    final modelId = await model();
+    final LlmTurn turn;
+    try {
+      turn = await collectTurn(llm.chat(LlmRequest(model: modelId, messages: [
+        {'role': 'system', 'content': system.trim()},
+        {'role': 'user', 'content': user},
+      ])));
+    } on LlmException catch (e) {
+      throw ExampleWriterError(e.friendly);
+    }
+    if (turn.usage case final usage?) {
+      await recordUsage(usage, model: modelId, kind: kind);
+    }
+    return turn.text.toString();
+  }
 
   Future<void> recordUsage(
     LlmUsage usage, {

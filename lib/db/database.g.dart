@@ -1118,8 +1118,40 @@ class $ExamplesTable extends Examples
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _translationMeta = const VerificationMeta(
+    'translation',
+  );
   @override
-  List<GeneratedColumn> get $columns => [id, sentence, sourceTitle];
+  late final GeneratedColumn<String> translation = GeneratedColumn<String>(
+    'translation',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _generatedMeta = const VerificationMeta(
+    'generated',
+  );
+  @override
+  late final GeneratedColumn<bool> generated = GeneratedColumn<bool>(
+    'generated',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("generated" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    sentence,
+    sourceTitle,
+    translation,
+    generated,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -1152,6 +1184,21 @@ class $ExamplesTable extends Examples
         ),
       );
     }
+    if (data.containsKey('translation')) {
+      context.handle(
+        _translationMeta,
+        translation.isAcceptableOrUnknown(
+          data['translation']!,
+          _translationMeta,
+        ),
+      );
+    }
+    if (data.containsKey('generated')) {
+      context.handle(
+        _generatedMeta,
+        generated.isAcceptableOrUnknown(data['generated']!, _generatedMeta),
+      );
+    }
     return context;
   }
 
@@ -1173,6 +1220,14 @@ class $ExamplesTable extends Examples
         DriftSqlType.string,
         data['${effectivePrefix}source_title'],
       ),
+      translation: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}translation'],
+      ),
+      generated: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}generated'],
+      )!,
     );
   }
 
@@ -1186,10 +1241,17 @@ class ExampleRow extends DataClass implements Insertable<ExampleRow> {
   final int id;
   final String sentence;
   final String? sourceTitle;
+  final String? translation;
+
+  /// Written by Kuma-sensei for one card, so the learner can clear them
+  /// without touching dictionary or pack sentences.
+  final bool generated;
   const ExampleRow({
     required this.id,
     required this.sentence,
     this.sourceTitle,
+    this.translation,
+    required this.generated,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1199,6 +1261,10 @@ class ExampleRow extends DataClass implements Insertable<ExampleRow> {
     if (!nullToAbsent || sourceTitle != null) {
       map['source_title'] = Variable<String>(sourceTitle);
     }
+    if (!nullToAbsent || translation != null) {
+      map['translation'] = Variable<String>(translation);
+    }
+    map['generated'] = Variable<bool>(generated);
     return map;
   }
 
@@ -1209,6 +1275,10 @@ class ExampleRow extends DataClass implements Insertable<ExampleRow> {
       sourceTitle: sourceTitle == null && nullToAbsent
           ? const Value.absent()
           : Value(sourceTitle),
+      translation: translation == null && nullToAbsent
+          ? const Value.absent()
+          : Value(translation),
+      generated: Value(generated),
     );
   }
 
@@ -1221,6 +1291,8 @@ class ExampleRow extends DataClass implements Insertable<ExampleRow> {
       id: serializer.fromJson<int>(json['id']),
       sentence: serializer.fromJson<String>(json['sentence']),
       sourceTitle: serializer.fromJson<String?>(json['sourceTitle']),
+      translation: serializer.fromJson<String?>(json['translation']),
+      generated: serializer.fromJson<bool>(json['generated']),
     );
   }
   @override
@@ -1230,6 +1302,8 @@ class ExampleRow extends DataClass implements Insertable<ExampleRow> {
       'id': serializer.toJson<int>(id),
       'sentence': serializer.toJson<String>(sentence),
       'sourceTitle': serializer.toJson<String?>(sourceTitle),
+      'translation': serializer.toJson<String?>(translation),
+      'generated': serializer.toJson<bool>(generated),
     };
   }
 
@@ -1237,10 +1311,14 @@ class ExampleRow extends DataClass implements Insertable<ExampleRow> {
     int? id,
     String? sentence,
     Value<String?> sourceTitle = const Value.absent(),
+    Value<String?> translation = const Value.absent(),
+    bool? generated,
   }) => ExampleRow(
     id: id ?? this.id,
     sentence: sentence ?? this.sentence,
     sourceTitle: sourceTitle.present ? sourceTitle.value : this.sourceTitle,
+    translation: translation.present ? translation.value : this.translation,
+    generated: generated ?? this.generated,
   );
   ExampleRow copyWithCompanion(ExamplesCompanion data) {
     return ExampleRow(
@@ -1249,6 +1327,10 @@ class ExampleRow extends DataClass implements Insertable<ExampleRow> {
       sourceTitle: data.sourceTitle.present
           ? data.sourceTitle.value
           : this.sourceTitle,
+      translation: data.translation.present
+          ? data.translation.value
+          : this.translation,
+      generated: data.generated.present ? data.generated.value : this.generated,
     );
   }
 
@@ -1257,45 +1339,60 @@ class ExampleRow extends DataClass implements Insertable<ExampleRow> {
     return (StringBuffer('ExampleRow(')
           ..write('id: $id, ')
           ..write('sentence: $sentence, ')
-          ..write('sourceTitle: $sourceTitle')
+          ..write('sourceTitle: $sourceTitle, ')
+          ..write('translation: $translation, ')
+          ..write('generated: $generated')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, sentence, sourceTitle);
+  int get hashCode =>
+      Object.hash(id, sentence, sourceTitle, translation, generated);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is ExampleRow &&
           other.id == this.id &&
           other.sentence == this.sentence &&
-          other.sourceTitle == this.sourceTitle);
+          other.sourceTitle == this.sourceTitle &&
+          other.translation == this.translation &&
+          other.generated == this.generated);
 }
 
 class ExamplesCompanion extends UpdateCompanion<ExampleRow> {
   final Value<int> id;
   final Value<String> sentence;
   final Value<String?> sourceTitle;
+  final Value<String?> translation;
+  final Value<bool> generated;
   const ExamplesCompanion({
     this.id = const Value.absent(),
     this.sentence = const Value.absent(),
     this.sourceTitle = const Value.absent(),
+    this.translation = const Value.absent(),
+    this.generated = const Value.absent(),
   });
   ExamplesCompanion.insert({
     this.id = const Value.absent(),
     required String sentence,
     this.sourceTitle = const Value.absent(),
+    this.translation = const Value.absent(),
+    this.generated = const Value.absent(),
   }) : sentence = Value(sentence);
   static Insertable<ExampleRow> custom({
     Expression<int>? id,
     Expression<String>? sentence,
     Expression<String>? sourceTitle,
+    Expression<String>? translation,
+    Expression<bool>? generated,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (sentence != null) 'sentence': sentence,
       if (sourceTitle != null) 'source_title': sourceTitle,
+      if (translation != null) 'translation': translation,
+      if (generated != null) 'generated': generated,
     });
   }
 
@@ -1303,11 +1400,15 @@ class ExamplesCompanion extends UpdateCompanion<ExampleRow> {
     Value<int>? id,
     Value<String>? sentence,
     Value<String?>? sourceTitle,
+    Value<String?>? translation,
+    Value<bool>? generated,
   }) {
     return ExamplesCompanion(
       id: id ?? this.id,
       sentence: sentence ?? this.sentence,
       sourceTitle: sourceTitle ?? this.sourceTitle,
+      translation: translation ?? this.translation,
+      generated: generated ?? this.generated,
     );
   }
 
@@ -1323,6 +1424,12 @@ class ExamplesCompanion extends UpdateCompanion<ExampleRow> {
     if (sourceTitle.present) {
       map['source_title'] = Variable<String>(sourceTitle.value);
     }
+    if (translation.present) {
+      map['translation'] = Variable<String>(translation.value);
+    }
+    if (generated.present) {
+      map['generated'] = Variable<bool>(generated.value);
+    }
     return map;
   }
 
@@ -1331,7 +1438,9 @@ class ExamplesCompanion extends UpdateCompanion<ExampleRow> {
     return (StringBuffer('ExamplesCompanion(')
           ..write('id: $id, ')
           ..write('sentence: $sentence, ')
-          ..write('sourceTitle: $sourceTitle')
+          ..write('sourceTitle: $sourceTitle, ')
+          ..write('translation: $translation, ')
+          ..write('generated: $generated')
           ..write(')'))
         .toString();
   }
@@ -5484,12 +5593,16 @@ typedef $$ExamplesTableCreateCompanionBuilder =
       Value<int> id,
       required String sentence,
       Value<String?> sourceTitle,
+      Value<String?> translation,
+      Value<bool> generated,
     });
 typedef $$ExamplesTableUpdateCompanionBuilder =
     ExamplesCompanion Function({
       Value<int> id,
       Value<String> sentence,
       Value<String?> sourceTitle,
+      Value<String?> translation,
+      Value<bool> generated,
     });
 
 final class $$ExamplesTableReferences
@@ -5536,6 +5649,16 @@ class $$ExamplesTableFilterComposer
 
   ColumnFilters<String> get sourceTitle => $composableBuilder(
     column: $table.sourceTitle,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get translation => $composableBuilder(
+    column: $table.translation,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get generated => $composableBuilder(
+    column: $table.generated,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -5588,6 +5711,16 @@ class $$ExamplesTableOrderingComposer
     column: $table.sourceTitle,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get translation => $composableBuilder(
+    column: $table.translation,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get generated => $composableBuilder(
+    column: $table.generated,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$ExamplesTableAnnotationComposer
@@ -5609,6 +5742,14 @@ class $$ExamplesTableAnnotationComposer
     column: $table.sourceTitle,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get translation => $composableBuilder(
+    column: $table.translation,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get generated =>
+      $composableBuilder(column: $table.generated, builder: (column) => column);
 
   Expression<T> cardExamplesRefs<T extends Object>(
     Expression<T> Function($$CardExamplesTableAnnotationComposer a) f,
@@ -5667,20 +5808,28 @@ class $$ExamplesTableTableManager
                 Value<int> id = const Value.absent(),
                 Value<String> sentence = const Value.absent(),
                 Value<String?> sourceTitle = const Value.absent(),
+                Value<String?> translation = const Value.absent(),
+                Value<bool> generated = const Value.absent(),
               }) => ExamplesCompanion(
                 id: id,
                 sentence: sentence,
                 sourceTitle: sourceTitle,
+                translation: translation,
+                generated: generated,
               ),
           createCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
                 required String sentence,
                 Value<String?> sourceTitle = const Value.absent(),
+                Value<String?> translation = const Value.absent(),
+                Value<bool> generated = const Value.absent(),
               }) => ExamplesCompanion.insert(
                 id: id,
                 sentence: sentence,
                 sourceTitle: sourceTitle,
+                translation: translation,
+                generated: generated,
               ),
           withReferenceMapper: (p0) => p0
               .map(

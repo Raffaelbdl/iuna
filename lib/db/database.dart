@@ -4,6 +4,7 @@ import 'package:drift/drift.dart';
 import 'package:flutter/services.dart' show rootBundle;
 
 import '../core/deck_rules.dart';
+import 'example_english.dart';
 import 'sqlite_open.dart';
 
 export '../core/deck_rules.dart';
@@ -85,6 +86,11 @@ class Examples extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get sentence => text()();
   TextColumn get sourceTitle => text().nullable()();
+  TextColumn get translation => text().nullable()();
+
+  /// Written by Kuma-sensei for one card, so the learner can clear them
+  /// without touching dictionary or pack sentences.
+  BoolColumn get generated => boolean().withDefault(const Constant(false))();
 }
 
 @DataClassName('CardExampleRow')
@@ -266,7 +272,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -302,6 +308,13 @@ class AppDatabase extends _$AppDatabase {
             'INTEGER NOT NULL DEFAULT 0',
           );
           await _addColumnIfMissing('cards', 'pack', 'TEXT');
+          await _addColumnIfMissing('examples', 'translation', 'TEXT');
+          await _addColumnIfMissing(
+            'examples',
+            'generated',
+            'INTEGER NOT NULL DEFAULT 0 CHECK ("generated" IN (0, 1))',
+          );
+          await markSeedEnglish(this);
         },
         onUpgrade: (m, from, to) async {
           if (from < 2) {
@@ -340,6 +353,10 @@ class AppDatabase extends _$AppDatabase {
             await m.addColumn(cards, cards.pack);
             await m.createTable(packs);
           }
+          if (from < 8) {
+            await m.addColumn(examples, examples.translation);
+            await m.addColumn(examples, examples.generated);
+          }
         },
       );
 
@@ -374,10 +391,12 @@ const String kPendingRestoreFileName = 'iuna.sqlite.pending';
 LazyDatabase _openConnection() => openDocumentsDatabase(
       kDbFileName,
       pendingFileName: kPendingRestoreFileName,
-      seed: _copySeedToFile,
+      seed: copyBundledSeed,
     );
 
-Future<void> _copySeedToFile(File target) async {
+/// Writes the seed bundled with the app to [target]; writes nothing
+/// when this build has none.
+Future<void> copyBundledSeed(File target) async {
   await target.parent.create(recursive: true);
   try {
     final bytes = await rootBundle.load('assets/db/seed.sqlite');
