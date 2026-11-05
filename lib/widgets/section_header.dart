@@ -35,6 +35,45 @@ class IunaSectionHeader extends StatelessWidget {
   }
 }
 
+/// A Settings row with a control (a button, a dropdown) on the right,
+/// or under its description once large text would squeeze the text
+/// beside it to a word a line.
+class IunaControlTile extends StatelessWidget {
+  const IunaControlTile({
+    super.key,
+    required this.leading,
+    required this.title,
+    required this.control,
+    this.subtitle,
+  });
+
+  final Widget leading;
+  final Widget title;
+  final Widget? subtitle;
+  final Widget control;
+
+  @override
+  Widget build(BuildContext context) {
+    final below = MediaQuery.textScalerOf(context).scale(10) > 13;
+    final subtitle = this.subtitle;
+    return ListTile(
+      leading: leading,
+      title: title,
+      subtitle: !below
+          ? subtitle
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ?subtitle,
+                const SizedBox(height: 8),
+                control,
+              ],
+            ),
+      trailing: below ? null : control,
+    );
+  }
+}
+
 /// The small upper-cased caption over a group of things outside a
 /// panel (Home's recent cards, the session recap, a game's misses), as
 /// [IunaSectionHeader] is in Settings. Inside a panel, the title is an

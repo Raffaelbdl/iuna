@@ -311,7 +311,9 @@ class _StatsScreenState extends State<StatsScreen> {
     const SizedBox(height: 14),
     _StatCard(
       title: 'Accuracy by rarity',
-      subtitle: 'How well you remember each tier. Dotted mark = 90% goal.',
+      subtitle:
+          'How well you remember each tier. The honey tick on each bar is '
+          'the 90% goal.',
       child: _AccuracyByRarity(byRarity: _byRarity),
     ),
     const SizedBox(height: 14),

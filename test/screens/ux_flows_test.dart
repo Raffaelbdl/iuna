@@ -93,7 +93,7 @@ void main() {
     await _frames(tester);
     expect(
       find.text(
-        'Swapped. The old card is set aside in Collection › Suspended.',
+        'Swapped. The old card is suspended — find it in Collection › Suspended.',
       ),
       findsOneWidget,
     );

@@ -49,48 +49,83 @@ class IunaBottomNav extends StatelessWidget {
               ),
               boxShadow: panelShadow(),
             ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: _NavBtn(
-                    icon: Icons.home_rounded,
-                    label: 'Home',
-                    active: active == IunaNavTab.home,
-                    onTap: () => onTap(IunaNavTab.home),
-                  ),
-                ),
-                Expanded(
-                  child: _NavBtn(
-                    icon: Icons.card_giftcard_rounded,
-                    label: 'Today',
-                    badge: todayCount,
-                    active: active == IunaNavTab.today,
-                    onTap: () => onTap(IunaNavTab.today),
-                  ),
-                ),
-                Expanded(
-                  child: _NavBtn(
-                    icon: Icons.style_rounded,
-                    label: 'Collection',
-                    active: active == IunaNavTab.collection,
-                    onTap: () => onTap(IunaNavTab.collection),
-                  ),
-                ),
-                if (showLearn)
-                  Expanded(
-                    child: _NavBtn(
-                      icon: Icons.school_rounded,
-                      label: 'Learn',
-                      active: active == IunaNavTab.learn,
-                      onTap: () => onTap(IunaNavTab.learn),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final labels = [
+                  'Home',
+                  'Today',
+                  'Collection',
+                  if (showLearn) 'Learn',
+                ];
+                final scaler = _labelScaler(
+                  context,
+                  labels,
+                  constraints.maxWidth / labels.length -
+                      _NavBtn.padding.horizontal,
+                );
+                Widget button(
+                  IunaNavTab tab,
+                  IconData icon,
+                  String label, {
+                  int badge = 0,
+                }) =>
+                    Expanded(
+                      child: _NavBtn(
+                        icon: icon,
+                        label: label,
+                        badge: badge,
+                        labelScaler: scaler,
+                        active: active == tab,
+                        onTap: () => onTap(tab),
+                      ),
+                    );
+                return Row(
+                  children: [
+                    button(IunaNavTab.home, Icons.home_rounded, 'Home'),
+                    button(
+                      IunaNavTab.today,
+                      Icons.card_giftcard_rounded,
+                      'Today',
+                      badge: todayCount,
                     ),
-                  ),
-              ],
+                    button(
+                      IunaNavTab.collection,
+                      Icons.style_rounded,
+                      'Collection',
+                    ),
+                    if (showLearn)
+                      button(IunaNavTab.learn, Icons.school_rounded, 'Learn'),
+                  ],
+                );
+              },
             ),
           ),
         ),
       ),
     );
+  }
+
+  /// One text size for every label: the largest at which the longest
+  /// still fits its tab, so "Collection" doesn't shrink alone.
+  static TextScaler _labelScaler(
+    BuildContext context,
+    List<String> labels,
+    double width,
+  ) {
+    final style = DefaultTextStyle.of(context).style.merge(_NavBtn.labelStyle);
+    final size = style.fontSize!;
+    var factor = MediaQuery.textScalerOf(context).scale(size) / size;
+    for (final label in labels) {
+      final painter = TextPainter(
+        text: TextSpan(text: label, style: style),
+        textDirection: TextDirection.ltr,
+        textScaler: TextScaler.linear(factor),
+        maxLines: 1,
+      )..layout();
+      if (painter.width > width) factor *= width / painter.width;
+      painter.dispose();
+    }
+    return TextScaler.linear(factor);
   }
 }
 
@@ -100,13 +135,18 @@ class _NavBtn extends StatelessWidget {
     required this.label,
     required this.active,
     required this.onTap,
+    required this.labelScaler,
     this.badge = 0,
   });
+
+  static const padding = EdgeInsets.symmetric(vertical: 8, horizontal: 6);
+  static final labelStyle = IunaText.chip.copyWith(height: 1);
 
   final IconData icon;
   final String label;
   final bool active;
   final VoidCallback onTap;
+  final TextScaler labelScaler;
   final int badge;
 
   @override
@@ -124,7 +164,7 @@ class _NavBtn extends StatelessWidget {
         excluding: badge > 0,
           child: AnimatedContainer(
           duration: const Duration(milliseconds: 220),
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+          padding: padding,
           decoration: BoxDecoration(
             gradient: active
                 ? const LinearGradient(
@@ -163,17 +203,16 @@ class _NavBtn extends StatelessWidget {
                   ],
                 ),
               const SizedBox(height: 2),
-              // Shrinks rather than breaks a word when four tabs share
-              // the bar at large text.
+              // The bar's shared size; the box only catches rounding.
               FittedBox(
                 fit: BoxFit.scaleDown,
                 child: Text(
                   label,
                   maxLines: 1,
                   softWrap: false,
-                  style: IunaText.chip.copyWith(
+                  textScaler: labelScaler,
+                  style: labelStyle.copyWith(
                     color: active ? IunaPalette.ink : IunaPalette.ink3,
-                    height: 1,
                   ),
                 ),
               ),

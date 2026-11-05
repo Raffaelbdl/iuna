@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 
 import '../../theme/iuna_theme.dart';
 import '../../widgets/confirm_dialog.dart';
+import '../../widgets/iuna_icon_button.dart';
 import '../../widgets/iuna_page.dart';
+import '../../widgets/snack.dart';
 import '../../widgets/time_words.dart';
 import '../agent/chat_controller.dart';
 import '../agent/chat_store.dart';
@@ -140,26 +142,24 @@ class _TutorChatScreenState extends State<TutorChatScreen>
     final chat = _chat;
     final chapter = _chapter;
     final wrapUp = chat == null
-        ? const SizedBox.shrink()
+        ? null
         : ListenableBuilder(
             listenable: chat,
             builder: (context, _) {
               final started = chat.messages.any((m) => m.role == MessageRole.user);
-              // Disabled, the tooltip says why.
-              final reason = !started
-                  ? 'Say something to Kuma-sensei first'
+              final notYet = !started
+                  ? 'Say something to Kuma-sensei first, then wrap up.'
                   : chat.pendingQuiz != null
-                  ? 'Answer the quick check first'
+                  ? 'Answer the quick check first, then wrap up.'
                   : chat.busy
-                  ? 'Wait for Kuma-sensei to finish'
+                  ? 'Wait for Kuma-sensei to finish, then wrap up.'
                   : null;
-              return Tooltip(
-                message: reason ?? 'End the session and save notes',
-                child: TextButton(
-                  onPressed: reason != null ? null : () => _wrapUp(chat),
-                  style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
-                  child: const Text('Wrap up'),
-                ),
+              // Always tappable: a tap that can't wrap up yet says why,
+              // where a greyed-out button would only say "no".
+              return IunaIconButton(
+                icon: Icons.flag_outlined,
+                tooltip: 'Wrap up the session',
+                onTap: () => notYet == null ? _wrapUp(chat) : showSnack(context, notYet),
               );
             },
           );

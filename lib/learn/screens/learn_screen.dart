@@ -8,11 +8,13 @@ import '../../theme/iuna_theme.dart';
 import '../../widgets/hex_bg.dart';
 import '../../widgets/iuna_bottom_nav.dart';
 import '../../widgets/kuma_mascot.dart';
+import '../../widgets/notice.dart';
 import '../../widgets/section_header.dart';
 import '../../widgets/tab_header.dart';
 import '../db/learn_repository.dart';
 import '../learn.dart';
 import '../widgets/ask_bar.dart';
+import 'ask_screen.dart';
 import 'course_screen.dart';
 import 'learn_widgets.dart';
 import 'new_course_sheet.dart';
@@ -39,6 +41,7 @@ class _LearnScreenState extends State<LearnScreen> {
   late final LearnEnv _env = widget.env ?? LearnEnv.live(widget.db);
   List<CourseSummary> _courses = const [];
   bool _loading = true;
+  bool _failed = false;
   StreamSubscription<int>? _changes;
 
   @override
@@ -61,12 +64,31 @@ class _LearnScreenState extends State<LearnScreen> {
   }
 
   Future<void> _load() async {
-    final courses = await _env.repo.courseSummaries();
-    if (!mounted) return;
+    try {
+      final courses = await _env.repo.courseSummaries();
+      if (!mounted) return;
+      setState(() {
+        _courses = courses;
+        _loading = false;
+        _failed = false;
+      });
+    } catch (e, s) {
+      logLoadError('Learn', e, s);
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _failed = true;
+        });
+      }
+    }
+  }
+
+  void _retry() {
     setState(() {
-      _courses = courses;
-      _loading = false;
+      _loading = true;
+      _failed = false;
     });
+    _load();
   }
 
   Future<void> _openCourse(int id, {bool openRoom = false}) async {
@@ -74,6 +96,13 @@ class _LearnScreenState extends State<LearnScreen> {
       builder: (_) => CourseScreen(env: _env, courseId: id, openRoomOnStart: openRoom),
     ));
     if (mounted) await _load();
+  }
+
+  Future<void> _resumeAsk() async {
+    await Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => AskScreen.resume(env: _env),
+    ));
+    if (mounted) setState(() {});
   }
 
   Future<void> _newCourse() async {
@@ -98,7 +127,14 @@ class _LearnScreenState extends State<LearnScreen> {
                   : Column(
                       children: [
                         const IunaTabHeader('Learn'),
-                        Expanded(child: _courseList()),
+                        Expanded(
+                          child: _failed
+                              ? Padding(
+                                  padding: const EdgeInsets.only(bottom: AskBar.inset),
+                                  child: LoadErrorNotice(onRetry: _retry),
+                                )
+                              : _courseList(),
+                        ),
                       ],
                     ),
             ),
@@ -114,7 +150,8 @@ class _LearnScreenState extends State<LearnScreen> {
               bottom: 0,
               child: AskBar(
                 env: _env,
-                hint: 'Ask Kuma-sensei anything…',
+                hint: 'Ask Kuma-sensei about Japanese…',
+                onReturn: () => setState(() {}),
                 nav: AppBottomNav(db: widget.db, active: IunaNavTab.learn),
               ),
             ),
@@ -129,6 +166,10 @@ class _LearnScreenState extends State<LearnScreen> {
       padding: const EdgeInsets.fromLTRB(16, 4, 16, AskBar.inset),
       children: [
         _Intro(kumaSeed: widget.kumaSeed),
+        if (LastAskChat.of(_env)?.preview case final question?) ...[
+          const SizedBox(height: 14),
+          _LastAskTile(question: question, onTap: _resumeAsk),
+        ],
         IunaSectionHeader(
           'Courses',
           padding: const EdgeInsets.fromLTRB(4, 18, 0, 8),
@@ -184,6 +225,47 @@ class _Intro extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// The way back into the last Ask chat, kept for the app session.
+class _LastAskTile extends StatelessWidget {
+  const _LastAskTile({required this.question, required this.onTap});
+
+  final String question;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return LearnPanel(
+      onTap: onTap,
+      padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+      child: Row(
+        children: [
+          const Icon(Icons.forum_rounded, color: IunaPalette.honeyInk, size: 24),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Back to your last question',
+                  style: IunaText.label.copyWith(fontWeight: FontWeight.w700, color: IunaPalette.ink),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  question,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: IunaText.caption.copyWith(color: IunaPalette.ink3),
+                ),
+              ],
+            ),
+          ),
+          const Icon(Icons.chevron_right_rounded, color: IunaPalette.ink3),
+        ],
+      ),
     );
   }
 }

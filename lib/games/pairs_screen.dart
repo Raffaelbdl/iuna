@@ -255,13 +255,17 @@ class _Board extends StatelessWidget {
       child: Column(
         children: [
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              IunaEyebrow(round.mode.label),
-              const Spacer(),
-              Text(
-                '${round.matched.length} / ${round.size}',
-                style: IunaText.chip.copyWith(
-                  color: IunaPalette.ink3,
+              Flexible(child: IunaEyebrow(round.mode.label)),
+              const SizedBox(width: 12),
+              Flexible(
+                child: Text(
+                  '${round.matched.length} of ${round.size} matched',
+                  textAlign: TextAlign.end,
+                  style: IunaText.chip.copyWith(
+                    color: IunaPalette.ink3,
+                  ),
                 ),
               ),
             ],
@@ -368,9 +372,9 @@ class _Tile extends StatelessWidget {
       onTap: onTap,
       selected: look == _TileLook.selected,
       label: switch (look) {
+        _TileLook.matched => tile.sound ? 'Sound $row, matched' : 'Matched',
+        _TileLook.wrong => tile.sound ? 'Sound $row, not a pair' : 'Not a pair',
         _ when tile.sound => 'Play sound $row',
-        _TileLook.matched => 'Matched',
-        _TileLook.wrong => 'Not a pair',
         _ => null,
       },
       child: AnimatedOpacity(

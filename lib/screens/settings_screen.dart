@@ -321,10 +321,14 @@ class _Stepper extends StatelessWidget {
                 color: IunaPalette.pawBrown,
                 onPressed: atMin ? null : () => onChanged(value - step),
               ),
-              SizedBox(
-                width: 44,
+              // A floor, not a width: large text widens the value
+              // rather than breaking "10 s" over two lines.
+              ConstrainedBox(
+                constraints: const BoxConstraints(minWidth: 44),
                 child: Text(
                   '$value$unit',
+                  maxLines: 1,
+                  softWrap: false,
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
@@ -411,24 +415,25 @@ class _ResetHourTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
+    final dropdown = _DropdownBox(
+      child: DropdownButton<int>(
+        value: hour,
+        dropdownColor: IunaPalette.paper,
+        borderRadius: BorderRadius.circular(IunaRadii.sm),
+        items: [
+          for (var h = 0; h < 24; h++)
+            DropdownMenuItem(value: h, child: Text(_label(h))),
+        ],
+        onChanged: (v) {
+          if (v != null) onChanged(v);
+        },
+      ),
+    );
+    return IunaControlTile(
       leading: const Icon(Icons.schedule_rounded, color: IunaPalette.pawBrown),
       title: const Text('Daily reset'),
       subtitle: const Text('When the new-pack timer and streak roll over.'),
-      trailing: _DropdownBox(
-        child: DropdownButton<int>(
-          value: hour,
-          dropdownColor: IunaPalette.paper,
-          borderRadius: BorderRadius.circular(IunaRadii.sm),
-          items: [
-            for (var h = 0; h < 24; h++)
-              DropdownMenuItem(value: h, child: Text(_label(h))),
-          ],
-          onChanged: (v) {
-            if (v != null) onChanged(v);
-          },
-        ),
-      ),
+      control: dropdown,
     );
   }
 }

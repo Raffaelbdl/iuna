@@ -19,7 +19,6 @@ import '../widgets/vocab_card.dart';
 import 'add_card_screen.dart';
 import 'app_nav.dart';
 import 'card_detail_screen.dart';
-import 'settings/dictionary_section.dart';
 
 class CollectionScreen extends StatefulWidget {
   const CollectionScreen({
@@ -129,23 +128,17 @@ class _CollectionScreenState extends State<CollectionScreen> {
     }
   }
 
-  /// The "+" in the header: the dictionary lookup, or, until the
-  /// dictionary is downloaded, a sheet that offers it.
+  /// The "+" in the header.
   Future<void> _onAdd() async {
-    if (_dictInstalled || await DictDownload.isInstalled()) {
-      await _openAddCard();
-      return;
-    }
-    if (!mounted) return;
-    final ready = await showDictionaryOffer(
+    await openAddToWishlist(
       context,
-      title: 'Add any word to your wishlist',
-      body:
-          'Look a word up in the offline dictionary and bookmark it. It '
-          'shows up in a pack soon. The dictionary is a one-time download.',
+      widget.db,
+      initialQuery: _query.trim().isEmpty ? null : _query.trim(),
+      dictInstalled: _dictInstalled,
     );
+    if (!mounted) return;
     await _probeDict();
-    if (ready == true && mounted) await _openAddCard();
+    await _refresh();
   }
 
   Future<void> _openAddCard() async {
@@ -288,7 +281,7 @@ class _CollectionScreenState extends State<CollectionScreen> {
           'Collection',
           actions: [
             IunaIconButton(
-              icon: Icons.add_rounded,
+              icon: Icons.bookmark_add_outlined,
               tooltip: 'Add to wishlist',
               onTap: _onAdd,
             ),
@@ -478,16 +471,26 @@ class _Chip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final rarity = this.rarity;
     Color bg;
     Color fg;
     Color border = IunaPalette.hairline;
-    if (active) {
+    double borderWidth = 0.5;
+    // A picked tier keeps its colour, deeper and outlined in its ink,
+    // so several picked tiers still read apart.
+    final honey = active && rarity == null;
+    if (active && rarity != null) {
+      bg = rarityColor(rarity);
+      fg = rarityInk(rarity);
+      border = rarityInk(rarity);
+      borderWidth = 1.5;
+    } else if (active) {
       bg = IunaPalette.honey;
       fg = IunaPalette.heroInk;
       border = IunaPalette.honeyInk.withValues(alpha: 0.2);
     } else if (rarity != null) {
-      bg = rarityFill(rarity!);
-      fg = rarityInk(rarity!);
+      bg = rarityFill(rarity);
+      fg = rarityInk(rarity);
     } else {
       bg = IunaPalette.chipBg;
       fg = IunaPalette.ink2;
@@ -500,19 +503,25 @@ class _Chip extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 7),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
-          constraints: const BoxConstraints(minHeight: 34, minWidth: 40),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          // 42 + the 3 px either side: a 48 px target for a one-letter
+          // tier.
+          constraints: const BoxConstraints(minHeight: 34, minWidth: 42),
+          // Less padding under a thicker border, so a pick doesn't grow.
+          padding: EdgeInsets.symmetric(
+            horizontal: 12.5 - borderWidth,
+            vertical: 7.5 - borderWidth,
+          ),
           decoration: BoxDecoration(
-            gradient: active
+            gradient: honey
                 ? const LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [IunaPalette.heroTop, IunaPalette.honey],
                   )
                 : null,
-            color: active ? null : bg,
+            color: honey ? null : bg,
             borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: border, width: 0.5),
+            border: Border.all(color: border, width: borderWidth),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,

@@ -412,7 +412,7 @@ class _BackupSectionState extends State<BackupSection> {
           'Cloud backup',
           children: [
             if (account == null)
-              ListTile(
+              IunaControlTile(
                 leading: const Icon(
                   Icons.cloud_outlined,
                   color: IunaPalette.pawBrown,
@@ -422,7 +422,7 @@ class _BackupSectionState extends State<BackupSection> {
                   'Keep a copy of your collection in your own Google '
                   'Drive, made whenever you ask.',
                 ),
-                trailing: _busy
+                control: _busy
                     ? _spinner
                     : FilledButton(
                         onPressed: _signIn,
@@ -430,7 +430,7 @@ class _BackupSectionState extends State<BackupSection> {
                       ),
               )
             else ...[
-              ListTile(
+              IunaControlTile(
                 leading: const Icon(
                   Icons.account_circle_outlined,
                   color: IunaPalette.pawBrown,
@@ -441,7 +441,7 @@ class _BackupSectionState extends State<BackupSection> {
                       ? 'No backup yet'
                       : 'Last backed up: ${_stamp(_lastBackup!)}',
                 ),
-                trailing: _busy
+                control: _busy
                     ? _spinner
                     : OutlinedButton(
                         onPressed: _signOut,

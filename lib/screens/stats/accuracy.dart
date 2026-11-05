@@ -439,14 +439,6 @@ class _AccuracyByRarity extends StatelessWidget {
               correct: e.$2.correct,
             ),
           ),
-        const SizedBox(height: 2),
-        Text(
-          'The dotted line marks the 90% goal.',
-          style: IunaText.caption.copyWith(
-            color: IunaPalette.ink3,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
       ],
     );
   }

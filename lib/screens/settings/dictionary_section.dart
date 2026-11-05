@@ -189,24 +189,24 @@ class _DictionarySectionState extends State<DictionarySection> {
     final install = _install;
     if (install != null) return RemoteInstallTile(install: install, icon: icon);
     if (!_installed) {
-      return ListTile(
+      return IunaControlTile(
         leading: const Icon(icon, color: IunaPalette.pawBrown),
         title: const Text('Download dictionary'),
         subtitle: const Text(
           '~17 MB · look up any word to add to your wishlist, and play '
           'the sentence games.',
         ),
-        trailing: FilledButton(
+        control: FilledButton(
           onPressed: _startInstall,
           child: const Text('Download'),
         ),
       );
     }
-    return ListTile(
+    return IunaControlTile(
       leading: const Icon(icon, color: IunaPalette.pawBrown),
       title: const Text('Dictionary installed'),
       subtitle: Text('$_sizeMb MB on your phone'),
-      trailing: OutlinedButton(
+      control: OutlinedButton(
         onPressed: _checking ? null : _checkForUpdate,
         child: Text(_checking ? 'Checking…' : 'Update'),
       ),

@@ -9,7 +9,6 @@ import '../widgets/cta_button.dart';
 import '../widgets/hex_bg.dart';
 import '../widgets/iuna_bottom_nav.dart';
 import '../widgets/iuna_icon_button.dart';
-import '../widgets/iuna_page.dart';
 import '../widgets/section_header.dart';
 import '../widgets/tappable.dart';
 import '../widgets/time_words.dart';
@@ -221,7 +220,7 @@ class _ReviewDoneScreenState extends State<ReviewDoneScreen>
                 child: Column(
                   children: [
                     _TopBar(
-                      label: hasSession ? 'Done' : 'Today',
+                      label: hasSession ? 'Session done' : 'Recap',
                       onClose: _leave,
                       onUndo: widget.canUndo
                           ? () => Navigator.of(context).pop(true)
@@ -414,7 +413,7 @@ class _TopBar extends StatelessWidget {
         tooltip: 'Close',
         onTap: onClose,
       ),
-      title: IunaTopBarTitle(label),
+      title: TodayBarTitle(label),
       trailing: onUndo == null
           ? null
           : IunaIconButton(
@@ -623,37 +622,110 @@ class _StatsPanel extends StatelessWidget {
   final int todayPct;
   final int streak;
 
+  static const _divider = BorderSide(color: Color.fromRGBO(74, 53, 32, 0.1));
+
+  TableRow _tallyRow(
+    String label,
+    int correct,
+    int total,
+    int pct, {
+    bool first = false,
+  }) {
+    final pad = EdgeInsets.only(top: first ? 0 : 10, bottom: 10);
+    return TableRow(
+      decoration: const BoxDecoration(border: Border(bottom: _divider)),
+      children: [
+        Padding(
+          padding: pad,
+          child: Text(
+            label,
+            maxLines: 1,
+            softWrap: false,
+            style: IunaText.eyebrow.copyWith(
+              color: IunaPalette.ink3,
+              letterSpacing: 1.2,
+            ),
+          ),
+        ),
+        Padding(
+          padding: pad.add(const EdgeInsets.symmetric(horizontal: 8)),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text.rich(
+              TextSpan(
+                text: '$correct',
+                style: IunaText.headline.copyWith(
+                  color: IunaPalette.ink,
+                  height: 1,
+                ),
+                children: [
+                  TextSpan(
+                    text: '/$total',
+                    style: IunaText.bodyLarge.copyWith(
+                      fontWeight: FontWeight.w500,
+                      color: IunaPalette.ink3,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        Padding(
+          padding: pad,
+          child: Text(
+            '$pct%',
+            maxLines: 1,
+            softWrap: false,
+            textAlign: TextAlign.right,
+            style: IunaText.headline.copyWith(
+              color: IunaPalette.ink,
+              height: 1,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final divider = Container(
-      height: 1,
-      margin: const EdgeInsets.symmetric(vertical: 10),
-      color: IunaPalette.ink.withValues(alpha: 0.1),
-    );
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 18),
       decoration: paperPanelDecoration(),
       child: Column(
         children: [
-          if (hasSession) ...[
-            _StatsRow(
-              label: 'SESSION',
-              correct: sessionCorrect,
-              total: sessionTotal,
-              pct: sessionPct,
-            ),
-            divider,
-          ],
-          // The day's first session would repeat itself as Today.
-          if (!hasSession || todayTotal > sessionTotal) ...[
-            _StatsRow(
-              label: 'TODAY',
-              correct: todayCorrect,
-              total: todayTotal,
-              pct: todayPct,
-            ),
-            divider,
-          ],
+          // A table, so the labels and percentages line up across rows
+          // and their columns grow with the text instead of breaking a
+          // word.
+          Table(
+            columnWidths: const {
+              0: IntrinsicColumnWidth(),
+              1: FlexColumnWidth(),
+              2: IntrinsicColumnWidth(),
+            },
+            defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+            children: [
+              if (hasSession)
+                _tallyRow(
+                  'SESSION',
+                  sessionCorrect,
+                  sessionTotal,
+                  sessionPct,
+                  first: true,
+                ),
+              // The day's first session would repeat itself as Today.
+              if (!hasSession || todayTotal > sessionTotal)
+                _tallyRow(
+                  'TODAY',
+                  todayCorrect,
+                  todayTotal,
+                  todayPct,
+                  first: !hasSession,
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -687,78 +759,19 @@ class _StatsPanel extends StatelessWidget {
   }
 }
 
-class _StatsRow extends StatelessWidget {
-  const _StatsRow({
-    required this.label,
-    required this.correct,
-    required this.total,
-    required this.pct,
-  });
-  final String label;
-  final int correct;
-  final int total;
-  final int pct;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        SizedBox(
-          width: 70,
-          child: Text(
-            label,
-            style: IunaText.eyebrow.copyWith(
-              color: IunaPalette.ink3,
-              letterSpacing: 1.2,
-            ),
-          ),
-        ),
-        Expanded(
-          child: Center(
-            child: Text.rich(
-              TextSpan(
-                text: '$correct',
-                style: IunaText.headline.copyWith(
-                  color: IunaPalette.ink,
-                  height: 1,
-                ),
-                children: [
-                  TextSpan(
-                    text: '/$total',
-                    style: IunaText.bodyLarge.copyWith(
-                      fontWeight: FontWeight.w500,
-                      color: IunaPalette.ink3,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-        SizedBox(
-          width: 70,
-          child: Text(
-            '$pct%',
-            textAlign: TextAlign.right,
-            style: IunaText.headline.copyWith(
-              color: IunaPalette.ink,
-              height: 1,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 class _DoneScroller extends StatelessWidget {
   const _DoneScroller({required this.cards, required this.onTap});
   final List<CardRow> cards;
   final ValueChanged<int> onTap;
   @override
   Widget build(BuildContext context) {
+    // A horizontal list needs a fixed height, so it grows with the text
+    // size instead of reading it from the cards, as on Home.
+    final textGrowth =
+        (MediaQuery.textScalerOf(context).scale(100) / 100 - 1).clamp(0.0, 1.0);
+    final cardHeight = 140 + 64 * textGrowth;
     return SizedBox(
-      height: 150,
+      height: cardHeight + 10,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: cards.length,
@@ -769,7 +782,7 @@ class _DoneScroller extends StatelessWidget {
             onTap: () => onTap(c.id),
             child: SizedBox(
               width: 110,
-              height: 140,
+              height: cardHeight,
               child: VocabCard(
                 rarity: c.rarity,
                 padding: const EdgeInsets.all(10),
@@ -777,17 +790,28 @@ class _DoneScroller extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    RarityChip(rarity: c.rarity, size: RarityChipSize.compact),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: RarityChip(
+                          rarity: c.rarity,
+                          size: RarityChipSize.compact,
+                        ),
+                      ),
+                    ),
                     const Spacer(),
-                    Text(
-                      c.kanji,
-                      textAlign: TextAlign.center,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.w700,
-                        color: IunaPalette.ink,
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        c.kanji,
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        style: const TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.w700,
+                          color: IunaPalette.ink,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 2),

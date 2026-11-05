@@ -22,6 +22,7 @@ import '../widgets/tab_header.dart';
 import '../widgets/tappable.dart';
 import '../widgets/time_words.dart';
 import '../widgets/vocab_card.dart';
+import 'add_card_screen.dart';
 import 'card_detail_screen.dart';
 import 'app_nav.dart';
 import 'collection_screen.dart';
@@ -157,6 +158,12 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: (_) => CollectionScreen(db: widget.db, initialWishedOnly: true),
       ),
     );
+    if (!mounted) return;
+    await _refresh();
+  }
+
+  Future<void> _openAddCard() async {
+    await openAddToWishlist(context, widget.db);
     if (!mounted) return;
     await _refresh();
   }
@@ -362,10 +369,10 @@ class _HomeScreenState extends State<HomeScreen> {
                       final n => '$n cards on your wishlist',
                     },
                     subtitle: _wishCount == 0
-                        ? 'Tap the bookmark on a card to add it. '
-                              'It shows up in a pack soon.'
+                        ? 'Look up a word to wish for, or tap the bookmark '
+                              'on a card. It shows up in a pack soon.'
                         : 'They show up in a pack soon.',
-                    onTap: _wishCount == 0 ? null : _openWishlist,
+                    onTap: _wishCount == 0 ? _openAddCard : _openWishlist,
                   ),
                 ),
               ],
@@ -469,8 +476,8 @@ class _HeroPack extends StatelessWidget {
     final String title, sub;
     if (available) {
       title = "Today's pack";
-      sub = '${newCards == 1 ? "1 new card" : "$newCards new cards"} · '
-          '$reviews due';
+      sub = '${newCards == 1 ? "1 new card" : "$newCards new cards"}'
+          '${dueCount > 0 ? ' · $reviews due' : ''}';
     } else {
       final outOfCards = booster.packs > 0;
       title = outOfCards ? 'No new cards left' : "Today's pack is open";

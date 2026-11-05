@@ -387,7 +387,7 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
                           ),
                         if (_examples.any((e) => e.generated))
                           _PanelAction(
-                            label: 'Clear',
+                            label: "Clear Kuma's examples",
                             onPressed: _clearExamples,
                           ),
                       ],
@@ -707,8 +707,13 @@ class _Section extends StatelessWidget {
                 Positioned(
                   top: 0,
                   right: 6,
+                  // Clear of the title, however large the text.
+                  left: MediaQuery.textScalerOf(context).scale(96),
                   height: IunaIconButton.size,
-                  child: trailing,
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: FittedBox(fit: BoxFit.scaleDown, child: trailing),
+                  ),
                 ),
               ],
             ),

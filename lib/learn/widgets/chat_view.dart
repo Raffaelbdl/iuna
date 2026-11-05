@@ -116,6 +116,22 @@ class _ChatViewState extends State<ChatView> {
         return Column(
           children: [
             Expanded(child: body),
+            if (c.pendingQuiz case final quiz?)
+              Align(
+                alignment: Alignment.centerRight,
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: TextButton(
+                    // The same answer as "I don't know" on every question.
+                    onPressed: () => c.answerQuiz(quiz.spec.skipAll()),
+                    style: TextButton.styleFrom(
+                      foregroundColor: IunaPalette.ink2,
+                      minimumSize: const Size(48, 48),
+                    ),
+                    child: const Text('Skip this check'),
+                  ),
+                ),
+              ),
             SafeArea(
               top: false,
               child: Padding(

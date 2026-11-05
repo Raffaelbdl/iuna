@@ -16,6 +16,7 @@ import '../widgets/progress_dots.dart';
 import '../widgets/snack.dart';
 import '../widgets/tappable.dart';
 import '../widgets/vocab_card.dart';
+import 'today_flow.dart';
 
 /// One-by-one card reveal after the pack-intro splash. Tap or press
 /// "Next card" to advance; the final card, or "Skip to review", pops
@@ -248,9 +249,10 @@ class _BoosterRevealScreenState extends State<BoosterRevealScreen>
     showSnack(
       context,
       swap.replacements.isEmpty
-          ? 'Set aside. No unseen cards were left to swap in. Find it in '
+          ? 'Suspended. No unseen cards were left to swap in. Find it in '
                 'Collection › Suspended.'
-          : 'Swapped. The old card is set aside in Collection › Suspended.',
+          : 'Swapped. The old card is suspended — find it in Collection › '
+                'Suspended.',
       action: SnackBarAction(
         label: 'Undo',
         onPressed: () async {
@@ -321,13 +323,15 @@ class _BoosterRevealScreenState extends State<BoosterRevealScreen>
     final card = _cards[_index];
     final isLast = _index >= _cards.length - 1;
     final packNum = _packForIndex.isEmpty ? 1 : _packForIndex[_index];
-    final packLabel = _totalPacks > 1
-        ? 'Pack $packNum / $_totalPacks · '
-        : 'Pack · ';
+    final inPack = [
+      for (var i = 0; i < _cards.length; i++)
+        if (i >= _packForIndex.length || _packForIndex[i] == packNum) i,
+    ];
     return Column(
       children: [
         _TopBar(
-          label: '$packLabel${_index + 1} / ${_cards.length}',
+          label: 'Card ${inPack.indexOf(_index) + 1} / ${inPack.length}',
+          pack: _totalPacks > 1 ? 'Pack $packNum / $_totalPacks' : null,
           onLeave: () => _finalizeAndPop(toReview: false),
           onSkip: _finalizeAndPop,
         ),
@@ -576,63 +580,51 @@ class _TopBar extends StatelessWidget {
     required this.label,
     required this.onLeave,
     required this.onSkip,
+    this.pack,
   });
   final String label;
+
+  /// Which of several packs the card is from.
+  final String? pack;
   final VoidCallback onLeave;
   final VoidCallback onSkip;
 
   @override
   Widget build(BuildContext context) {
-    // Equal sides keep the counter centred against the wider skip
-    // button.
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(10, 6, 10, 2),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: IunaIconButton.size),
-        child: Row(
-          children: [
-            Expanded(
-              child: Align(
-                alignment: Alignment.centerLeft,
-                // The cards are already collected; their review waits
-                // on Home.
-                child: IunaIconButton(
-                  icon: Icons.close_rounded,
-                  tooltip: 'Review later',
-                  onTap: onLeave,
-                ),
-              ),
-            ),
-            Text(
-              label,
-              style: IunaText.bodySmall.copyWith(
-                fontWeight: FontWeight.w600,
-                color: IunaPalette.ink2,
-                height: 1,
-              ),
-            ),
-            Expanded(
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: TextButton(
-                    onPressed: onSkip,
-                    style: TextButton.styleFrom(
-                      minimumSize: const Size(
-                        IunaIconButton.size,
-                        IunaIconButton.size,
-                      ),
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                    ),
-                    child: const Text('Skip to review'),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
+    final skip = TextButton(
+      onPressed: onSkip,
+      style: TextButton.styleFrom(
+        minimumSize: const Size(IunaIconButton.size, IunaIconButton.size),
+        padding: const EdgeInsets.symmetric(horizontal: 8),
       ),
+      child: const Text('Skip to review', textAlign: TextAlign.end),
+    );
+    // Large text gives the skip its own row rather than shrinking it
+    // or crowding the counter.
+    final ownRow = MediaQuery.textScalerOf(context).scale(10) > 12;
+    final bar = IunaTopBar(
+      // The cards are already collected; their review waits on Home.
+      leading: IunaIconButton(
+        icon: Icons.close_rounded,
+        tooltip: 'Review later',
+        onTap: onLeave,
+      ),
+      title: TodayBarTitle(label, detail: pack),
+      trailing: ownRow ? null : skip,
+    );
+    if (!ownRow) return bar;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        bar,
+        Align(
+          alignment: Alignment.centerRight,
+          child: Padding(
+            padding: const EdgeInsets.only(right: 10),
+            child: skip,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -658,7 +650,7 @@ class _RevealCard extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    RarityChip(rarity: card.rarity, stars: false),
+                    RarityChip(rarity: card.rarity, stars: false, named: true),
                     if (rarityStars(card.rarity) >= 4)
                       const Icon(
                         Icons.auto_awesome_rounded,

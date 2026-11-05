@@ -479,13 +479,7 @@ class _TopBar extends StatelessWidget {
         tooltip: 'End review',
         onTap: onClose,
       ),
-      title: Text(
-        label,
-        style: IunaText.bodySmall.copyWith(
-          fontWeight: FontWeight.w600,
-          color: IunaPalette.ink2,
-        ),
-      ),
+      title: TodayBarTitle(label, detail: 'Review'),
       trailing: onUndo == null
           ? null
           : IunaIconButton(

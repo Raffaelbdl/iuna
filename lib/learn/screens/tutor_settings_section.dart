@@ -125,7 +125,7 @@ class _TutorSettingsSectionState extends State<TutorSettingsSection> {
     return IunaGroup(
       'AI tutor',
       children: [
-        ListTile(
+        IunaControlTile(
           leading: const Icon(Icons.key_rounded, color: IunaPalette.pawBrown),
           title: const Text('OpenRouter API key'),
           subtitle: Text(
@@ -133,7 +133,7 @@ class _TutorSettingsSectionState extends State<TutorSettingsSection> {
                 ? 'Not set. The Learn tab appears once a key is saved.'
                 : 'In the Android Keystore · ${LearnSettings.mask(_key!)}',
           ),
-          trailing: _busy
+          control: _busy
               ? const SizedBox(
                   width: 20,
                   height: 20,
@@ -149,7 +149,7 @@ class _TutorSettingsSectionState extends State<TutorSettingsSection> {
           subtitle: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(_model == kDefaultLearnModel ? 'Default · $_model' : _model),
+              Text(_model == kDefaultLearnModel ? 'Default (fast, low cost)' : _model),
               const SizedBox(height: 2),
               Text(
                 "Photos go to a model that can see when this one can't.",
@@ -161,11 +161,11 @@ class _TutorSettingsSectionState extends State<TutorSettingsSection> {
           trailing: const Icon(Icons.chevron_right_rounded, color: IunaPalette.ink3),
           onTap: _editModel,
         ),
-        ListTile(
+        IunaControlTile(
           leading: const Icon(Icons.receipt_long_rounded, color: IunaPalette.pawBrown),
           title: const Text('Tutor usage'),
           subtitle: const Text('Spent on this phone, as OpenRouter reports it.'),
-          trailing: Text(
+          control: Text(
             _formatCost(_spent),
             style: IunaText.label.copyWith(fontWeight: FontWeight.w700, color: IunaPalette.ink2),
           ),

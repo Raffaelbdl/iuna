@@ -98,7 +98,7 @@ void main() {
     await tester.tap(find.byTooltip('Skip round'));
     await tester.pump();
     expect(find.text('WORD ↔ MEANING'), findsOneWidget);
-    expect(find.text('0 / ${_words.length}'), findsOneWidget);
+    expect(find.text('0 of ${_words.length} matched'), findsOneWidget);
 
     final raw = await tester.runAsync(() => IunaRepository(db).getGameMemory());
     final memory = GameMemory.parse(raw);

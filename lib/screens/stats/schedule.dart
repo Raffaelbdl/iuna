@@ -28,33 +28,17 @@ class _MaturityChart extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // A legend, not filters: dots like the other charts', in the
+        // bars' own colours.
         Wrap(
-          spacing: 8,
-          runSpacing: 6,
-          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 14,
+          runSpacing: 4,
           children: [
-            _StageTag(
-              color: IunaPalette.chartLearning,
-              dark: IunaPalette.chartLearningInk,
-              label:
-                  '${MemoryStage.learning.label} '
-                  '${stageTotals[MemoryStage.learning]}',
-            ),
-            _StageTag(
-              color: IunaPalette.chartBlue,
-              dark: IunaPalette.chartMatureInk,
-              label:
-                  '${MemoryStage.gettingThere.label} '
-                  '${stageTotals[MemoryStage.gettingThere]}',
-            ),
-            _StageTag(
-              color: IunaPalette.chartMatureInk,
-              dark: IunaPalette.chartMatureInk,
-              label:
-                  '${MemoryStage.wellKnown.label} '
-                  '${stageTotals[MemoryStage.wellKnown]}',
-              solid: true,
-            ),
+            for (final stage in MemoryStage.values)
+              _LegendDot(
+                color: _MaturityPainter._color(stage),
+                label: '${stage.label} ${stageTotals[stage]}',
+              ),
           ],
         ),
         const SizedBox(height: 4),
@@ -75,52 +59,6 @@ class _MaturityChart extends StatelessWidget {
               _MaturityPainter(bins: bins, stages: stages, scaler: scaler),
         ),
       ],
-    );
-  }
-}
-
-class _StageTag extends StatelessWidget {
-  const _StageTag({
-    required this.color,
-    required this.dark,
-    required this.label,
-    this.solid = false,
-  });
-
-  final Color color;
-  final Color dark;
-  final String label;
-  final bool solid;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-      decoration: BoxDecoration(
-        color: solid ? color : Colors.transparent,
-        border: solid ? null : Border.all(color: color),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 7,
-            height: 7,
-            decoration: BoxDecoration(
-              color: solid ? Colors.white : color,
-              borderRadius: BorderRadius.circular(99),
-            ),
-          ),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: IunaText.chip.copyWith(
-              color: solid ? Colors.white : dark,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

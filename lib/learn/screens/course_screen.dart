@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../theme/iuna_theme.dart';
 import '../../widgets/confirm_dialog.dart';
 import '../../widgets/iuna_page.dart';
+import '../../widgets/notice.dart';
 import '../../widgets/section_header.dart';
 import '../../widgets/snack.dart';
 import '../../widgets/text_input_dialog.dart';
@@ -38,6 +39,8 @@ class _CourseScreenState extends State<CourseScreen> {
   CourseRow? _course;
   List<ChapterRow> _chapters = const [];
   bool _loading = true;
+  bool _failed = false;
+  bool _leaving = false;
   StreamSubscription<int>? _changes;
 
   @override
@@ -54,7 +57,7 @@ class _CourseScreenState extends State<CourseScreen> {
   /// Under a lesson the tutor writes at every step; [_open] reloads once
   /// it pops instead.
   void _loadIfShown() {
-    if (mounted && (ModalRoute.isCurrentOf(context) ?? true)) _load();
+    if (mounted && !_leaving && (ModalRoute.isCurrentOf(context) ?? true)) _load();
   }
 
   @override
@@ -65,14 +68,45 @@ class _CourseScreenState extends State<CourseScreen> {
 
   Future<void> _load() async {
     final repo = widget.env.repo;
-    final course = await repo.course(widget.courseId);
-    final chapters = await repo.chapters(widget.courseId);
-    if (!mounted) return;
+    try {
+      final course = await repo.course(widget.courseId);
+      final chapters = course == null ? const <ChapterRow>[] : await repo.chapters(widget.courseId);
+      if (!mounted) return;
+      if (course == null) {
+        _gone();
+        return;
+      }
+      setState(() {
+        _course = course;
+        _chapters = chapters;
+        _loading = false;
+        _failed = false;
+      });
+    } catch (e, s) {
+      logLoadError('Course', e, s);
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _failed = true;
+        });
+      }
+    }
+  }
+
+  /// The course went away under us (a Drive restore, say).
+  void _gone() {
+    if (_leaving) return;
+    _leaving = true;
+    showSnack(context, 'That course no longer exists.');
+    Navigator.of(context).pop();
+  }
+
+  void _retry() {
     setState(() {
-      _course = course;
-      _chapters = chapters;
-      _loading = false;
+      _loading = true;
+      _failed = false;
     });
+    _load();
   }
 
   Future<void> _open(String? chapterKey) async {
@@ -110,12 +144,25 @@ class _CourseScreenState extends State<CourseScreen> {
       destructive: true,
     );
     if (!ok) return;
-    await widget.env.repo.deleteCourse(widget.courseId);
+    _leaving = true;
+    try {
+      await widget.env.repo.deleteCourse(widget.courseId);
+    } catch (e) {
+      _leaving = false;
+      if (mounted) showErrorSnack(context, "Couldn't delete this course.", e);
+      return;
+    }
     if (mounted) Navigator.of(context).pop();
   }
 
   Future<void> _showNotes() async {
-    final prefs = await widget.env.repo.preferences();
+    final String prefs;
+    try {
+      prefs = await widget.env.repo.preferences();
+    } catch (e) {
+      if (mounted) showErrorSnack(context, "Couldn't load Kuma-sensei's notes.", e);
+      return;
+    }
     if (!mounted) return;
     final course = _course!;
     await showModalBottomSheet<void>(
@@ -194,8 +241,10 @@ class _CourseScreenState extends State<CourseScreen> {
                 PopupMenuItem(value: 'delete', child: Text('Delete course')),
               ],
             ),
-      body: _loading || course == null
+      body: _loading
           ? const Center(child: CircularProgressIndicator())
+          : _failed || course == null
+          ? LoadErrorNotice(onRetry: _retry)
           : ListView(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
               children: [
@@ -334,7 +383,7 @@ class _ChapterTile extends StatelessWidget {
       ChapterStatus.passed => (
         Icons.check_circle_rounded,
         IunaPalette.mintInk,
-        'Review again',
+        'Revisit',
         IunaPalette.mintInk,
       ),
       ChapterStatus.unlocked => (

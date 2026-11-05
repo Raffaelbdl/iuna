@@ -107,7 +107,7 @@ class _CardPacksSectionState extends State<CardPacksSection> {
     );
     final creditStyle = IunaText.caption.copyWith(color: IunaPalette.ink3);
 
-    return ListTile(
+    return IunaControlTile(
       leading: const Icon(icon, color: IunaPalette.pawBrown),
       title: Text(listing.label),
       subtitle: Column(
@@ -126,7 +126,7 @@ class _CardPacksSectionState extends State<CardPacksSection> {
             Text(listing.sourceUrl!, style: creditStyle),
         ],
       ),
-      trailing: upToDate
+      control: upToDate
           ? const Icon(Icons.check_circle_rounded, color: IunaPalette.pawBrown)
           : (installed == null
                 ? FilledButton(onPressed: onAdd, child: const Text('Add'))

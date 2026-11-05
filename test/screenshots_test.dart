@@ -902,6 +902,22 @@ void main() {
     );
   });
 
+  testWidgets('settings — larger text (2×)', (tester) async {
+    await _withLearnSettings(apiKey: 'sk-or-v1-golden');
+    useTempDocumentsDir('iuna_settings_2x_shot_');
+    final db = await _emptyDb();
+    addTearDown(db.close);
+    await _seedInstalledPack(db, cards: 931);
+    await _shoot(
+      tester,
+      'settings_text_scale_2x',
+      SettingsScreen(db: db),
+      logical: const Size(360, 5200),
+      settle: const Duration(seconds: 3),
+      textScale: 2,
+    );
+  });
+
   testWidgets('stats — full redesigned screen', (tester) async {
     final db = await _emptyDb();
     addTearDown(db.close);
@@ -1115,12 +1131,17 @@ void main() {
     );
   });
 
-  testWidgets('review — done', (tester) async {
+  // An earlier session this morning, then this one: three right and
+  // 一瞥 missed, so it is due again in ten minutes.
+  Future<void> shootReviewDone(
+    WidgetTester tester,
+    String name, {
+    double textScale = 1,
+    Size logical = const Size(360, 900),
+  }) async {
     final db = await _emptyDb();
     addTearDown(db.close);
     final ids = await _seedReviewDeck(db);
-    // An earlier session this morning, then this one: three right and
-    // 一瞥 missed, so it is due again in ten minutes.
     final repo = IunaRepository(db);
     final now = DateTime(2026, 11, 5, 9, 30);
     for (final id in ids.take(2)) {
@@ -1135,7 +1156,7 @@ void main() {
     }
     await _shoot(
       tester,
-      'review_done',
+      name,
       ReviewDoneScreen(
         db: db,
         correct: 3,
@@ -1143,8 +1164,31 @@ void main() {
         doneCardIds: ids,
         now: now,
       ),
-      logical: const Size(360, 900),
+      logical: logical,
       settle: const Duration(seconds: 5),
+      textScale: textScale,
+    );
+  }
+
+  testWidgets('review — done', (tester) async {
+    await shootReviewDone(tester, 'review_done');
+  });
+
+  testWidgets('review — done, large text (1.5×)', (tester) async {
+    await shootReviewDone(
+      tester,
+      'review_done_text_scale',
+      textScale: 1.5,
+      logical: const Size(360, 1300),
+    );
+  });
+
+  testWidgets('review — done, larger text (2×)', (tester) async {
+    await shootReviewDone(
+      tester,
+      'review_done_text_scale_2x',
+      textScale: 2,
+      logical: const Size(360, 1600),
     );
   });
 
@@ -1365,6 +1409,47 @@ void main() {
     );
   });
 
+  testWidgets('booster — three packs chained, larger text (2×)', (tester) async {
+    final db = await _emptyDb();
+    addTearDown(db.close);
+    await IunaRepository(db).setBoostersPerDay(3);
+    const words = [
+      ('一瞥', 'いちべつ'), ('魔法', 'まほう'), ('結界', 'けっかい'),
+      ('森', 'もり'), ('猫', 'ねこ'), ('犬', 'いぬ'), ('山', 'やま'),
+      ('川', 'かわ'), ('空', 'そら'), ('海', 'うみ'), ('花', 'はな'),
+      ('雨', 'あめ'), ('雪', 'ゆき'), ('風', 'かぜ'), ('星', 'ほし'),
+    ];
+    for (var i = 0; i < words.length; i++) {
+      await _seedCard(
+        db,
+        kanji: words[i].$1,
+        kana: words[i].$2,
+        meaning: 'word ${i + 1}',
+        rarity: Rarity.values[i % Rarity.values.length],
+      );
+    }
+    await _shoot(
+      tester,
+      'booster_reveal_text_scale_2x',
+      BoosterRevealScreen(db: db, random: Random(1)),
+      settle: const Duration(milliseconds: 500),
+      textScale: 2,
+    );
+  });
+
+  testWidgets('review — front of card, larger text (2×)', (tester) async {
+    final db = await _emptyDb();
+    addTearDown(db.close);
+    await _seedReviewDeck(db);
+    await _shoot(
+      tester,
+      'review_front_text_scale_2x',
+      ReviewScreen(db: db, random: Random(1)),
+      settle: const Duration(milliseconds: 500),
+      textScale: 2,
+    );
+  });
+
   testWidgets('review — back of card, large text (1.5×)', (tester) async {
     final db = await _emptyDb();
     addTearDown(db.close);
@@ -1449,7 +1534,12 @@ void main() {
     await _shoot(tester, 'learn_course', CourseScreen(env: env, courseId: id));
   });
 
-  testWidgets('learn — lesson waiting on a quiz card', (tester) async {
+  Future<void> shootLessonQuiz(
+    WidgetTester tester,
+    String name, {
+    double textScale = 1,
+    Size logical = const Size(360, 900),
+  }) async {
     final llm = FakeLlm([
       callTool(
         'course_write',
@@ -1485,15 +1575,29 @@ void main() {
     final id = await _seedLearnCourses(env.repo);
     await _shoot(
       tester,
-      'learn_lesson_quiz',
+      name,
       TutorChatScreen(env: env, courseId: id, chapterKey: 'n1-formal-grammar'),
-      logical: const Size(360, 900),
+      logical: logical,
       settle: const Duration(milliseconds: 500),
+      textScale: textScale,
     );
     // Let the controller wind down (the quiz is cancelled) before the
     // databases close.
     await tester.pumpWidget(const SizedBox());
     await tester.pump();
+  }
+
+  testWidgets('learn — lesson waiting on a quiz card', (tester) async {
+    await shootLessonQuiz(tester, 'learn_lesson_quiz');
+  });
+
+  testWidgets('learn — lesson quiz, larger text (2×)', (tester) async {
+    await shootLessonQuiz(
+      tester,
+      'learn_lesson_quiz_text_scale_2x',
+      textScale: 2,
+      logical: const Size(360, 1800),
+    );
   });
 
   testWidgets('learn — room probing with multiple-choice questions', (

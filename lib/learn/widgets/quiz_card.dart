@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../theme/iuna_theme.dart';
 import '../agent/quiz.dart';
+import '../../widgets/cta_button.dart';
 import '../../widgets/option_tile.dart';
 import 'tutor_markdown.dart';
 
@@ -96,7 +97,8 @@ class _QuizCardState extends State<QuizCard> {
   @override
   Widget build(BuildContext context) {
     final spec = widget.spec;
-    final ready = !_sent && spec.questions.every(_answered);
+    final left = spec.questions.where((q) => !_answered(q)).length;
+    final ready = !_sent && left == 0;
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
       decoration: _cardDecoration(live: true),
@@ -113,12 +115,25 @@ class _QuizCardState extends State<QuizCard> {
             _question(i, spec.questions[i], spec.skipLabel),
           ],
           const SizedBox(height: 14),
-          Align(
-            alignment: Alignment.centerRight,
-            child: FilledButton(
-              onPressed: ready ? _submit : null,
-              child: Text(_sent ? 'Sent' : 'Submit'),
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  _sent || left == 0
+                      ? ''
+                      : left == spec.questions.length
+                      ? 'Answer every question to submit'
+                      : '$left left to answer',
+                  style: IunaText.caption.copyWith(color: IunaPalette.ink3),
+                ),
+              ),
+              const SizedBox(width: 10),
+              IunaCtaButton(
+                label: _sent ? 'Sent' : 'Submit',
+                shrinkWrap: true,
+                onTap: ready ? _submit : null,
+              ),
+            ],
           ),
         ],
       ),
