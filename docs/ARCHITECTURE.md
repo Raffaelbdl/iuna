@@ -302,6 +302,82 @@ parentheses) instead of `readings_tap.md`, and nothing is tappable.
 The cost OpenRouter reports for each call is logged in `usage_log` and
 shown only under Settings → AI tutor.
 
+## Games (`lib/games/`)
+
+Mini-games opened from Home (`games_screen.dart`). They need no tutor
+key, so they live outside the Learn tab. They are practice only: no
+review is logged and scheduling is never touched, and like Add card
+they never mint an owned card.
+
+**The draw** (`game_draw.dart`, pure Dart). Games draw from
+`gameCards()`: owned cards that are neither new nor suspended.
+`drawOrder` is a weighted shuffle (Efraimidis–Spirakis) of all of them:
+
+- `struggleWeight` runs from 1 at full ease to about 5 at the floor,
+  plus a little for the lifetime fail count. Ease is the live signal
+  (−0.2 per miss, +0.1 per hit).
+- `GameMemory` multiplies that by a cooldown on the cards the last
+  three *sessions* showed (one session is one visit to a game screen):
+  ×0.05 within the current session, then ×0.1 / 0.4 / 0.7, or
+  ×0.5 / 0.8 / 1 for a card the learner missed. Sessions are counted
+  rather than timed because games are played now and then: a cooldown
+  in days would have run out by the next visit. The memory is JSON
+  under the `game_memory` meta key, so backups carry it.
+
+A game walks the order and skips what doesn't fit, rather than asking
+for a fixed count.
+
+**Pairs** (`pairs.dart`, `pairs_screen.dart`). Six cards per round,
+matched across two columns. Modes take turns round by round:
+kanji ↔ reading (kana-only words are skipped), word ↔ meaning (the
+first two glosses), and sound ↔ word (a tile says the reading through
+TTS). `PairsRound.deal` never puts two alike faces in a column:
+homophones in sound mode, the same first gloss in meaning mode. A wrong
+pair counts against the tile picked first, and that card rests less
+next time. Skip (top bar) drops a round for the next mode, say a sound
+round in a busy room; its cards' sightings are put back, except for a
+card already missed, since nothing was practised.
+
+**Sentences** (`sentence_tiles.dart`, `sentence_feed.dart`,
+`sentences.dart`, `sentence_screen.dart`). The learner rebuilds an
+example sentence from shuffled tiles, with its English as the clue.
+It needs the JMdict sidecar; without it the screen links to Settings.
+
+- *Tiles.* `tileSentence` runs the tutor's `readText` (`learn/words/`)
+  and glues what leans on a content word into its tile: particles, the
+  copula and auxiliaries after it (also by spelling, since kana の can
+  read as 野), set phrases opening with a particle (について), する and
+  できる after a bare noun, helper verbs after a te-form
+  (落としてしまった), and a prefix or pre-noun word before it (この本).
+  Sentences with anything but Japanese and 、, or a stretch the
+  dictionary misses, don't tile.
+- *Word order.* The tiles fall into phrases, each closed by an
+  argument (a noun closed by a case or topic particle) or a bare time
+  word (`n,adv`: 昨日), and carrying the tiles before it that modify it
+  (法の前に, 吠える犬を). `accepts` takes the phrases in any order,
+  then the predicate, which stays last.
+- *Feed.* `SentenceFeed` walks `drawOrder`, each card once a visit, and
+  tries up to three of its examples (English, ≤ 24 characters), least
+  recently seen first (`GameMemory` keeps example ids for 12 sessions).
+  It keeps the first that tiles into 3–5 tiles whose content words are
+  owned or common (the sidecar has rarity, not JLPT or frequency). The
+  first batch is 3 cards, later ones 10, refilled below 3 queued.
+  Tiling runs in `Isolate.run` with its own read-only handle
+  (`JmdictLookup.openFile`), about 2 ms a sentence on a laptop. Leaving
+  the screen mid-batch lets the isolate finish and exit; the feed drops
+  what it returns.
+- Rounds of 5; a wrong answer counts as a miss for the card it was
+  drawn for. Skip puts the card's sighting back.
+
+**Particles** runs on the same screen, feed and rounds
+(`SentenceScreen(game: SentenceGame.particles)`); a `SentenceGame` sets
+the title, the prompt and which tiled sentences fit. The tiles record
+the particle each one ends in, and `ParticleBoard` blanks one of
+`kGapParticles` and offers four choices, never one that is often right
+in the same place (`_alike`: は/が/も/を, に/へ/と, を/から, の/が), since
+the English alone can't settle those. A pick answers at once. It takes
+2–8 tiles, as there is no order to solve.
+
 ## UI (`lib/screens/`, `lib/widgets/`, `lib/theme/`)
 
 **Navigation**
@@ -319,6 +395,9 @@ shown only under Settings → AI tutor.
   `add_card_screen.dart`.
 - Settings: `settings_screen.dart`, with sections under `settings/`.
 - Stats: `stats_screen.dart`, with `part` files under `stats/`.
+- Games: `lib/games/games_screen.dart`, then `pairs_screen.dart` or
+  `sentence_screen.dart` (Sentences and Particles), both on
+  `game_widgets.dart`.
 
 **Shared widgets**
 

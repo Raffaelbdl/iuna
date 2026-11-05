@@ -103,7 +103,9 @@ List<TextWord> _segment(String run, Map<String, List<(WordReading, double)>> rea
 
 const _unknownCost = 2.5;
 
-const _glue = {'prt', 'cop', 'aux', 'aux-v', 'aux-adj'};
+/// Parts of speech that lean on the word before: particles, the copula,
+/// auxiliaries.
+const kGluePos = {'prt', 'cop', 'aux', 'aux-v', 'aux-adj'};
 const _phrase = {'exp', 'int'};
 const _finalParticles = 'はがをにでともへやかの';
 const _innerParticles = 'はがをにでとへ';
@@ -113,7 +115,7 @@ const _innerParticles = 'はがをにでとへ';
 class _Hit {
   _Hit(this.entry)
     : usuallyKana = entry.senses.any((s) => s.hasMisc('uk')),
-      glue = entry.senses.any((s) => s.pos.split(',').any(_glue.contains)),
+      glue = entry.senses.any((s) => s.pos.split(',').any(kGluePos.contains)),
       types = {for (final s in entry.senses) ...wordTypesOf(s.pos)},
       firstPos = entry.senses.isEmpty ? const [] : entry.senses.first.pos.split(','),
       kanaFirst = entry.senses.isNotEmpty && entry.senses.first.hasMisc('uk'),

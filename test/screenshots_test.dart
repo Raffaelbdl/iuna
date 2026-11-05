@@ -19,6 +19,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:iuna/db/database.dart';
 import 'package:iuna/db/repository.dart';
+import 'package:iuna/games/games_screen.dart';
+import 'package:iuna/games/pairs_screen.dart';
+import 'package:iuna/games/sentence_screen.dart';
+import 'package:iuna/games/sentences.dart';
 import 'package:iuna/learn/agent/tutor_prompt.dart';
 import 'package:iuna/learn/db/learn_database.dart';
 import 'package:iuna/learn/db/learn_repository.dart';
@@ -45,6 +49,8 @@ import 'package:iuna/screens/stats_screen.dart';
 import 'package:iuna/theme/iuna_theme.dart';
 
 import 'helpers/fake_package_info.dart';
+import 'games/game_test_helpers.dart';
+import 'games/sentence_deck.dart';
 import 'helpers/fake_path_provider.dart';
 import 'learn/fake_llm.dart';
 import 'learn/fake_photos.dart';
@@ -314,6 +320,26 @@ Future<void> _seedCollection(AppDatabase db) async {
           );
     }
   }
+}
+
+/// Met, owned cards for the games, a few of them struggling. Returns
+/// their ids.
+Future<List<int>> _seedGameDeck(AppDatabase db) async {
+  // (kanji, kana, meaning, ease)
+  const rows = [
+    ('猫', 'ねこ', 'cat', 2.4),
+    ('図書館', 'としょかん', 'library', 1.5),
+    ('熊', 'くま', 'bear', 2.2),
+    ('蜂蜜', 'はちみつ', 'honey', 1.7),
+    ('約束', 'やくそく', 'promise, appointment, arrangement', 1.3),
+    ('魔法', 'まほう', 'magic, witchcraft, sorcery', 2.6),
+    ('森', 'もり', 'forest, woods', 2.0),
+    ('景色', 'けしき', 'scenery, scene, landscape', 1.6),
+  ];
+  return [
+    for (final (kanji, kana, meaning, ease) in rows)
+      await ownCard(db, kanji, kana, meaning, ease: ease),
+  ];
 }
 
 /// Populates a stats scene: a mix of reviews across rarities, a few
@@ -1012,6 +1038,152 @@ void main() {
       ReviewDoneScreen(db: db, correct: 3, total: 4, doneCardIds: ids),
       logical: const Size(360, 900),
       settle: const Duration(seconds: 5),
+    );
+  });
+
+  testWidgets('games — the list', (tester) async {
+    final db = await _emptyDb();
+    addTearDown(db.close);
+    await _shoot(tester, 'games', GamesScreen(db: db));
+  });
+
+  testWidgets('games — pairs, a round under way', (tester) async {
+    final db = await _emptyDb();
+    addTearDown(db.close);
+    final ids = await _seedGameDeck(db);
+    await _shoot(
+      tester,
+      'games_pairs',
+      PairsScreen(db: db, seed: 7, clock: () => DateTime(2026, 11, 5)),
+      act: () async {
+        final dealt = dealtPairs(ids);
+        await playPair(tester, dealt[0], dealt[0]);
+        await playPair(tester, dealt[1], dealt[1]);
+        await tester.tap(pairTile('left', dealt[2]));
+        // One frame to rebuild, one for the tiles to finish animating.
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+      },
+    );
+  });
+
+  testWidgets('games — pairs, the sound round', (tester) async {
+    final db = await _emptyDb();
+    addTearDown(db.close);
+    final ids = await _seedGameDeck(db);
+    await _shoot(
+      tester,
+      'games_pairs_sound',
+      PairsScreen(db: db, seed: 7, speak: (_) {}),
+      act: () async {
+        // Modes take turns; sound is the third round.
+        for (var round = 0; round < 2; round++) {
+          await clearRound(tester, ids);
+          await tester.tap(find.text('Next round'));
+          await tester.pump();
+        }
+        await tester.tap(pairTile('left', dealtPairs(ids).first));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+      },
+    );
+  });
+
+  testWidgets('games — pairs, a round cleared', (tester) async {
+    final db = await _emptyDb();
+    addTearDown(db.close);
+    final ids = await _seedGameDeck(db);
+    var t = DateTime(2026, 11, 5, 9);
+    await _shoot(
+      tester,
+      'games_pairs_done',
+      PairsScreen(db: db, seed: 7, clock: () => t),
+      act: () async {
+        final dealt = dealtPairs(ids);
+        await playPair(tester, dealt[0], dealt[1]);
+        await playPair(tester, dealt[2], dealt[3]);
+        await tester.pump(const Duration(milliseconds: 500));
+        t = t.add(const Duration(seconds: 47));
+        for (final id in dealt) {
+          await playPair(tester, id, id);
+        }
+        await tester.pump(const Duration(milliseconds: 300));
+      },
+    );
+  });
+
+  testWidgets('games — sentences, tiles half placed', (tester) async {
+    final (db, _) = await sentenceDeck();
+    addTearDown(db.close);
+    await _shoot(
+      tester,
+      'games_sentences',
+      SentenceScreen(db: db, seed: 2, tiler: syncTiler()),
+      act: () async {
+        await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+        await tester.pump();
+        await placeTiles(tester, [0, 1]);
+      },
+    );
+  });
+
+  testWidgets('games — sentences, a wrong order checked', (tester) async {
+    final (db, _) = await sentenceDeck();
+    addTearDown(db.close);
+    await _shoot(
+      tester,
+      'games_sentences_checked',
+      SentenceScreen(db: db, seed: 2, tiler: syncTiler(), speak: (_) {}),
+      act: () async {
+        await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+        await tester.pump();
+        final n = bankTileCount();
+        await placeTiles(tester, [n - 1, for (var i = 0; i < n - 1; i++) i]);
+        await tester.tap(find.text('Check'));
+        await tester.pump();
+      },
+    );
+  });
+
+  testWidgets('games — particles, a gap to fill', (tester) async {
+    final (db, _) = await sentenceDeck();
+    addTearDown(db.close);
+    await _shoot(
+      tester,
+      'games_particles',
+      SentenceScreen(
+        db: db,
+        game: SentenceGame.particles,
+        seed: 4,
+        tiler: syncTiler(),
+      ),
+      act: () async {
+        await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+        await tester.pump();
+      },
+    );
+  });
+
+  testWidgets('games — particles, a wrong pick', (tester) async {
+    final (db, _) = await sentenceDeck();
+    addTearDown(db.close);
+    await _shoot(
+      tester,
+      'games_particles_wrong',
+      SentenceScreen(
+        db: db,
+        game: SentenceGame.particles,
+        seed: 4,
+        tiler: syncTiler(),
+        speak: (_) {},
+      ),
+      act: () async {
+        await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+        await tester.pump();
+        // Seed 4 blanks この本を; の is among the choices.
+        await tester.tap(find.byKey(const ValueKey('choice-の')));
+        await tester.pump();
+      },
     );
   });
 

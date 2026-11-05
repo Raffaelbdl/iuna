@@ -77,10 +77,10 @@ final kTestWords = [
   word('有難う', 'ありがとう', 'thank you', pos: 'int', def: 'usually written in kana'),
 ];
 
-/// What the sidecar's `byForms` would return over [kTestWords].
-WordLexicon fakeLexicon() =>
+/// What the sidecar's `byForms` would return over [words].
+WordLexicon fakeLexicon([List<JmdictHit>? words]) =>
     (forms) => [
-      for (final w in kTestWords)
+      for (final w in words ?? kTestWords)
         if (forms.contains(w.kanji) || forms.contains(w.kana)) w,
     ];
 

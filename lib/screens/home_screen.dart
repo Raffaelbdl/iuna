@@ -6,6 +6,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 
 import '../db/database.dart';
 import '../db/repository.dart';
+import '../games/games_screen.dart';
 import '../learn/learn.dart';
 import '../services/drive_auth.dart';
 import '../services/drive_sync.dart';
@@ -118,6 +119,11 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
     await _refresh();
   }
+
+  // Games only write their memory, which Home doesn't show: no refresh.
+  void _openGames() => Navigator.of(
+    context,
+  ).push(MaterialPageRoute(builder: (_) => GamesScreen(db: widget.db)));
 
   Future<void> _openStats() async {
     await Navigator.of(
@@ -268,8 +274,28 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(height: 14),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-                  child: _WishlistNudge(
-                    count: _wishCount,
+                  child: _LinkPanel(
+                    icon: Icons.grid_view_rounded,
+                    tint: IunaPalette.rarityCommonInk,
+                    wash: const Color(0x80C7E0CF),
+                    title: 'Games',
+                    subtitle: 'Practice the cards you find hard',
+                    onTap: _openGames,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+                  child: _LinkPanel(
+                    icon: Icons.bookmark_rounded,
+                    tint: IunaPalette.raritySuperRareInk,
+                    wash: const Color(0x59C4B2E0),
+                    title: _wishCount == 0
+                        ? 'Bookmark a kanji to bias future packs'
+                        : '$_wishCount cards in your wishlist',
+                    subtitle: _wishCount == 0
+                        ? 'Open a card detail and tap the bookmark.'
+                        : 'Pin words you want to learn next',
                     onTap: _openCollection,
                   ),
                 ),
@@ -852,19 +878,26 @@ class _RecentScroller extends StatelessWidget {
   }
 }
 
-class _WishlistNudge extends StatelessWidget {
-  const _WishlistNudge({required this.count, required this.onTap});
-  final int count;
+/// A tappable row on Home: a tinted icon, a title and a line under it.
+class _LinkPanel extends StatelessWidget {
+  const _LinkPanel({
+    required this.icon,
+    required this.tint,
+    required this.wash,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final Color tint;
+  final Color wash;
+  final String title;
+  final String subtitle;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final body = count == 0
-        ? 'Bookmark a kanji to bias future packs'
-        : '$count cards in your wishlist';
-    final sub = count == 0
-        ? 'Open a card detail and tap the bookmark.'
-        : 'Pin words you want to learn next';
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -878,14 +911,10 @@ class _WishlistNudge extends StatelessWidget {
               width: 38,
               height: 38,
               decoration: BoxDecoration(
-                color: const Color(0x59C4B2E0),
+                color: wash,
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Icon(
-                Icons.bookmark_rounded,
-                color: IunaPalette.raritySuperRareInk,
-                size: 18,
-              ),
+              child: Icon(icon, color: tint, size: 18),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -893,7 +922,7 @@ class _WishlistNudge extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    body,
+                    title,
                     style: const TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
@@ -903,7 +932,7 @@ class _WishlistNudge extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    sub,
+                    subtitle,
                     style: const TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w500,

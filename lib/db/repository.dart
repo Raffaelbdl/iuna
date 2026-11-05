@@ -32,6 +32,10 @@ class MetaKeys {
   /// Which round of the seed's example English the deck has taken in
   /// (`example_english.dart`).
   static const exampleEnglish = 'example_english';
+
+  /// The mini-games' recent sessions (`lib/games/game_draw.dart`), so
+  /// the draw can rest the cards it just showed.
+  static const gameMemory = 'game_memory';
 }
 
 /// What applying a pack changed. [tagged] counts headwords the deck
@@ -1232,6 +1236,57 @@ class IunaRepository with MetaTimestamps {
           ..where((u) => u.cardId.isIn(cardIds)))
         .write(const UserCardsCompanion(isNew: Value(false)));
   }
+
+  /// The owned cards a mini-game may draw: met already (not new) and
+  /// not suspended.
+  Future<List<DailyDeckEntry>> gameCards() async {
+    final rows = await (db.select(db.cards).join([
+      innerJoin(db.userCards, db.userCards.cardId.equalsExp(db.cards.id)),
+    ])
+          ..where(db.userCards.isNew.equals(false) &
+              db.userCards.suspended.equals(false))
+          ..orderBy([OrderingTerm.asc(db.cards.id)]))
+        .get();
+    return [
+      for (final r in rows)
+        DailyDeckEntry(
+          card: r.readTable(db.cards),
+          userCard: r.readTable(db.userCards),
+        ),
+    ];
+  }
+
+  /// Example sentences with English for each of [cardIds], at most
+  /// [maxLength] characters: what Sentence builder can ask.
+  Future<Map<int, List<ExampleRow>>> gameExamples(
+    List<int> cardIds, {
+    int maxLength = 24,
+  }) async {
+    if (cardIds.isEmpty) return const {};
+    final rows = await (db.select(db.examples).join([
+      innerJoin(
+        db.cardExamples,
+        db.cardExamples.exampleId.equalsExp(db.examples.id),
+      ),
+    ])
+          ..where(db.cardExamples.cardId.isIn(cardIds) &
+              db.examples.translation.isNotNull() &
+              db.examples.translation.equals('').not() &
+              db.examples.sentence.length.isSmallerOrEqualValue(maxLength))
+          ..orderBy([OrderingTerm.asc(db.examples.id)]))
+        .get();
+    final out = <int, List<ExampleRow>>{};
+    for (final r in rows) {
+      (out[r.readTable(db.cardExamples).cardId] ??= [])
+          .add(r.readTable(db.examples));
+    }
+    return out;
+  }
+
+  Future<String?> getGameMemory() => readMeta(MetaKeys.gameMemory);
+
+  Future<void> setGameMemory(String json) =>
+      writeMeta(MetaKeys.gameMemory, json);
 
   /// Sets the suspended flag on an owned card. Suspended cards stay in
   /// the collection and keep their scheduling state frozen, but are

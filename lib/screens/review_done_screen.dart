@@ -231,7 +231,7 @@ class _ReviewDoneScreenState extends State<ReviewDoneScreen>
                           },
                         ),
                         const SizedBox(height: 10),
-                        _GhostButton(
+                        IunaGhostButton(
                           label: 'Back home',
                           onTap: () =>
                               Navigator.of(context).popUntil((r) => r.isFirst),
@@ -605,41 +605,6 @@ class _DoneScroller extends StatelessWidget {
             ),
           );
         },
-      ),
-    );
-  }
-}
-
-class _GhostButton extends StatelessWidget {
-  const _GhostButton({required this.label, required this.onTap});
-  final String label;
-  final VoidCallback onTap;
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        decoration: ghostPillDecoration(
-          boxShadow: const [
-            BoxShadow(
-              color: Color.fromRGBO(74, 53, 32, 0.25),
-              blurRadius: 14,
-              offset: Offset(0, 6),
-              spreadRadius: -10,
-            ),
-          ],
-        ),
-        child: Center(
-          child: Text(
-            label,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: IunaPalette.ink2,
-            ),
-          ),
-        ),
       ),
     );
   }
