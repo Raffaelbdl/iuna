@@ -77,7 +77,12 @@ class _DictionarySectionState extends State<DictionarySection> {
       await _refresh();
       if (mounted) showSnack(context, 'Dictionary ready.');
     } else {
-      showSnack(context, 'Download failed: $error');
+      showErrorSnack(
+        context,
+        "The dictionary didn't download. Check your connection.",
+        error,
+        action: SnackBarAction(label: 'Retry', onPressed: _startInstall),
+      );
     }
   }
 
@@ -128,10 +133,9 @@ class _DictionarySectionState extends State<DictionarySection> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    return IunaGroup(
+      'Dictionary (experimental)',
       children: [
-        const IunaSectionHeader('Dictionary (experimental)'),
         _tile(),
         if (_installed && _install == null)
           ListTile(

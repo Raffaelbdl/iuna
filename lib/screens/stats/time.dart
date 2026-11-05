@@ -160,8 +160,7 @@ class _TimeSpentChart extends StatelessWidget {
     final totalMs = days.fold<int>(0, (s, d) => s + d.totalMs);
     if (totalMs == 0) {
       return const _EmptyHint(
-        text:
-            "Enable response timing on a few reviews and time-spent stats will surface here.",
+        text: 'Time spent fills in as you review.',
       );
     }
     final medians = days

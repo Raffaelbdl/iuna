@@ -13,6 +13,7 @@ import '../services/tts.dart';
 import '../theme/iuna_theme.dart';
 import '../widgets/cta_button.dart';
 import '../widgets/section_header.dart';
+import '../widgets/tappable.dart';
 import 'game_draw.dart';
 import 'game_widgets.dart';
 import 'sentence_feed.dart';
@@ -374,7 +375,7 @@ class _Order extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 13,
                       fontStyle: FontStyle.italic,
-                      color: IunaPalette.inkMute,
+                      color: IunaPalette.ink3,
                     ),
                   ),
                 )
@@ -633,9 +634,21 @@ class _Chip extends StatelessWidget {
         IunaPalette.raritySsrInk,
       ),
     };
-    return GestureDetector(
+    // A mark beside the colour, so right and wrong don't rest on hue.
+    final mark = switch (look) {
+      _ChipLook.right => Icons.check_rounded,
+      _ChipLook.wrong => Icons.close_rounded,
+      _ => null,
+    };
+    return Tappable(
       onTap: onTap,
+      label: switch (look) {
+        _ChipLook.right => 'Right',
+        _ChipLook.wrong => 'Wrong',
+        _ => null,
+      },
       child: Container(
+        constraints: const BoxConstraints(minHeight: 48, minWidth: 48),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
         decoration: BoxDecoration(
           color: fill,
@@ -651,13 +664,22 @@ class _Chip extends StatelessWidget {
                 ]
               : null,
         ),
-        child: Text(
-          text,
-          style: TextStyle(
-            fontSize: 19,
-            fontWeight: FontWeight.w600,
-            color: ink,
-          ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (mark != null) ...[
+              Icon(mark, size: 18, color: ink),
+              const SizedBox(width: 4),
+            ],
+            Text(
+              text,
+              style: TextStyle(
+                fontSize: 19,
+                fontWeight: FontWeight.w600,
+                color: ink,
+              ),
+            ),
+          ],
         ),
       ),
     );

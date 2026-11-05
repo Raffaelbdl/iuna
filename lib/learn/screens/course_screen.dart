@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 
 import '../../theme/iuna_theme.dart';
 import '../../widgets/confirm_dialog.dart';
+import '../../widgets/iuna_page.dart';
 import '../../widgets/section_header.dart';
+import '../../widgets/snack.dart';
 import '../../widgets/text_input_dialog.dart';
 import '../agent/tutor_prompt.dart' show isoDay;
 import '../db/learn_database.dart';
@@ -166,22 +168,19 @@ class _CourseScreenState extends State<CourseScreen> {
     );
   }
 
-  void _lockedSnack() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Locked — pass the current chapter first.')),
-    );
-  }
+  void _lockedSnack() =>
+      showSnack(context, 'Locked — pass the current chapter first.');
 
   @override
   Widget build(BuildContext context) {
     final course = _course;
-    return Scaffold(
-      backgroundColor: IunaPalette.bg,
-      appBar: AppBar(
-        title: Text(course?.title ?? ''),
-        actions: [
-          if (course != null)
-            PopupMenuButton<String>(
+    return IunaPage(
+      title: course?.title ?? '',
+      trailing: course == null
+          ? null
+          : PopupMenuButton<String>(
+              tooltip: 'Course options',
+              icon: const Icon(Icons.more_vert_rounded),
               onSelected: (v) => switch (v) {
                 'notes' => _showNotes(),
                 'rename' => _rename(),
@@ -194,53 +193,48 @@ class _CourseScreenState extends State<CourseScreen> {
                 PopupMenuItem(value: 'delete', child: Text('Delete course')),
               ],
             ),
-        ],
-      ),
-      body: DecoratedBox(
-        decoration: iunaPageBackground(),
-        child: _loading || course == null
-            ? const Center(child: CircularProgressIndicator())
-            : ListView(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-                children: [
-                  _Header(course: course, chapters: _chapters),
-                  const SizedBox(height: 12),
-                  LearnPanel(
-                    onTap: _openRoom,
-                    child: _RowTile(
-                      icon: Icons.forum_rounded,
-                      iconColor: IunaPalette.ctaBottom,
-                      title: 'Course room',
-                      subtitle: _chapters.isEmpty
-                          ? 'Start here: Kuma-sensei checks what you already know, then proposes a plan.'
-                          : 'Re-plan, questions across chapters, homework.',
+      body: _loading || course == null
+          ? const Center(child: CircularProgressIndicator())
+          : ListView(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+              children: [
+                _Header(course: course, chapters: _chapters),
+                const SizedBox(height: 12),
+                LearnPanel(
+                  onTap: _openRoom,
+                  child: _RowTile(
+                    icon: Icons.forum_rounded,
+                    iconColor: IunaPalette.ctaBottom,
+                    title: 'Course room',
+                    subtitle: _chapters.isEmpty
+                        ? 'Start here: Kuma-sensei checks what you already know, then proposes a plan.'
+                        : 'Re-plan, questions across chapters, homework.',
+                  ),
+                ),
+                const IunaSectionHeader(
+                  'Chapters',
+                  padding: EdgeInsets.fromLTRB(4, 18, 0, 8),
+                ),
+                if (_chapters.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(4, 0, 4, 0),
+                    child: Text(
+                      'No chapters yet. They appear here once you agree on a plan in the room.',
+                      style: TextStyle(fontSize: 13, height: 1.4, color: IunaPalette.ink3),
                     ),
                   ),
-                  const IunaSectionHeader(
-                    'Chapters',
-                    padding: EdgeInsets.fromLTRB(4, 18, 0, 8),
+                for (var i = 0; i < _chapters.length; i++) ...[
+                  _ChapterTile(
+                    index: i,
+                    chapter: _chapters[i],
+                    onTap: _chapters[i].status == ChapterStatus.locked
+                        ? _lockedSnack
+                        : () => _open(_chapters[i].key),
                   ),
-                  if (_chapters.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.fromLTRB(4, 0, 4, 0),
-                      child: Text(
-                        'No chapters yet. They appear here once you agree on a plan in the room.',
-                        style: TextStyle(fontSize: 13, height: 1.4, color: IunaPalette.ink3),
-                      ),
-                    ),
-                  for (var i = 0; i < _chapters.length; i++) ...[
-                    _ChapterTile(
-                      index: i,
-                      chapter: _chapters[i],
-                      onTap: _chapters[i].status == ChapterStatus.locked
-                          ? _lockedSnack
-                          : () => _open(_chapters[i].key),
-                    ),
-                    const SizedBox(height: 8),
-                  ],
+                  const SizedBox(height: 8),
                 ],
-              ),
-      ),
+              ],
+            ),
     );
   }
 }

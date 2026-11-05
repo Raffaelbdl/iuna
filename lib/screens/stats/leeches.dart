@@ -75,7 +75,7 @@ class _LeechRow extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 11,
+                    fontSize: 12,
                     fontWeight: FontWeight.w500,
                     color: IunaPalette.ink3,
                     height: 1.2,
@@ -103,12 +103,12 @@ class _LeechRow extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           SizedBox(
-            width: 56,
+            width: 72,
             child: Text(
               '${entry.failCount}× wrong',
               textAlign: TextAlign.right,
               style: const TextStyle(
-                fontSize: 11,
+                fontSize: 12,
                 fontWeight: FontWeight.w700,
                 color: _SP.pinkDeep,
               ),

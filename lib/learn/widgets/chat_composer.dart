@@ -139,7 +139,7 @@ class _ChatComposerState extends State<ChatComposer> with SingleTickerProviderSt
       await recorder.start();
     } catch (e) {
       _hold = _Hold.idle;
-      if (mounted) showSnack(context, 'The microphone would not start: $e');
+      if (mounted) showErrorSnack(context, "The microphone didn't start. Try again.", e);
       return;
     }
     if (_hold != _Hold.starting || !mounted) {
@@ -270,7 +270,7 @@ class _ChatComposerState extends State<ChatComposer> with SingleTickerProviderSt
       final photo = await widget.picker!.pick(source);
       if (photo != null) widget.onPhoto!(photo);
     } catch (e) {
-      if (mounted) showSnack(context, 'That photo could not be attached: $e');
+      if (mounted) showErrorSnack(context, "That photo couldn't be attached.", e);
     }
   }
 
@@ -281,7 +281,7 @@ class _ChatComposerState extends State<ChatComposer> with SingleTickerProviderSt
     final bar = Container(
       padding: const EdgeInsets.fromLTRB(16, 2, 4, 2),
       decoration: BoxDecoration(
-        color: const Color(0xE6FFFDF6),
+        color: IunaPalette.paper,
         borderRadius: BorderRadius.circular(IunaRadii.xl),
         border: Border.all(color: const Color.fromRGBO(74, 53, 32, 0.08), width: 0.5),
         boxShadow: panelShadow(),
@@ -315,7 +315,7 @@ class _ChatComposerState extends State<ChatComposer> with SingleTickerProviderSt
                         style: const TextStyle(fontSize: 14, color: IunaPalette.ink),
                         decoration: InputDecoration(
                           hintText: _nudge ?? widget.hint,
-                          hintStyle: const TextStyle(color: IunaPalette.inkMute),
+                          hintStyle: const TextStyle(color: IunaPalette.ink3),
                           border: InputBorder.none,
                           isDense: true,
                           contentPadding: const EdgeInsets.symmetric(vertical: 12),
@@ -340,12 +340,13 @@ class _ChatComposerState extends State<ChatComposer> with SingleTickerProviderSt
               // belongs with the mic, not with the field.
               if (_canAttach && !recording && widget.photo == null)
                 SizedBox(
-                  width: 34,
+                  width: 48,
                   height: 48,
                   child: IconButton(
                     tooltip: 'Attach a photo',
                     onPressed: widget.enabled && !widget.busy ? _attach : null,
                     padding: EdgeInsets.zero,
+                    alignment: Alignment.centerRight,
                     icon: Icon(
                       Icons.add_photo_alternate_outlined,
                       size: 24,
@@ -575,7 +576,7 @@ class _RecordingBarState extends State<_RecordingBar> with SingleTickerProviderS
           ),
         ] else if (!armed) ...[
           const SizedBox(width: 8),
-          const Text('‹ Slide to cancel', style: TextStyle(fontSize: 11, color: IunaPalette.ink3)),
+          const Text('‹ Slide to cancel', style: TextStyle(fontSize: 12, color: IunaPalette.ink3)),
         ],
       ],
     );

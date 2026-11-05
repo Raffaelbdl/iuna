@@ -48,7 +48,7 @@ class _NewCourseSheetState extends State<_NewCourseSheet> {
   InputDecoration _field(String label, String hint) => InputDecoration(
         labelText: label,
         hintText: hint,
-        hintStyle: const TextStyle(color: IunaPalette.inkMute),
+        hintStyle: const TextStyle(color: IunaPalette.ink3),
         filled: true,
         fillColor: IunaPalette.paper2,
         border: OutlineInputBorder(

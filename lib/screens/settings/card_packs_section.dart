@@ -72,7 +72,15 @@ class _CardPacksSectionState extends State<CardPacksSection> {
       widget.onInstalled();
       if (mounted) showSnack(context, '$label installed.');
     } else {
-      showSnack(context, 'Pack failed: $error');
+      final listing = _catalogue.where((l) => l.name == name).firstOrNull;
+      showErrorSnack(
+        context,
+        "$label didn't install. Check your connection.",
+        error,
+        action: listing == null
+            ? null
+            : SnackBarAction(label: 'Retry', onPressed: () => _install(listing)),
+      );
     }
   }
 
@@ -97,7 +105,7 @@ class _CardPacksSectionState extends State<CardPacksSection> {
       listing.sourceAuthor,
       listing.license,
     );
-    const creditStyle = TextStyle(fontSize: 11, color: IunaPalette.inkMute);
+    const creditStyle = TextStyle(fontSize: 12, color: IunaPalette.ink3);
 
     return ListTile(
       leading: const Icon(icon, color: IunaPalette.pawBrown),
@@ -134,18 +142,19 @@ class _CardPacksSectionState extends State<CardPacksSection> {
     if (_catalogue.isEmpty && _installed.isEmpty) {
       return const SizedBox.shrink();
     }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const SizedBox(height: 16),
-        const IunaSectionHeader('Card packs'),
-        for (final listing in _catalogue) _tile(listing),
-        // A pack installed from a catalogue entry that has since been
-        // withdrawn still deserves its credit line.
-        for (final pack in _installed)
-          if (!_catalogue.any((l) => l.name == pack.name))
-            _InstalledPackTile(pack: pack),
-      ],
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: IunaGroup(
+        'Card packs',
+        children: [
+          for (final listing in _catalogue) _tile(listing),
+          // A pack installed from a catalogue entry that has since been
+          // withdrawn still deserves its credit line.
+          for (final pack in _installed)
+            if (!_catalogue.any((l) => l.name == pack.name))
+              _InstalledPackTile(pack: pack),
+        ],
+      ),
     );
   }
 }

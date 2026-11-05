@@ -264,7 +264,7 @@ class _DeckActionState extends State<_DeckAction> {
           FilledButton.tonalIcon(
             onPressed: _busy ? null : _bookmark,
             icon: const Icon(Icons.bookmark_add_outlined, size: 18),
-            label: const Text('Bookmark'),
+            label: const Text('Add to wishlist'),
           ),
         ],
       ],

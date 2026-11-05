@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../theme/iuna_theme.dart';
+
 /// One dot per card, the active one stretched into a honey pill. Falls
 /// back to a continuous bar once the row would overflow.
 class ProgressDots extends StatelessWidget {
@@ -20,7 +22,7 @@ class ProgressDots extends StatelessWidget {
   static const _gradient = LinearGradient(
     begin: Alignment.centerLeft,
     end: Alignment.centerRight,
-    colors: [Color(0xFFE8B96B), Color(0xFFD99550)],
+    colors: [IunaPalette.bellGold, IunaPalette.ctaBottom],
   );
   static const _doneColor = Color(0xE6B8D8C9);
   static const _trackColor = Color.fromRGBO(74, 53, 32, 0.18);

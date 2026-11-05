@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import '../db/database.dart';
 import '../db/repository.dart';
 import '../theme/iuna_theme.dart';
+import '../widgets/iuna_page.dart';
+import '../widgets/tappable.dart';
 
 part 'stats/common.dart';
 part 'stats/headline.dart';
@@ -15,18 +17,27 @@ part 'stats/schedule.dart';
 part 'stats/time.dart';
 part 'stats/leeches.dart';
 
-/// Comprehensive stats screen — headline numbers, activity, retention,
-/// accuracy by rarity / JLPT / kind, maturity, hour-of-day, time spent,
-/// forecast, streak, and leeches. Each chart owns its own window (e.g.
-/// the retention card has an inline 30/90/all switcher); there is no
-/// global window filter.
+/// Stats: headline numbers, then the everyday panels (activity, streak,
+/// forecast, leeches, JLPT and pack progress), then the analytical
+/// charts folded under "More stats" (heatmap, retention, accuracy by
+/// stage and rarity, maturity, hour of day, time spent). Each chart
+/// owns its own window (the retention card has an inline 30/90/all
+/// switcher); there is no global window filter.
 class StatsScreen extends StatefulWidget {
-  const StatsScreen({super.key, required this.db, this.now});
+  const StatsScreen({
+    super.key,
+    required this.db,
+    this.now,
+    this.detailsOpen = false,
+  });
 
   final AppDatabase db;
 
   /// Pins "today" for every date-windowed query; goldens need it.
   final DateTime? now;
+
+  /// Opens with the "More stats" charts unfolded.
+  final bool detailsOpen;
 
   @override
   State<StatsScreen> createState() => _StatsScreenState();
@@ -46,6 +57,7 @@ class _StatsScreenState extends State<StatsScreen> {
   late final IunaRepository _repo = IunaRepository(widget.db);
 
   bool _loading = true;
+  late bool _detailsOpen = widget.detailsOpen;
   _RetWindow _retWindow = _RetWindow.d90;
 
   ({int reviews, int learned}) _totals = (reviews: 0, learned: 0);
@@ -148,131 +160,178 @@ class _StatsScreenState extends State<StatsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: IunaPalette.bg,
-      appBar: AppBar(title: const Text('Stats')),
+    return IunaPage(
+      title: 'Stats',
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : DecoratedBox(
-              decoration: iunaPageBackground(),
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-                children: [
-                  _Headline(
-                    reviews: _totals.reviews,
-                    trueRetention: _trueRet,
-                    learned: _totals.learned,
-                  ),
+          : ListView(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+              children: [
+                _Headline(
+                  reviews: _totals.reviews,
+                  trueRetention: _trueRet,
+                  learned: _totals.learned,
+                ),
+                const SizedBox(height: 14),
+                _StatCard(
+                  title: 'Activity',
+                  subtitle:
+                      'Reviews per day · right and wrong over the last 30 days.',
+                  child: _ActivityChart(days: _activity30),
+                ),
+                const SizedBox(height: 14),
+                _StatCard(
+                  title: 'Streak',
+                  subtitle: "Days in a row you've reviewed at least one card.",
+                  child: _StreakStrip(stats: _streak),
+                ),
+                const SizedBox(height: 14),
+                _StatCard(
+                  title: 'Next 14 days',
+                  subtitle: 'How many reviews are coming up each day.',
+                  child: _ForecastChart(days: _forecast),
+                ),
+                const SizedBox(height: 14),
+                _StatCard(
+                  title: 'Leeches',
+                  subtitle: _leeches.isEmpty
+                      ? "No stubborn cards yet — they'll show up here once you miss the same word a few times."
+                      : 'Cards you keep missing. Worth a closer look.',
+                  child: _LeechList(entries: _leeches),
+                ),
+                const SizedBox(height: 14),
+                _StatCard(
+                  title: 'JLPT progress',
+                  subtitle: 'Cards collected per level. 完 = complete.',
+                  child: _JlptProgress(byLevel: _byJlpt),
+                ),
+                if (_byPack.isNotEmpty) ...[
                   const SizedBox(height: 14),
                   _StatCard(
-                    title: 'Activity',
-                    subtitle:
-                        'Reviews per day · correct vs wrong over the last 30 days.',
-                    child: _ActivityChart(days: _activity30),
-                  ),
-                  const SizedBox(height: 14),
-                  _StatCard(
-                    title: 'Year heatmap',
-                    subtitle:
-                        'Every square is a day. Darker = more reviews. Quiet stretches show as light squares.',
-                    child: _YearHeatmap(days: _heatmap),
-                  ),
-                  const SizedBox(height: 14),
-                  _StatCard(
-                    title: 'Streak',
-                    subtitle:
-                        "Days in a row you've reviewed at least one card.",
-                    child: _StreakStrip(stats: _streak),
-                  ),
-                  const SizedBox(height: 14),
-                  _StatCard(
-                    title: 'Retention curve',
-                    subtitle:
-                        'Accuracy at each interval. Points below the dashed line are leaking — interval is too long.',
-                    trailing: _ChipRow<_RetWindow>(
-                      compact: true,
-                      value: _retWindow,
-                      options: const [
-                        _RetWindow.d30,
-                        _RetWindow.d90,
-                        _RetWindow.all,
-                      ],
-                      labels: const {
-                        _RetWindow.d30: '30d',
-                        _RetWindow.d90: '90d',
-                        _RetWindow.all: 'all',
-                      },
-                      onChange: _setRetentionWindow,
-                    ),
-                    child: _RetentionChart(bins: _retention),
-                  ),
-                  const SizedBox(height: 14),
-                  _StatCard(
-                    title: 'Pass rate by review kind',
-                    subtitle:
-                        'True retention only counts review-type answers. Learn and relearn are noisier.',
-                    child: _KindBreakdownDonut(byKind: _byKind),
-                  ),
-                  const SizedBox(height: 14),
-                  _StatCard(
-                    title: 'Accuracy by rarity',
-                    subtitle:
-                        'How well you remember each tier. Dotted mark = 90% target.',
-                    child: _AccuracyByRarity(byRarity: _byRarity),
-                  ),
-                  const SizedBox(height: 14),
-                  _StatCard(
-                    title: 'JLPT progress',
-                    subtitle: 'Cards owned per level. 完 = complete.',
-                    child: _JlptProgress(byLevel: _byJlpt),
-                  ),
-                  if (_byPack.isNotEmpty) ...[
-                    const SizedBox(height: 14),
-                    _StatCard(
-                      title: 'Themed packs',
-                      subtitle: 'Cards owned per pack. 完 = complete.',
-                      child: _PackProgress(byPack: _byPack),
-                    ),
-                  ],
-                  const SizedBox(height: 14),
-                  _StatCard(
-                    title: 'Maturity',
-                    subtitle:
-                        'Where every card sits on the forgetting curve right now.',
-                    child: _MaturityChart(bins: _maturity),
-                  ),
-                  const SizedBox(height: 14),
-                  _StatCard(
-                    title: 'When you study',
-                    subtitle:
-                        'Reviews by hour of day, all-time. The dial points to your peak.',
-                    child: _HourClock(hours: _hoursOfDay),
-                  ),
-                  const SizedBox(height: 14),
-                  _StatCard(
-                    title: 'Time spent',
-                    subtitle:
-                        'Minutes per day (bars) and median answer time (line).',
-                    child: _TimeSpentChart(days: _timeSpent),
-                  ),
-                  const SizedBox(height: 14),
-                  _StatCard(
-                    title: 'Next 14 days',
-                    subtitle:
-                        'Forecast review load — what your future self has signed up for.',
-                    child: _ForecastChart(days: _forecast),
-                  ),
-                  const SizedBox(height: 14),
-                  _StatCard(
-                    title: 'Leeches',
-                    subtitle: _leeches.isEmpty
-                        ? "No stubborn cards yet — they'll show up here once you miss the same word a few times."
-                        : 'Cards you keep failing. Worth a manual cooldown.',
-                    child: _LeechList(entries: _leeches),
+                    title: 'Themed packs',
+                    subtitle: 'Cards collected per pack. 完 = complete.',
+                    child: _PackProgress(byPack: _byPack),
                   ),
                 ],
+                const SizedBox(height: 8),
+                _MoreToggle(
+                  open: _detailsOpen,
+                  onTap: () => setState(() => _detailsOpen = !_detailsOpen),
+                ),
+                if (_detailsOpen) ..._details(),
+              ],
+            ),
+    );
+  }
+
+  /// The analytical charts, folded away under "More stats".
+  List<Widget> _details() => [
+    const SizedBox(height: 6),
+    _StatCard(
+      title: 'Year heatmap',
+      subtitle:
+          'Every square is a day. Darker = more reviews. Quiet stretches show as light squares.',
+      child: _YearHeatmap(days: _heatmap),
+    ),
+    const SizedBox(height: 14),
+    _StatCard(
+      title: 'Retention curve',
+      subtitle:
+          'How often you remember a card after each gap between reviews. '
+          'Below the dashed line, that gap is too long for you.',
+      trailing: _ChipRow<_RetWindow>(
+        compact: true,
+        value: _retWindow,
+        options: const [_RetWindow.d30, _RetWindow.d90, _RetWindow.all],
+        labels: const {
+          _RetWindow.d30: '30d',
+          _RetWindow.d90: '90d',
+          _RetWindow.all: 'all',
+        },
+        onChange: _setRetentionWindow,
+      ),
+      child: _RetentionChart(bins: _retention),
+    ),
+    const SizedBox(height: 14),
+    _StatCard(
+      title: 'Pass rate by card stage',
+      subtitle:
+          'Known cards show how well you remember. New and relearning cards '
+          'are still settling, so they swing more.',
+      child: _KindBreakdownDonut(byKind: _byKind),
+    ),
+    const SizedBox(height: 14),
+    _StatCard(
+      title: 'Accuracy by rarity',
+      subtitle: 'How well you remember each tier. Dotted mark = 90% goal.',
+      child: _AccuracyByRarity(byRarity: _byRarity),
+    ),
+    const SizedBox(height: 14),
+    _StatCard(
+      title: 'Maturity',
+      subtitle: 'How settled each card is, from new to well known.',
+      child: _MaturityChart(bins: _maturity),
+    ),
+    const SizedBox(height: 14),
+    _StatCard(
+      title: 'When you study',
+      subtitle:
+          'Reviews by hour of day, all-time. The dial points to your peak.',
+      child: _HourClock(hours: _hoursOfDay),
+    ),
+    const SizedBox(height: 14),
+    _StatCard(
+      title: 'Time spent',
+      subtitle: 'Minutes per day (bars) and median answer time (line).',
+      child: _TimeSpentChart(days: _timeSpent),
+    ),
+  ];
+}
+
+/// The fold between the everyday panels and the detailed charts.
+class _MoreToggle extends StatelessWidget {
+  const _MoreToggle({required this.open, required this.onTap});
+
+  final bool open;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tappable(
+      onTap: onTap,
+      selected: open,
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 48),
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: Row(
+          children: [
+            Text(
+              open ? 'Fewer stats' : 'More stats',
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: IunaPalette.ink2,
               ),
             ),
+            const SizedBox(width: 4),
+            Icon(
+              open ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+              color: IunaPalette.ink2,
+            ),
+            const SizedBox(width: 12),
+            if (!open)
+              const Expanded(
+                child: Text(
+                  'Retention, accuracy, timing…',
+                  textAlign: TextAlign.right,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12, color: IunaPalette.ink3),
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }

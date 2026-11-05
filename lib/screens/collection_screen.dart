@@ -10,15 +10,23 @@ import '../widgets/hex_bg.dart';
 import '../widgets/iuna_bottom_nav.dart';
 import '../widgets/iuna_icon_button.dart';
 import '../widgets/search_field.dart';
+import '../widgets/tappable.dart';
 import '../widgets/vocab_card.dart';
 import 'add_card_screen.dart';
 import 'app_nav.dart';
 import 'card_detail_screen.dart';
 
 class CollectionScreen extends StatefulWidget {
-  const CollectionScreen({super.key, required this.db});
+  const CollectionScreen({
+    super.key,
+    required this.db,
+    this.initialWishedOnly = false,
+  });
 
   final AppDatabase db;
+
+  /// Opens on the Wishlist filter (from Home's wishlist row).
+  final bool initialWishedOnly;
 
   @override
   State<CollectionScreen> createState() => _CollectionScreenState();
@@ -31,7 +39,7 @@ class _CollectionScreenState extends State<CollectionScreen> {
   Set<Rarity> _selected = const {};
   String _query = '';
   bool _showMissing = false;
-  bool _wishedOnly = false;
+  late bool _wishedOnly = widget.initialWishedOnly;
   bool _suspendedOnly = false;
 
   bool _loading = true;
@@ -152,20 +160,17 @@ class _CollectionScreenState extends State<CollectionScreen> {
   Future<void> _openDetail(int cardId) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => CardDetailScreen(db: widget.db, cardId: cardId),
+        builder: (_) => CardDetailScreen(
+          db: widget.db,
+          cardId: cardId,
+          from: IunaNavTab.collection,
+        ),
       ),
     );
     if (!mounted) return;
     await _refresh();
   }
 
-  /// Today-tab from the bottom nav. Routes in priority order:
-  /// 1. `PackIntroScreen` if any packs remain unclaimed,
-  /// 2. `ReviewScreen` if any cards are due,
-  /// 3. `ReviewDoneScreen` (no-session mode) if today already has
-  ///    reviews logged — gives split-session users a way to revisit
-  ///    today's stats,
-  /// 4. snackbar otherwise.
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -208,7 +213,6 @@ class _CollectionScreenState extends State<CollectionScreen> {
     return Column(
       children: [
         _TopBar(
-          onBack: () => Navigator.of(context).maybePop(),
           onShuffle: _shuffle,
           onAdd: _dictInstalled ? _openAddCard : null,
         ),
@@ -217,7 +221,7 @@ class _CollectionScreenState extends State<CollectionScreen> {
           hint: 'Search kanji, kana or meaning…',
           onChanged: _onQueryChanged,
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 2),
         _RarityFilters(
           selected: _selected,
           onToggle: _toggleRarity,
@@ -225,19 +229,21 @@ class _CollectionScreenState extends State<CollectionScreen> {
           wishedOnly: _wishedOnly,
           wishCount: _wishCount,
           onToggleWishedOnly: _toggleWishedOnly,
-          showMissing: _showMissing,
-          onToggleShowMissing: _toggleShowMissing,
           suspendedOnly: _suspendedOnly,
           onToggleSuspendedOnly: _toggleSuspendedOnly,
         ),
-        const SizedBox(height: 6),
-        _ProgressStrip(stats: stats),
+        _ProgressStrip(
+          stats: stats,
+          showMissing: _showMissing,
+          onToggleShowMissing: _toggleShowMissing,
+        ),
         Expanded(
           child: _entries.isEmpty
               ? _EmptyState(
-                  hasFilter:
-                      _selected.isNotEmpty || _query.isNotEmpty || _wishedOnly,
+                  narrowed: _selected.isNotEmpty || _query.isNotEmpty,
                   wishedOnly: _wishedOnly,
+                  suspendedOnly: _suspendedOnly,
+                  showMissing: _showMissing,
                 )
               : GridView.builder(
                   padding: const EdgeInsets.fromLTRB(16, 4, 16, 110),
@@ -262,35 +268,40 @@ class _CollectionScreenState extends State<CollectionScreen> {
   }
 }
 
+/// A tab root, so no back button: the system Back still pops it.
 class _TopBar extends StatelessWidget {
-  const _TopBar({required this.onBack, required this.onShuffle, this.onAdd});
-  final VoidCallback onBack;
+  const _TopBar({required this.onShuffle, this.onAdd});
   final VoidCallback onShuffle;
   final VoidCallback? onAdd;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      padding: const EdgeInsets.fromLTRB(18, 6, 10, 2),
       child: Row(
         children: [
-          IunaIconButton(icon: Icons.chevron_left_rounded, onTap: onBack),
-          const Spacer(),
-          const Text(
-            'Collection',
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-              color: IunaPalette.ink2,
-              letterSpacing: 0.6,
+          const Expanded(
+            child: Text(
+              'Collection',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: IunaPalette.ink,
+                letterSpacing: -0.2,
+              ),
             ),
           ),
-          const Spacer(),
-          if (onAdd != null) ...[
-            IunaIconButton(icon: Icons.add_rounded, onTap: onAdd!),
-            const SizedBox(width: 4),
-          ],
-          IunaIconButton(icon: Icons.shuffle_rounded, onTap: onShuffle),
+          if (onAdd != null)
+            IunaIconButton(
+              icon: Icons.add_rounded,
+              tooltip: 'Add to wishlist',
+              onTap: onAdd!,
+            ),
+          IunaIconButton(
+            icon: Icons.shuffle_rounded,
+            tooltip: 'Shuffle',
+            onTap: onShuffle,
+          ),
         ],
       ),
     );
@@ -305,8 +316,6 @@ class _RarityFilters extends StatelessWidget {
     required this.wishedOnly,
     required this.wishCount,
     required this.onToggleWishedOnly,
-    required this.showMissing,
-    required this.onToggleShowMissing,
     required this.suspendedOnly,
     required this.onToggleSuspendedOnly,
   });
@@ -317,48 +326,46 @@ class _RarityFilters extends StatelessWidget {
   final bool wishedOnly;
   final int wishCount;
   final VoidCallback onToggleWishedOnly;
-  final bool showMissing;
-  final VoidCallback onToggleShowMissing;
   final bool suspendedOnly;
   final VoidCallback onToggleSuspendedOnly;
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
+    // Rows that wrap, so no filter hides off-screen: rarity, then
+    // which cards. "Show missing" sits with the collected count.
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _Chip(label: 'All', active: selected.isEmpty, onTap: onClear),
-          const SizedBox(width: 6),
-          for (final r in Rarity.values) ...[
-            _Chip(
-              label: rarityCode(r),
-              rarity: r,
-              active: selected.contains(r),
-              onTap: () => onToggle(r),
-            ),
-            const SizedBox(width: 6),
-          ],
-          _Chip(
-            label: wishCount > 0 ? 'Wishlist · $wishCount' : 'Wishlist',
-            icon: Icons.bookmark_rounded,
-            active: wishedOnly,
-            onTap: onToggleWishedOnly,
+          Wrap(
+            children: [
+              _Chip(label: 'All', active: selected.isEmpty, onTap: onClear),
+              for (final r in Rarity.values)
+                _Chip(
+                  label: rarityCode(r),
+                  semanticLabel: rarityName(r),
+                  rarity: r,
+                  active: selected.contains(r),
+                  onTap: () => onToggle(r),
+                ),
+            ],
           ),
-          const SizedBox(width: 6),
-          _Chip(
-            label: 'Suspended',
-            icon: Icons.pause_circle_outline_rounded,
-            active: suspendedOnly,
-            onTap: onToggleSuspendedOnly,
-          ),
-          const SizedBox(width: 6),
-          _Chip(
-            label: 'Show missing',
-            icon: Icons.help_outline_rounded,
-            active: showMissing,
-            onTap: onToggleShowMissing,
+          Wrap(
+            children: [
+              _Chip(
+                label: wishCount > 0 ? 'Wishlist · $wishCount' : 'Wishlist',
+                icon: Icons.bookmark_rounded,
+                active: wishedOnly,
+                onTap: onToggleWishedOnly,
+              ),
+              _Chip(
+                label: 'Suspended',
+                icon: Icons.pause_circle_outline_rounded,
+                active: suspendedOnly,
+                onTap: onToggleSuspendedOnly,
+              ),
+            ],
           ),
         ],
       ),
@@ -366,6 +373,8 @@ class _RarityFilters extends StatelessWidget {
   }
 }
 
+/// A filter toggle: a 34 px pill on a 48 px tap target. Active chips
+/// carry a check so the state doesn't rest on colour alone.
 class _Chip extends StatelessWidget {
   const _Chip({
     required this.label,
@@ -373,12 +382,14 @@ class _Chip extends StatelessWidget {
     required this.onTap,
     this.icon,
     this.rarity,
+    this.semanticLabel,
   });
   final String label;
   final bool active;
   final VoidCallback onTap;
   final IconData? icon;
   final Rarity? rarity;
+  final String? semanticLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -387,7 +398,7 @@ class _Chip extends StatelessWidget {
     Color border = const Color.fromRGBO(74, 53, 32, 0.06);
     if (active) {
       bg = const Color(0xFFF0B66C);
-      fg = const Color(0xFF3A2510);
+      fg = IunaPalette.heroInk;
       border = const Color.fromRGBO(120, 70, 20, 0.15);
     } else if (rarity != null) {
       bg = rarityFill(rarity!);
@@ -396,39 +407,46 @@ class _Chip extends StatelessWidget {
       bg = const Color(0x0F4A3520);
       fg = IunaPalette.ink2;
     }
-    return GestureDetector(
+    final glyph = active ? Icons.check_rounded : icon;
+    return Tappable(
       onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          gradient: active
-              ? const LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Color(0xFFFFD994), Color(0xFFF0B66C)],
-                )
-              : null,
-          color: active ? null : bg,
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: border, width: 0.5),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (icon != null) ...[
-              Icon(icon, size: 12, color: fg),
-              const SizedBox(width: 4),
-            ],
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: fg,
+      selected: active,
+      label: semanticLabel,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 7),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          constraints: const BoxConstraints(minHeight: 34, minWidth: 40),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          decoration: BoxDecoration(
+            gradient: active
+                ? const LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [IunaPalette.heroTop, Color(0xFFF0B66C)],
+                  )
+                : null,
+            color: active ? null : bg,
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: border, width: 0.5),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (glyph != null) ...[
+                Icon(glyph, size: 14, color: fg),
+                const SizedBox(width: 4),
+              ],
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: fg,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -436,8 +454,14 @@ class _Chip extends StatelessWidget {
 }
 
 class _ProgressStrip extends StatelessWidget {
-  const _ProgressStrip({required this.stats});
+  const _ProgressStrip({
+    required this.stats,
+    required this.showMissing,
+    required this.onToggleShowMissing,
+  });
   final CollectionStats stats;
+  final bool showMissing;
+  final VoidCallback onToggleShowMissing;
 
   @override
   Widget build(BuildContext context) {
@@ -445,7 +469,7 @@ class _ProgressStrip extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
       child: Container(
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        padding: const EdgeInsets.fromLTRB(14, 4, 8, 12),
         decoration: paperPanelDecoration(
           borderRadius: BorderRadius.circular(IunaRadii.md),
         ),
@@ -453,45 +477,58 @@ class _ProgressStrip extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
-              crossAxisAlignment: CrossAxisAlignment.baseline,
-              textBaseline: TextBaseline.alphabetic,
               children: [
-                Text(
-                  '${_format(stats.owned)} / ${_format(stats.total)} collected',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: IunaPalette.ink,
+                Expanded(
+                  child: Text.rich(
+                    TextSpan(
+                      text:
+                          '${_format(stats.owned)} / ${_format(stats.total)} '
+                          'collected',
+                      children: [
+                        TextSpan(
+                          text: ' · ${(pct * 100).toStringAsFixed(1)}%',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w500,
+                            color: IunaPalette.ink3,
+                            fontFeatures: [FontFeature.tabularFigures()],
+                          ),
+                        ),
+                      ],
+                    ),
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: IunaPalette.ink,
+                    ),
                   ),
                 ),
-                const Spacer(),
-                Text(
-                  '${(pct * 100).toStringAsFixed(2)}%',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: IunaPalette.ink3,
-                    fontFamily: 'monospace',
-                    fontFeatures: [FontFeature.tabularFigures()],
-                  ),
+                _Chip(
+                  label: 'Show missing',
+                  icon: Icons.help_outline_rounded,
+                  active: showMissing,
+                  onTap: onToggleShowMissing,
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 2),
             ClipRRect(
               borderRadius: BorderRadius.circular(999),
               child: SizedBox(
                 height: 8,
                 child: Row(
                   children: [
+                    // A tier with no cards gets no segment: a zero flex
+                    // would leave it unbounded.
                     for (final r in Rarity.values)
-                      Expanded(
-                        flex: stats.totalByRarity[r] ?? 1,
-                        child: _RaritySegment(
-                          owned: stats.ownedByRarity[r] ?? 0,
-                          total: stats.totalByRarity[r] ?? 0,
-                          color: rarityColor(r),
+                      if ((stats.totalByRarity[r] ?? 0) > 0)
+                        Expanded(
+                          flex: stats.totalByRarity[r]!,
+                          child: _RaritySegment(
+                            owned: stats.ownedByRarity[r] ?? 0,
+                            total: stats.totalByRarity[r] ?? 0,
+                            color: rarityColor(r),
+                          ),
                         ),
-                      ),
                   ],
                 ),
               ),
@@ -577,7 +614,7 @@ class _LegendChip extends StatelessWidget {
         Text(
           rarityCode(rarity),
           style: const TextStyle(
-            fontSize: 10,
+            fontSize: 12,
             fontWeight: FontWeight.w800,
             color: IunaPalette.ink2,
           ),
@@ -586,7 +623,7 @@ class _LegendChip extends StatelessWidget {
         Text(
           '$owned/$total',
           style: const TextStyle(
-            fontSize: 10,
+            fontSize: 12,
             color: IunaPalette.ink3,
             fontFeatures: [FontFeature.tabularFigures()],
           ),
@@ -607,7 +644,8 @@ class _HexTile extends StatelessWidget {
     final card = entry.card;
     final owned = entry.isOwned;
     final tint = rarityFill(card.rarity);
-    return GestureDetector(
+    final suspended = owned && entry.userCard?.suspended == true;
+    return Tappable(
       onTap: onTap,
       child: Container(
         decoration: BoxDecoration(
@@ -680,9 +718,9 @@ class _HexTile extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 10,
+                        fontSize: 12,
                         fontWeight: FontWeight.w500,
-                        color: IunaPalette.ink3,
+                        color: IunaPalette.ink2,
                         height: 1.3,
                       ),
                     ),
@@ -722,13 +760,7 @@ class _HexTile extends StatelessWidget {
                   size: RarityChipSize.tiny,
                 ),
               ),
-              if (owned && (entry.userCard?.level ?? 0) > 0)
-                Positioned(
-                  top: 8,
-                  right: 8,
-                  child: _LevelPill(level: entry.userCard!.level),
-                ),
-              if (owned && entry.userCard?.suspended == true) ...[
+              if (suspended)
                 // Whole-tile wash so a suspended card reads as inactive
                 // at a glance, without hiding the kanji the way the
                 // "missing" overlay does.
@@ -737,8 +769,14 @@ class _HexTile extends StatelessWidget {
                     child: Container(color: const Color(0x66FFFDF6)),
                   ),
                 ),
-                Positioned(bottom: 12, left: 10, child: _SuspendedBadge()),
-              ],
+              if (suspended)
+                const Positioned(top: 8, right: 8, child: _SuspendedBadge())
+              else if (owned && (entry.userCard?.level ?? 0) > 0)
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: _LevelPill(level: entry.userCard!.level),
+                ),
             ],
           ),
         ),
@@ -748,23 +786,25 @@ class _HexTile extends StatelessWidget {
 }
 
 class _SuspendedBadge extends StatelessWidget {
+  const _SuspendedBadge();
+
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
       decoration: BoxDecoration(
-        color: const Color.fromRGBO(74, 53, 32, 0.7),
+        color: const Color.fromRGBO(74, 53, 32, 0.85),
         borderRadius: BorderRadius.circular(999),
       ),
       child: const Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.pause_rounded, size: 10, color: Color(0xFFFFE9A8)),
+          Icon(Icons.pause_rounded, size: 12, color: Color(0xFFFFE9A8)),
           SizedBox(width: 3),
           Text(
             'Suspended',
             style: TextStyle(
-              fontSize: 9,
+              fontSize: 12,
               fontWeight: FontWeight.w700,
               color: Color(0xFFFFE9A8),
               letterSpacing: 0.3,
@@ -793,7 +833,7 @@ class _LevelPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: const Color.fromRGBO(74, 53, 32, 0.85),
         borderRadius: BorderRadius.circular(999),
@@ -801,7 +841,7 @@ class _LevelPill extends StatelessWidget {
       child: Text(
         'Lv $level',
         style: const TextStyle(
-          fontSize: 10,
+          fontSize: 12,
           fontWeight: FontWeight.w700,
           color: Color(0xFFFFE9A8),
           letterSpacing: 0.4,
@@ -812,20 +852,35 @@ class _LevelPill extends StatelessWidget {
 }
 
 class _EmptyState extends StatelessWidget {
-  const _EmptyState({required this.hasFilter, this.wishedOnly = false});
-  final bool hasFilter;
+  const _EmptyState({
+    required this.narrowed,
+    required this.wishedOnly,
+    required this.suspendedOnly,
+    required this.showMissing,
+  });
+
+  /// A search or a rarity filter is on.
+  final bool narrowed;
   final bool wishedOnly;
+  final bool suspendedOnly;
+  final bool showMissing;
 
   @override
   Widget build(BuildContext context) {
     final String message;
     final IconData icon;
-    if (wishedOnly) {
+    if (narrowed) {
+      icon = Icons.search_off_rounded;
+      message = 'No matching cards.';
+    } else if (wishedOnly) {
       icon = Icons.bookmark_outline_rounded;
       message =
-          'Your wishlist is empty — bookmark a card from its detail '
-          'screen to bias future packs toward it.';
-    } else if (hasFilter) {
+          'Your wishlist is empty. Tap the bookmark on a card to add '
+          'it — it shows up in a pack soon.';
+    } else if (suspendedOnly) {
+      icon = Icons.pause_circle_outline_rounded;
+      message = 'No suspended cards.';
+    } else if (showMissing) {
       icon = Icons.search_off_rounded;
       message = 'No matching cards.';
     } else {

@@ -12,11 +12,15 @@ import '../widgets/cta_button.dart';
 import '../widgets/hex_bg.dart';
 import '../widgets/iuna_icon_button.dart';
 import '../widgets/progress_dots.dart';
+import '../widgets/snack.dart';
+import '../widgets/tappable.dart';
 import '../widgets/vocab_card.dart';
 
 /// One-by-one card reveal after the pack-intro splash. Tap or press
 /// "Next card" to advance; the final card pops the screen with the
-/// picked ids so the caller can route into the review flow. When the
+/// picked ids so the caller can route into the review flow. The cards
+/// are already in the collection, so leaving early (the skip button or
+/// system Back) takes the same route. When the
 /// user has more than one daily pack remaining, all of them are claimed
 /// upfront and revealed in one chained sequence — a short pack-tear
 /// animation plays between packs so the boundary stays felt.
@@ -180,7 +184,8 @@ class _BoosterRevealScreenState extends State<BoosterRevealScreen>
   /// being stuck on a blank.
   Future<void> _suspendCurrent() async {
     if (_loading || _tearing || _finalizing || _swapping) return;
-    final card = _cards[_index];
+    final slot = _index;
+    final card = _cards[slot];
     HapticFeedback.selectionClick();
     setState(() => _swapping = true);
 
@@ -188,12 +193,13 @@ class _BoosterRevealScreenState extends State<BoosterRevealScreen>
     // finish so the user doesn't see the card exit and then a stale
     // copy linger for a frame.
     final animFuture = _swap.forward(from: 0);
-    final replaceFuture = _repo.suspendAndReplace(suspendCardIds: [card.id]);
+    final swapFuture = _repo.suspendAndReplace(suspendCardIds: [card.id]);
     await animFuture;
-    final replacements = await replaceFuture;
+    final swap = await swapFuture;
     if (!mounted) return;
+    _offerUndo(swap, slot: slot, original: card);
 
-    if (replacements.isEmpty) {
+    if (swap.replacements.isEmpty) {
       // Unseen pool ran dry. Card is still suspended in the DB; we just
       // can't mint a replacement. Skip the slot like a normal advance.
       _swap.reset();
@@ -202,9 +208,9 @@ class _BoosterRevealScreenState extends State<BoosterRevealScreen>
       return;
     }
 
-    final r = replacements.first;
+    final r = swap.replacements.first;
     setState(() {
-      _cards[_index] = r;
+      _cards[slot] = r;
       _swapping = false;
     });
     _swap.reset();
@@ -216,6 +222,25 @@ class _BoosterRevealScreenState extends State<BoosterRevealScreen>
     }
   }
 
+  /// Tells where the suspended card went, with an Undo that puts it
+  /// back in its slot. Undo is only offered while the reveal is open:
+  /// once it pops, the replacement may already be in a review session.
+  void _offerUndo(BoosterSwap swap, {required int slot, required CardRow original}) {
+    showSnack(
+      context,
+      'Suspended — find it in Collection › Suspended.',
+      action: SnackBarAction(
+        label: 'Undo',
+        onPressed: () async {
+          if (!mounted || _finalizing) return;
+          await _repo.undoSwap(swap);
+          if (!mounted) return;
+          setState(() => _cards[slot] = original);
+        },
+      ),
+    );
+  }
+
   /// End-of-session pop. Suspensions and replacements were already
   /// committed in-line by [_suspendCurrent], so the payload here is
   /// just a "did the reveal happen?" sentinel for the parent route.
@@ -223,24 +248,38 @@ class _BoosterRevealScreenState extends State<BoosterRevealScreen>
     if (_finalizing) return;
     setState(() => _finalizing = true);
     if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
     Navigator.of(context).pop(_cards.map((c) => c.id).toList());
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: IunaPalette.bg,
-      body: DecoratedBox(
-        decoration: iunaPageBackground(),
-        child: Stack(
-          children: [
-            const Positioned.fill(child: HexBg(seed: 41)),
-            SafeArea(
-              child: _loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _buildBody(),
-            ),
-          ],
+    // System Back skips to the review like the top bar's button, rather
+    // than dropping the learner home with the pack half-seen.
+    return PopScope<Object?>(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        if (_loading) {
+          Navigator.of(context).pop();
+        } else {
+          _finalizeAndPop();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: IunaPalette.bg,
+        body: DecoratedBox(
+          decoration: iunaPageBackground(),
+          child: Stack(
+            children: [
+              const Positioned.fill(child: HexBg(seed: 41)),
+              SafeArea(
+                child: _loading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _buildBody(),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -252,7 +291,7 @@ class _BoosterRevealScreenState extends State<BoosterRevealScreen>
     final packNum = _packForIndex.isEmpty ? 1 : _packForIndex[_index];
     final packLabel = _totalPacks > 1
         ? 'Pack $packNum / $_totalPacks · '
-        : 'Booster · ';
+        : 'Pack · ';
     return Column(
       children: [
         _TopBar(
@@ -446,10 +485,11 @@ class _SuspendPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final disabled = onTap == null;
-    return GestureDetector(
+    return Tappable(
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
+        constraints: const BoxConstraints(minHeight: 48),
         padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
         decoration: disabled
             ? ghostPillDecoration(color: const Color(0x33B8D8C9))
@@ -486,7 +526,21 @@ class _TopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return IunaTopBar(
-      leading: IunaIconButton(icon: Icons.close_rounded, onTap: onClose),
+      // The cards are already collected, so leaving goes on to the
+      // review, and the button says so.
+      trailing: Semantics(
+        label: 'Skip to review',
+        excludeSemantics: true,
+        button: true,
+        child: TextButton(
+          onPressed: onClose,
+          style: TextButton.styleFrom(
+            minimumSize: const Size(IunaIconButton.size, IunaIconButton.size),
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+          ),
+          child: const Text('Skip'),
+        ),
+      ),
       title: Text(
         label,
         style: const TextStyle(
@@ -527,7 +581,7 @@ class _RevealCard extends StatelessWidget {
                       const Icon(
                         Icons.auto_awesome_rounded,
                         size: 16,
-                        color: Color(0xFFE8B96B),
+                        color: IunaPalette.bellGold,
                       ),
                   ],
                 ),

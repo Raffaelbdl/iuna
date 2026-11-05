@@ -169,6 +169,24 @@ class CollectionStats {
       totalByRarity.values.fold(0, (sum, value) => sum + value);
 }
 
+/// What [IunaRepository.suspendAndReplace] did, enough for
+/// [IunaRepository.undoSwap] to take it back.
+class BoosterSwap {
+  const BoosterSwap({
+    required this.suspended,
+    required this.replacements,
+    required this.wishlisted,
+  });
+
+  final List<int> suspended;
+
+  /// The freshly-minted cards, in draw order.
+  final List<CardRow> replacements;
+
+  /// The wishlist entries minting the replacements removed.
+  final List<WishlistRow> wishlisted;
+}
+
 class BoosterClaim {
   BoosterClaim({required this.cards});
 
@@ -1306,25 +1324,63 @@ class IunaRepository with MetaTimestamps {
   /// during the reveal. Done in one transaction so a crash mid-flow
   /// can't leave a card "suspended without a replacement."
   ///
-  /// Returns the freshly-minted replacement card rows in draw order.
-  /// May return fewer entries than requested if the unseen pool runs
-  /// dry — the caller should treat the difference as a session shrink
-  /// rather than a retry.
-  Future<List<CardRow>> suspendAndReplace({
+  /// Returns what it did, for [undoSwap]: the replacements come in
+  /// draw order, and may be fewer than requested if the unseen pool
+  /// runs dry — the caller should treat the difference as a session
+  /// shrink rather than a retry.
+  Future<BoosterSwap> suspendAndReplace({
     required List<int> suspendCardIds,
     DateTime? now,
   }) async {
-    if (suspendCardIds.isEmpty) return const [];
+    if (suspendCardIds.isEmpty) {
+      return const BoosterSwap(suspended: [], replacements: [], wishlisted: []);
+    }
     return db.transaction(() async {
       await (db.update(db.userCards)
             ..where((u) => u.cardId.isIn(suspendCardIds)))
           .write(const UserCardsCompanion(suspended: Value(true)));
 
       final picked = (await _loadDrawPool()).draw(suspendCardIds.length);
-      if (picked.isEmpty) return const <CardRow>[];
+      if (picked.isEmpty) {
+        return BoosterSwap(
+          suspended: suspendCardIds,
+          replacements: const [],
+          wishlisted: const [],
+        );
+      }
+      final wishlisted = await (db.select(db.wishlist)
+            ..where((w) => w.cardId.isIn(picked)))
+          .get();
       await _mintOwned(picked, now ?? DateTime.now());
-      // Draw order, so the caller can reason about pack boundaries.
-      return cardsByIds(picked);
+      return BoosterSwap(
+        suspended: suspendCardIds,
+        // Draw order, so the caller can reason about pack boundaries.
+        replacements: await cardsByIds(picked),
+        wishlisted: wishlisted,
+      );
+    });
+  }
+
+  /// Takes back a [suspendAndReplace] straight after it: the suspended
+  /// cards return to review, and the replacements, never reviewed,
+  /// leave the collection and go back on the wishlist if they were on
+  /// it.
+  Future<void> undoSwap(BoosterSwap swap) async {
+    await db.transaction(() async {
+      await (db.update(db.userCards)
+            ..where((u) => u.cardId.isIn(swap.suspended)))
+          .write(const UserCardsCompanion(suspended: Value(false)));
+      final drawn = [for (final c in swap.replacements) c.id];
+      if (drawn.isEmpty) return;
+      await (db.delete(db.userCards)..where((u) => u.cardId.isIn(drawn)))
+          .go();
+      await db.batch((b) {
+        b.insertAll(
+          db.wishlist,
+          swap.wishlisted,
+          mode: InsertMode.insertOrIgnore,
+        );
+      });
     });
   }
 

@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../theme/iuna_theme.dart';
+import 'tappable.dart';
 
 enum IunaNavTab { home, today, collection, learn }
 
@@ -102,9 +103,9 @@ class _NavBtn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return Tappable(
       onTap: onTap,
-      behavior: HitTestBehavior.opaque,
+      selected: active,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 220),
         padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),

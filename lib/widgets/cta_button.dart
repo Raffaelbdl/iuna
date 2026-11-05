@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/iuna_theme.dart';
+import 'tappable.dart';
 
 /// Honey pill for a screen's primary action: full width, or hugging its
 /// label with [shrinkWrap].
@@ -22,9 +23,10 @@ class IunaCtaButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return Tappable(
       onTap: onTap,
       child: Container(
+        constraints: const BoxConstraints(minHeight: 48),
         padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 22),
         decoration: ctaDecoration(),
         child: Row(
@@ -35,12 +37,15 @@ class IunaCtaButton extends StatelessWidget {
               Icon(leadingIcon, size: 16, color: kCtaInk),
               const SizedBox(width: 8),
             ],
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                color: kCtaInk,
+            Flexible(
+              child: Text(
+                label,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: kCtaInk,
+                ),
               ),
             ),
             if (trailingIcon != null) ...[
@@ -54,7 +59,7 @@ class IunaCtaButton extends StatelessWidget {
   }
 }
 
-/// Frosted pill for a screen's secondary action, full width under an
+/// Paper pill for a screen's secondary action, full width under an
 /// [IunaCtaButton] ("Back home", "Done").
 class IunaGhostButton extends StatelessWidget {
   const IunaGhostButton({super.key, required this.label, required this.onTap});
@@ -63,9 +68,10 @@ class IunaGhostButton extends StatelessWidget {
   final VoidCallback onTap;
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return Tappable(
       onTap: onTap,
       child: Container(
+        constraints: const BoxConstraints(minHeight: 48),
         padding: const EdgeInsets.symmetric(vertical: 14),
         decoration: ghostPillDecoration(
           boxShadow: const [

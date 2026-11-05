@@ -58,7 +58,7 @@ void main() {
     // Multiple steppers on the screen now (boosters + review-time cap).
     // Scope to the booster row so the +/− icons are unambiguous.
     final boosterRow = find.ancestor(
-      of: find.text('Booster packs per day'),
+      of: find.text('Packs per day'),
       matching: find.byType(ListTile),
     );
     final inc = find.descendant(

@@ -1619,4 +1619,25 @@ void main() {
     expect([for (final s in senses[a]!) s.ordinal], [1, 2]);
     expect(senses[b], isEmpty);
   });
+
+  test('undoSwap puts back the suspended card and takes the replacement '
+      'off the collection, back onto the wishlist', () async {
+    final kept = await _seedCard(db, 'a', 'あ', Rarity.common);
+    final spare = await _seedCard(db, 'b', 'い', Rarity.common);
+    await repo.claimToday(packSize: 1);
+    // The draw is random: whichever card it took is the one to swap.
+    final owned = (await db.select(db.userCards).get()).single.cardId;
+    final other = owned == kept ? spare : kept;
+    await repo.addToWishlist(other);
+
+    final swap = await repo.suspendAndReplace(suspendCardIds: [owned]);
+    expect(swap.replacements.map((c) => c.id), [other]);
+    expect(await repo.isWished(other), isFalse, reason: 'minted');
+
+    await repo.undoSwap(swap);
+    final rows = await db.select(db.userCards).get();
+    expect(rows.map((r) => r.cardId), [owned]);
+    expect(rows.single.suspended, isFalse);
+    expect(await repo.isWished(other), isTrue);
+  });
 }

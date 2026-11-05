@@ -38,10 +38,10 @@ class _Headline extends StatelessWidget {
               Text(
                 label,
                 style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500,
-                  color: IunaPalette.ink3,
-                  height: 1,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: IunaPalette.ink2,
+                  height: 1.1,
                   letterSpacing: 0.3,
                 ),
               ),
@@ -50,9 +50,9 @@ class _Headline extends StatelessWidget {
                 Text(
                   sub,
                   style: const TextStyle(
-                    fontSize: 10.5,
+                    fontSize: 12,
                     fontWeight: FontWeight.w500,
-                    color: IunaPalette.inkMute,
+                    color: IunaPalette.ink3,
                     height: 1.2,
                   ),
                 ),
@@ -74,8 +74,8 @@ class _Headline extends StatelessWidget {
         ? '—'
         : '${((acc.correct / acc.total) * 100).round()}%';
     final accSub = acc == null
-        ? 'no mature reviews yet'
-        : 'mature · n=${_compact(acc.total, threshold: 10000)}';
+        ? 'no known cards yet'
+        : 'known cards · ${_compact(acc.total, threshold: 10000)}';
 
     return Container(
       decoration: paperPanelDecoration(),
@@ -87,7 +87,7 @@ class _Headline extends StatelessWidget {
             divider,
             cell(accValue, 'accuracy', accSub),
             divider,
-            cell(_compact(learned, threshold: 10000), 'learned', 'cards owned'),
+            cell(_compact(learned, threshold: 10000), 'collected', 'cards so far'),
           ],
         ),
       ),

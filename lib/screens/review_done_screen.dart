@@ -7,8 +7,10 @@ import '../db/repository.dart';
 import '../theme/iuna_theme.dart';
 import '../widgets/cta_button.dart';
 import '../widgets/hex_bg.dart';
+import '../widgets/iuna_bottom_nav.dart';
 import '../widgets/iuna_icon_button.dart';
 import '../widgets/section_header.dart';
+import '../widgets/tappable.dart';
 import '../widgets/vocab_card.dart';
 import 'card_detail_screen.dart';
 import 'collection_screen.dart';
@@ -85,13 +87,13 @@ class _ReviewDoneScreenState extends State<ReviewDoneScreen>
   List<_ConfettiHex> _buildConfetti() {
     final rng = math.Random(7);
     const cols = [
-      Color(0xFFF3A7B5),
-      Color(0xFFB8D8C9),
-      Color(0xFFFFD58A),
+      IunaPalette.bowPink,
+      IunaPalette.bowMint,
+      IunaPalette.ctaTop,
       Color(0xFFC4B2E0),
       Color(0xFFB4D6EA),
       Color(0xFFFFC49E),
-      Color(0xFFE8B96B),
+      IunaPalette.bellGold,
     ];
     return List.generate(18, (i) {
       return _ConfettiHex(
@@ -119,7 +121,10 @@ class _ReviewDoneScreenState extends State<ReviewDoneScreen>
     // the day's actual performance. Falls back to session pct on the
     // very first session of the day before the daily_stats bump lands.
     final tierPct = _todayTotal > 0 ? todayPct : sessionPct;
-    final tier = _tierFor(tierPct);
+    final perfect = _todayTotal > 0
+        ? _todayCorrect == _todayTotal
+        : hasSession && widget.correct == widget.total;
+    final tier = _tierFor(tierPct, perfect: perfect);
 
     return Scaffold(
       backgroundColor: IunaPalette.bg,
@@ -202,7 +207,7 @@ class _ReviewDoneScreenState extends State<ReviewDoneScreen>
                           const SizedBox(height: 18),
                           const Padding(
                             padding: EdgeInsets.only(left: 4, bottom: 10),
-                            child: IunaEyebrow('Added to collection'),
+                            child: IunaEyebrow('Reviewed this session'),
                           ),
                           _DoneScroller(
                             cards: _doneCards,
@@ -212,6 +217,7 @@ class _ReviewDoneScreenState extends State<ReviewDoneScreen>
                                   builder: (_) => CardDetailScreen(
                                     db: widget.db,
                                     cardId: id,
+                                    from: IunaNavTab.today,
                                   ),
                                 ),
                               );
@@ -248,12 +254,18 @@ class _ReviewDoneScreenState extends State<ReviewDoneScreen>
     );
   }
 
-  _TierCopy _tierFor(int pct) {
-    if (pct >= 90) {
+  _TierCopy _tierFor(int pct, {required bool perfect}) {
+    if (perfect) {
       return const _TierCopy(
         kicker: 'くまくま！',
         headline: "That's a perfect run.",
         note: 'Iuna is proud of you.',
+      );
+    } else if (pct >= 90) {
+      return const _TierCopy(
+        kicker: 'すごい！',
+        headline: 'Excellent session.',
+        note: 'Only a slip or two — Iuna is proud of you.',
       );
     } else if (pct >= 70) {
       return const _TierCopy(
@@ -304,7 +316,11 @@ class _TopBar extends StatelessWidget {
           letterSpacing: 0.6,
         ),
       ),
-      trailing: IunaIconButton(icon: Icons.close_rounded, onTap: onClose),
+      trailing: IunaIconButton(
+        icon: Icons.close_rounded,
+        tooltip: 'Close',
+        onTap: onClose,
+      ),
     );
   }
 }
@@ -511,7 +527,7 @@ class _StatsRow extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w500,
-                      color: IunaPalette.inkMute,
+                      color: IunaPalette.ink3,
                     ),
                   ),
                 ],
@@ -551,7 +567,7 @@ class _DoneScroller extends StatelessWidget {
         separatorBuilder: (_, _) => const SizedBox(width: 10),
         itemBuilder: (_, i) {
           final c = cards[i];
-          return GestureDetector(
+          return Tappable(
             onTap: () => onTap(c.id),
             child: SizedBox(
               width: 110,
@@ -583,7 +599,7 @@ class _DoneScroller extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 10,
+                        fontSize: 12,
                         color: IunaPalette.ink3,
                       ),
                     ),
@@ -594,7 +610,7 @@ class _DoneScroller extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 10,
+                        fontSize: 12,
                         fontWeight: FontWeight.w500,
                         color: IunaPalette.ink3,
                       ),

@@ -44,6 +44,9 @@ class GamePage extends StatelessWidget {
                   IunaTopBar(
                     leading: IunaIconButton(
                       icon: leadingIcon,
+                      tooltip: leadingIcon == Icons.close_rounded
+                          ? 'Close game'
+                          : 'Back',
                       onTap: () => Navigator.of(context).pop(),
                     ),
                     title: Text(
@@ -57,12 +60,10 @@ class GamePage extends StatelessWidget {
                     ),
                     trailing: onSkip == null
                         ? null
-                        : Tooltip(
-                            message: skipLabel,
-                            child: IunaIconButton(
-                              icon: Icons.skip_next_rounded,
-                              onTap: onSkip,
-                            ),
+                        : IunaIconButton(
+                            icon: Icons.skip_next_rounded,
+                            tooltip: skipLabel,
+                            onTap: onSkip,
                           ),
                   ),
                   Expanded(child: body),
@@ -185,7 +186,7 @@ class _Figure extends StatelessWidget {
         Text(
           label,
           style: const TextStyle(
-            fontSize: 11,
+            fontSize: 12,
             fontWeight: FontWeight.w500,
             color: IunaPalette.ink3,
             letterSpacing: 0.4,

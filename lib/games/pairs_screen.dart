@@ -8,6 +8,7 @@ import '../db/repository.dart';
 import '../services/tts.dart';
 import '../theme/iuna_theme.dart';
 import '../widgets/section_header.dart';
+import '../widgets/tappable.dart';
 import 'game_draw.dart';
 import 'game_widgets.dart';
 import 'pairs.dart';
@@ -241,6 +242,7 @@ class _Board extends StatelessWidget {
                     Expanded(
                       child: _Tile(
                         tile: tile,
+                        row: i + 1,
                         look: look(tile),
                         onTap: () => onTap(tile),
                       ),
@@ -257,9 +259,17 @@ class _Board extends StatelessWidget {
 }
 
 class _Tile extends StatelessWidget {
-  const _Tile({required this.tile, required this.look, required this.onTap});
+  const _Tile({
+    required this.tile,
+    required this.row,
+    required this.look,
+    required this.onTap,
+  });
 
   final PairTile tile;
+
+  /// 1-based, to tell sound tiles apart to a screen reader.
+  final int row;
   final _TileLook look;
   final VoidCallback onTap;
 
@@ -306,9 +316,16 @@ class _Tile extends StatelessWidget {
               color: ink,
             ),
           );
-    return GestureDetector(
+    return Tappable(
       key: ValueKey('pair-${tile.side.name}-${tile.cardId}'),
       onTap: onTap,
+      selected: look == _TileLook.selected,
+      label: switch (look) {
+        _ when tile.sound => 'Play sound $row',
+        _TileLook.matched => 'Matched',
+        _TileLook.wrong => 'Not a pair',
+        _ => null,
+      },
       child: AnimatedOpacity(
         duration: const Duration(milliseconds: 220),
         opacity: look == _TileLook.matched ? 0.45 : 1,

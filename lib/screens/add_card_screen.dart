@@ -7,9 +7,12 @@ import '../db/jmdict_lookup.dart';
 import '../db/repository.dart';
 import '../theme/iuna_theme.dart';
 import '../widgets/hex_bg.dart';
+import '../widgets/iuna_icon_button.dart';
+import '../widgets/iuna_page.dart';
 import '../widgets/paper_sheet.dart';
 import '../widgets/search_field.dart';
 import '../widgets/sense_row.dart';
+import '../widgets/snack.dart';
 import '../widgets/vocab_card.dart';
 import 'card_detail_screen.dart';
 
@@ -101,14 +104,12 @@ class _AddCardScreenState extends State<AddCardScreen> {
           ),
         );
       case _SheetAction.promote:
-        final result = await _repo.promoteFromJmdict(hit);
+        await _repo.promoteFromJmdict(hit);
         if (!mounted) return;
-        final msg = result.wasNew
-            ? '${hit.kanji} added — keep an eye on your next pack.'
-            : '${hit.kanji} bookmarked — it should turn up soon.';
-        ScaffoldMessenger.of(
+        showSnack(
           context,
-        ).showSnackBar(SnackBar(content: Text(msg)));
+          '${hit.kanji} is on your wishlist — it shows up in a pack soon.',
+        );
       case _SheetAction.cancel:
         break;
     }
@@ -136,28 +137,9 @@ class _AddCardScreenState extends State<AddCardScreen> {
   }
 
   Widget _buildAppBar() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 8, 16, 8),
-      child: Row(
-        children: [
-          IconButton(
-            icon: const Icon(
-              Icons.arrow_back_rounded,
-              color: IunaPalette.pawBrown,
-            ),
-            onPressed: () => Navigator.of(context).pop(),
-          ),
-          const SizedBox(width: 4),
-          const Text(
-            'Add card',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
-              color: IunaPalette.ink,
-            ),
-          ),
-        ],
-      ),
+    return const IunaTopBar(
+      leading: IunaBackButton(),
+      title: IunaTopBarTitle('Add to wishlist'),
     );
   }
 
@@ -177,8 +159,8 @@ class _AddCardScreenState extends State<AddCardScreen> {
       return const _EmptyState(
         icon: Icons.search_rounded,
         text:
-            'Type a kanji or kana headword to search '
-            'the JMdict dictionary.',
+            'Search the dictionary for a word. Add it to your wishlist '
+            'and it shows up in a pack soon.',
       );
     }
     if (_searching && _results.isEmpty) {
@@ -395,9 +377,6 @@ class _PreviewActions extends StatelessWidget {
     switch (status) {
       case CardLookupStatus.notFound:
       case CardLookupStatus.available:
-        final label = status == CardLookupStatus.notFound
-            ? 'Add to deck'
-            : 'Bookmark for boosters';
         return Row(
           children: [
             Expanded(
@@ -411,7 +390,7 @@ class _PreviewActions extends StatelessWidget {
               child: FilledButton(
                 onPressed: () =>
                     Navigator.of(context).pop(_SheetAction.promote),
-                child: Text(label),
+                child: const Text('Add to wishlist'),
               ),
             ),
           ],
@@ -429,7 +408,7 @@ class _PreviewActions extends StatelessWidget {
             Expanded(
               child: FilledButton(
                 onPressed: null,
-                child: const Text('Already wishlisted'),
+                child: const Text('On your wishlist'),
               ),
             ),
           ],

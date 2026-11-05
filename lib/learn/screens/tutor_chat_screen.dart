@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../theme/iuna_theme.dart';
+import '../../widgets/confirm_dialog.dart';
+import '../../widgets/iuna_page.dart';
 import '../agent/chat_controller.dart';
 import '../agent/chat_store.dart';
 import '../agent/tutor_prompt.dart';
@@ -137,11 +139,13 @@ class _TutorChatScreenState extends State<TutorChatScreen>
             listenable: chat,
             builder: (context, _) {
               final started = chat.messages.any((m) => m.role == MessageRole.user);
-              return TextButton(
-                onPressed: chat.busy || !started
-                    ? null
-                    : () => chat.sendNote(kWrapUpNote, kind: kWrapUpKind),
-                child: const Text('Wrap up'),
+              return Tooltip(
+                message: 'End the session and save notes',
+                child: TextButton(
+                  onPressed: chat.busy || !started ? null : () => _wrapUp(chat),
+                  style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+                  child: const Text('Wrap up'),
+                ),
               );
             },
           );
@@ -175,37 +179,30 @@ class _TutorChatScreenState extends State<TutorChatScreen>
                   _TheoryView(chapter: chapter, bookmarks: widget.env.bookmarks),
                 ],
               );
-    return Scaffold(
-      backgroundColor: IunaPalette.bg,
-      appBar: AppBar(
-        title: Column(
-          children: [
-            Text(chapter?.title ?? 'Course room', overflow: TextOverflow.ellipsis),
-            if (_course != null)
-              Text(
-                _course!.title,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 11, color: IunaPalette.ink3, fontWeight: FontWeight.w500),
-              ),
-          ],
-        ),
-        actions: [wrapUp],
-        bottom: _tabs == null
-            ? null
-            : TabBar(
-                controller: _tabs,
-                labelColor: IunaPalette.ink,
-                unselectedLabelColor: IunaPalette.ink3,
-                indicatorColor: IunaPalette.bellGold,
-                dividerColor: Colors.transparent,
-                tabs: const [Tab(text: 'Lesson'), Tab(text: 'Theory')],
-              ),
-      ),
-      body: DecoratedBox(
-        decoration: iunaPageBackground(),
-        child: body,
-      ),
+    return IunaPage(
+      title: chapter?.title ?? 'Course room',
+      subtitle: _course?.title,
+      trailing: wrapUp,
+      below: _tabs == null
+          ? null
+          : TabBar(
+              controller: _tabs,
+              tabs: const [Tab(text: 'Lesson'), Tab(text: 'Theory')],
+            ),
+      body: body,
     );
+  }
+
+  Future<void> _wrapUp(ChatController chat) async {
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Wrap up the session?',
+      body:
+          'Kuma-sensei saves where you are and sums up what you covered. '
+          'You can keep chatting afterwards.',
+      confirmLabel: 'Wrap up',
+    );
+    if (confirmed && mounted) await chat.sendNote(kWrapUpNote, kind: kWrapUpKind);
   }
 }
 

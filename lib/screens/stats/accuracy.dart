@@ -73,7 +73,7 @@ class _RetentionPainter extends CustomPainter {
     }
     _drawText(
       canvas,
-      'SM-2 target · 90%',
+      'Goal · 90%',
       Offset(size.width - padR - 100, targetY - 12),
       color: _SP.honeyDeep,
       bold: true,
@@ -157,7 +157,7 @@ class _RetentionPainter extends CustomPainter {
         Offset(cx - 24, size.height - padB + 16),
         width: 48,
         align: TextAlign.center,
-        color: IunaPalette.inkMute,
+        color: IunaPalette.ink3,
       );
     }
   }
@@ -250,9 +250,9 @@ class _KindBreakdownDonut extends StatelessWidget {
   }
 
   static String _kindLabel(ReviewKind k) => switch (k) {
-    ReviewKind.review => 'review',
-    ReviewKind.learn => 'learn',
-    ReviewKind.relearn => 'relearn',
+    ReviewKind.review => 'known cards',
+    ReviewKind.learn => 'new cards',
+    ReviewKind.relearn => 'relearning',
   };
 }
 
@@ -432,10 +432,10 @@ class _AccuracyByRarity extends StatelessWidget {
           ),
         const SizedBox(height: 2),
         const Text(
-          'The dotted line marks the 90% target.',
+          'The dotted line marks the 90% goal.',
           style: TextStyle(
             fontSize: 10.5,
-            color: IunaPalette.inkMute,
+            color: IunaPalette.ink3,
             fontWeight: FontWeight.w500,
           ),
         ),

@@ -120,7 +120,9 @@ class _ChatViewState extends State<ChatView> {
                   controller: _input,
                   hint: c.pendingQuiz != null ? 'Answer the card above first' : widget.hint,
                   enabled: c.loaded && c.pendingQuiz == null && c.pendingVoice == null,
-                  busy: c.busy,
+                  // A quiz card waits on the learner, not the model:
+                  // nothing to stop.
+                  busy: c.busy && c.pendingQuiz == null,
                   onSend: _send,
                   onStop: c.cancel,
                   recorder: c.dictation?.recorder,
@@ -395,7 +397,7 @@ class _Caption extends StatelessWidget {
           line,
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 10),
-            child: Text(text, style: const TextStyle(fontSize: 11, color: IunaPalette.ink3)),
+            child: Text(text, style: const TextStyle(fontSize: 12, color: IunaPalette.ink3)),
           ),
           line,
         ],
@@ -630,7 +632,7 @@ class _VoiceBubbleState extends State<_VoiceBubble> with SingleTickerProviderSta
         ),
         const SizedBox(height: 4),
         if (error == null)
-          const Text('Transcribing…', style: TextStyle(fontSize: 11, color: IunaPalette.ink3))
+          const Text('Transcribing…', style: TextStyle(fontSize: 12, color: IunaPalette.ink3))
         else ...[
           Text(
             error,

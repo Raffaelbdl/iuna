@@ -239,7 +239,8 @@ class ChatController extends ChangeNotifier {
     } on LlmException catch (e) {
       _error = e.friendly;
     } catch (e) {
-      _error = 'Something went wrong: $e';
+      debugPrint('Tutor turn failed: $e');
+      _error = "Kuma-sensei couldn't answer just now. Try again.";
     } finally {
       _busy = false;
       _setStreaming('');

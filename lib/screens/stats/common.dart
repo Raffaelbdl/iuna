@@ -5,8 +5,8 @@ part of '../stats_screen.dart';
 class _SP {
   static const mint = Color(0xFFA9D4C2);
   static const mintDeep = Color(0xFF7FBFA3);
-  static const pink = Color(0xFFF3A7B5);
-  static const pinkDeep = Color(0xFFD97A8C);
+  static const pink = IunaPalette.bowPink;
+  static const pinkDeep = IunaPalette.bowPinkDeep;
   static const honey = Color(0xFFF0C168);
   static const honeyDeep = Color(0xFFD49A3A);
   static const blue = Color(0xFFBCD3DF);
@@ -75,7 +75,7 @@ class _StatCard extends StatelessWidget {
           Text(
             subtitle,
             style: const TextStyle(
-              fontSize: 11,
+              fontSize: 12,
               height: 1.4,
               color: IunaPalette.ink3,
             ),
@@ -142,9 +142,9 @@ class _ChipButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return Tappable(
       onTap: onTap,
-      behavior: HitTestBehavior.opaque,
+      selected: selected,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
         padding: EdgeInsets.symmetric(
@@ -316,7 +316,7 @@ class _OwnedCount extends StatelessWidget {
             style: const TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w500,
-              color: IunaPalette.inkMute,
+              color: IunaPalette.ink3,
             ),
           ),
         ],

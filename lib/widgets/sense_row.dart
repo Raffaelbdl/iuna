@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/jmdict_labels.dart';
 import '../db/jmdict_lookup.dart';
 import '../theme/iuna_theme.dart';
 
@@ -69,12 +70,11 @@ class SenseRow extends StatelessWidget {
                   Padding(
                     padding: const EdgeInsets.only(top: 2),
                     child: Text(
-                      pos,
+                      posLabel(pos),
                       style: const TextStyle(
-                        fontSize: 10,
+                        fontSize: 12,
                         fontStyle: FontStyle.italic,
-                        color: IunaPalette.inkMute,
-                        fontFeatures: [FontFeature.tabularFigures()],
+                        color: IunaPalette.ink3,
                       ),
                     ),
                   ),

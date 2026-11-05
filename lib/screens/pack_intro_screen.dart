@@ -9,6 +9,7 @@ import '../theme/iuna_theme.dart';
 import '../widgets/booster_pack.dart';
 import '../widgets/hex_bg.dart';
 import '../widgets/iuna_icon_button.dart';
+import '../widgets/tappable.dart';
 import 'booster_reveal_screen.dart';
 import 'review_screen.dart';
 
@@ -151,8 +152,9 @@ class _PackIntroScreenState extends State<PackIntroScreen>
                                 ),
                               ),
                               const SizedBox(height: 32),
-                              GestureDetector(
+                              Tappable(
                                 onTap: _open,
+                                label: 'Open the pack',
                                 child: Transform.translate(
                                   offset: Offset(0, idleY),
                                   child: Transform.scale(
@@ -236,9 +238,15 @@ class _TopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
       child: Row(
-        children: [IunaIconButton(icon: Icons.close_rounded, onTap: onClose)],
+        children: [
+          IunaIconButton(
+            icon: Icons.close_rounded,
+            tooltip: 'Close',
+            onTap: onClose,
+          ),
+        ],
       ),
     );
   }

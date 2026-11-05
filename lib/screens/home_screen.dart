@@ -17,6 +17,7 @@ import '../widgets/iuna_bottom_nav.dart';
 import '../widgets/iuna_icon_button.dart';
 import '../widgets/section_header.dart';
 import '../widgets/snack.dart';
+import '../widgets/tappable.dart';
 import '../widgets/vocab_card.dart';
 import 'card_detail_screen.dart';
 import 'app_nav.dart';
@@ -104,10 +105,12 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  Future<void> _openCollection() async {
-    await Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => CollectionScreen(db: widget.db)));
+  Future<void> _openWishlist() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CollectionScreen(db: widget.db, initialWishedOnly: true),
+      ),
+    );
     if (!mounted) return;
     await _refresh();
   }
@@ -136,7 +139,11 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _openCardDetail(int cardId) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => CardDetailScreen(db: widget.db, cardId: cardId),
+        builder: (_) => CardDetailScreen(
+          db: widget.db,
+          cardId: cardId,
+          from: IunaNavTab.home,
+        ),
       ),
     );
     if (!mounted) return;
@@ -238,9 +245,9 @@ class _HomeScreenState extends State<HomeScreen> {
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.fromLTRB(0, 4, 0, 110),
               children: [
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(18, 4, 18, 8),
-                  child: _Greeting(),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 4, 18, 8),
+                  child: _Greeting(returning: _learned > 0),
                 ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
@@ -256,7 +263,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(height: 18),
                 const Padding(
                   padding: EdgeInsets.fromLTRB(18, 0, 18, 6),
-                  child: IunaEyebrow('Recently learned'),
+                  child: IunaEyebrow('Recently collected'),
                 ),
                 if (_recent.isEmpty)
                   const Padding(
@@ -277,7 +284,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: _LinkPanel(
                     icon: Icons.grid_view_rounded,
                     tint: IunaPalette.rarityCommonInk,
-                    wash: const Color(0x80C7E0CF),
+                    wash: IunaPalette.rarityCommon.withValues(alpha: 0.5),
                     title: 'Games',
                     subtitle: 'Practice the cards you find hard',
                     onTap: _openGames,
@@ -290,13 +297,16 @@ class _HomeScreenState extends State<HomeScreen> {
                     icon: Icons.bookmark_rounded,
                     tint: IunaPalette.raritySuperRareInk,
                     wash: const Color(0x59C4B2E0),
-                    title: _wishCount == 0
-                        ? 'Bookmark a kanji to bias future packs'
-                        : '$_wishCount cards in your wishlist',
+                    title: switch (_wishCount) {
+                      0 => 'Your wishlist is empty',
+                      1 => '1 card on your wishlist',
+                      final n => '$n cards on your wishlist',
+                    },
                     subtitle: _wishCount == 0
-                        ? 'Open a card detail and tap the bookmark.'
-                        : 'Pin words you want to learn next',
-                    onTap: _openCollection,
+                        ? 'Tap the bookmark on a card to add it. '
+                              'It shows up in a pack soon.'
+                        : 'They show up in a pack soon.',
+                    onTap: _wishCount == 0 ? null : _openWishlist,
                   ),
                 ),
               ],
@@ -316,7 +326,7 @@ class _TopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      padding: const EdgeInsets.fromLTRB(16, 6, 10, 2),
       child: Row(
         children: [
           Container(
@@ -326,7 +336,7 @@ class _TopBar extends StatelessWidget {
               gradient: const LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [Color(0xFFFFD994), Color(0xFFF3A7B5)],
+                colors: [IunaPalette.heroTop, IunaPalette.bowPink],
               ),
               borderRadius: BorderRadius.circular(10),
               boxShadow: const [
@@ -360,8 +370,16 @@ class _TopBar extends StatelessWidget {
             ),
           ),
           const Spacer(),
-          IunaIconButton(icon: Icons.show_chart_rounded, onTap: onStats),
-          IunaIconButton(icon: Icons.settings_rounded, onTap: onSettings),
+          IunaIconButton(
+            icon: Icons.show_chart_rounded,
+            tooltip: 'Stats',
+            onTap: onStats,
+          ),
+          IunaIconButton(
+            icon: Icons.settings_rounded,
+            tooltip: 'Settings',
+            onTap: onSettings,
+          ),
         ],
       ),
     );
@@ -369,26 +387,30 @@ class _TopBar extends StatelessWidget {
 }
 
 class _Greeting extends StatelessWidget {
-  const _Greeting();
+  const _Greeting({required this.returning});
+
+  /// Whether the learner has cards already; a first visit gets a plain
+  /// welcome rather than a welcome back.
+  final bool returning;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: const [
+      children: [
         Text(
-          'おかえり',
-          style: TextStyle(
+          returning ? 'おかえり' : 'ようこそ',
+          style: const TextStyle(
             fontSize: 15,
             fontStyle: FontStyle.italic,
             fontWeight: FontWeight.w500,
             color: IunaPalette.ink3,
           ),
         ),
-        SizedBox(height: 2),
+        const SizedBox(height: 2),
         Text(
-          'Welcome back, kuma.',
-          style: TextStyle(
+          returning ? 'Welcome back.' : 'Welcome.',
+          style: const TextStyle(
             fontSize: 26,
             fontWeight: FontWeight.w600,
             height: 1.1,
@@ -433,20 +455,22 @@ class _HeroPack extends StatelessWidget {
           ? 'You have every card in the draw pool.'
           : 'All caught up — come back tomorrow.';
     }
-    final cta = available
+    final String? cta = available
         ? 'Open & review'
-        : (dueCount == 0 ? 'Up to date' : 'Start review');
+        : (dueCount > 0 ? 'Start review' : null);
 
-    return GestureDetector(
+    return Tappable(
       onTap: onTap,
       child: Container(
-        height: 178,
+        // A floor, not a height: larger text grows the hero instead of
+        // overflowing it.
+        constraints: const BoxConstraints(minHeight: 178),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(IunaRadii.xl),
           gradient: const LinearGradient(
             begin: Alignment(-0.4, -1),
             end: Alignment(0.4, 1),
-            colors: [Color(0xFFFFD994), Color(0xFFF3A7B5)],
+            colors: [IunaPalette.heroTop, IunaPalette.bowPink],
           ),
           boxShadow: panelShadow(),
         ),
@@ -472,13 +496,12 @@ class _HeroPack extends StatelessWidget {
               Positioned(
                 right: -4,
                 top: 16,
-                bottom: -8,
                 child: Transform.rotate(
                   angle: 8 * math.pi / 180,
                   alignment: Alignment.center,
                   child: SizedBox(
                     width: 120,
-                    height: 158,
+                    height: 170,
                     child: BoosterPack(
                       width: 120,
                       height: 158,
@@ -500,13 +523,11 @@ class _HeroPack extends StatelessWidget {
                   children: [
                     Text(
                       title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.w700,
                         height: 1.1,
-                        color: Color(0xFF3A2510),
+                        color: IunaPalette.heroInk,
                         letterSpacing: -0.2,
                       ),
                     ),
@@ -517,11 +538,13 @@ class _HeroPack extends StatelessWidget {
                         fontSize: 13,
                         fontWeight: FontWeight.w500,
                         height: 1.3,
-                        color: Color(0xCC3A2510),
+                        color: IunaPalette.heroInk,
                       ),
                     ),
-                    const SizedBox(height: 14),
-                    _HeroPill(label: cta),
+                    if (cta != null) ...[
+                      const SizedBox(height: 14),
+                      _HeroCta(label: cta),
+                    ],
                   ],
                 ),
               ),
@@ -533,51 +556,31 @@ class _HeroPack extends StatelessWidget {
   }
 }
 
-class _HeroPill extends StatelessWidget {
-  const _HeroPill({required this.label});
+/// The hero's call to action, drawn as the honey primary button. The
+/// whole hero takes the tap.
+class _HeroCta extends StatelessWidget {
+  const _HeroCta({required this.label});
   final String label;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: const Color(0xD9FFFDF6),
-        borderRadius: BorderRadius.circular(999),
-        boxShadow: const [
-          BoxShadow(
-            color: Color.fromRGBO(74, 53, 32, 0.25),
-            blurRadius: 16,
-            offset: Offset(0, 6),
-            spreadRadius: -8,
-          ),
-        ],
-      ),
+      constraints: const BoxConstraints(minHeight: 44),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+      decoration: ctaDecoration(),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(
-            Icons.card_giftcard_rounded,
-            size: 16,
-            color: IunaPalette.ink,
-          ),
+          const Icon(Icons.card_giftcard_rounded, size: 16, color: kCtaInk),
           const SizedBox(width: 8),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: IunaPalette.ink,
-              height: 1,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Container(
-            width: 6,
-            height: 6,
-            decoration: const BoxDecoration(
-              color: Color(0xFFD97A8C),
-              shape: BoxShape.circle,
+          Flexible(
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: kCtaInk,
+              ),
             ),
           ),
         ],
@@ -615,7 +618,7 @@ class _StatsRow extends StatelessWidget {
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: _Stat(value: '$learned', label: 'learned'),
+              child: _Stat(value: '$learned', label: 'collected'),
             ),
           ],
         ),
@@ -649,16 +652,33 @@ class _Stat extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 4),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w500,
-              color: IunaPalette.ink3,
-              letterSpacing: 0.4,
-            ),
-          ),
+          _StatLabel(label),
         ],
+      ),
+    );
+  }
+}
+
+/// A stat tile's caption: one line, shrunk rather than broken when the
+/// text is large.
+class _StatLabel extends StatelessWidget {
+  const _StatLabel(this.text);
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.centerLeft,
+      child: Text(
+        text,
+        maxLines: 1,
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w500,
+          color: IunaPalette.ink3,
+          letterSpacing: 0.4,
+        ),
       ),
     );
   }
@@ -681,15 +701,7 @@ class _StreakStat extends StatelessWidget {
         children: [
           _StreakRing(progress: pct, value: streak),
           const SizedBox(height: 4),
-          const Text(
-            'day streak',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w500,
-              color: IunaPalette.ink3,
-              letterSpacing: 0.4,
-            ),
-          ),
+          const _StatLabel('day streak'),
         ],
       ),
     );
@@ -766,8 +778,13 @@ class _RecentScroller extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // A horizontal list needs a fixed height, so it grows with the
+    // text size instead of reading it from the cards.
+    final textGrowth =
+        (MediaQuery.textScalerOf(context).scale(100) / 100 - 1).clamp(0.0, 1.0);
+    final cardHeight = 150 + 64 * textGrowth;
     return SizedBox(
-      height: 158,
+      height: cardHeight + 8,
       child: Stack(
         children: [
           ListView.separated(
@@ -777,11 +794,11 @@ class _RecentScroller extends StatelessWidget {
             separatorBuilder: (_, _) => const SizedBox(width: 10),
             itemBuilder: (_, i) {
               final c = cards[i].card;
-              return GestureDetector(
+              return Tappable(
                 onTap: () => onTap(c.id),
                 child: SizedBox(
                   width: 120,
-                  height: 150,
+                  height: cardHeight,
                   child: VocabCard(
                     rarity: c.rarity,
                     padding: const EdgeInsets.all(12),
@@ -794,15 +811,17 @@ class _RecentScroller extends StatelessWidget {
                           size: RarityChipSize.compact,
                         ),
                         const Spacer(),
-                        Text(
-                          c.kanji,
-                          textAlign: TextAlign.center,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 30,
-                            fontWeight: FontWeight.w700,
-                            color: IunaPalette.ink,
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            c.kanji,
+                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            style: const TextStyle(
+                              fontSize: 30,
+                              fontWeight: FontWeight.w700,
+                              color: IunaPalette.ink,
+                            ),
                           ),
                         ),
                         const SizedBox(height: 2),
@@ -812,7 +831,7 @@ class _RecentScroller extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            fontSize: 11,
+                            fontSize: 12,
                             color: IunaPalette.ink3,
                           ),
                         ),
@@ -823,9 +842,9 @@ class _RecentScroller extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            fontSize: 10,
+                            fontSize: 12,
                             fontWeight: FontWeight.w500,
-                            color: IunaPalette.ink3,
+                            color: IunaPalette.ink2,
                             height: 1.2,
                           ),
                         ),
@@ -878,7 +897,8 @@ class _RecentScroller extends StatelessWidget {
   }
 }
 
-/// A tappable row on Home: a tinted icon, a title and a line under it.
+/// A row on Home: a tinted icon, a title and a line under it. Without
+/// [onTap] it is a plain tip, with no chevron.
 class _LinkPanel extends StatelessWidget {
   const _LinkPanel({
     required this.icon,
@@ -894,59 +914,59 @@ class _LinkPanel extends StatelessWidget {
   final Color wash;
   final String title;
   final String subtitle;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
-        decoration: paperPanelDecoration(
-          borderRadius: BorderRadius.circular(IunaRadii.md),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                color: wash,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(icon, color: tint, size: 18),
+    final panel = Container(
+      constraints: const BoxConstraints(minHeight: 56),
+      padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+      decoration: paperPanelDecoration(
+        borderRadius: BorderRadius.circular(IunaRadii.md),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: wash,
+              borderRadius: BorderRadius.circular(12),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: IunaPalette.ink,
-                      height: 1.2,
-                    ),
+            child: Icon(icon, color: tint, size: 18),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: IunaPalette.ink,
+                    height: 1.2,
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                      color: IunaPalette.ink3,
-                      height: 1.2,
-                    ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: IunaPalette.ink3,
+                    height: 1.25,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
+          ),
+          if (onTap != null)
             const Icon(Icons.chevron_right_rounded, color: IunaPalette.ink3),
-          ],
-        ),
+        ],
       ),
     );
+    return onTap == null ? panel : Tappable(onTap: onTap, child: panel);
   }
 }

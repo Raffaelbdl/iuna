@@ -158,7 +158,7 @@ class _QuizCardState extends State<QuizCard> {
             decoration: InputDecoration(
               isDense: true,
               hintText: 'Your answer',
-              hintStyle: const TextStyle(color: IunaPalette.inkMute),
+              hintStyle: const TextStyle(color: IunaPalette.ink3),
               filled: true,
               fillColor: IunaPalette.paper2,
               border: OutlineInputBorder(
@@ -236,7 +236,7 @@ class QuizRecordCard extends StatelessWidget {
             title: spec.title.isEmpty ? 'Quick check' : spec.title,
             trailing: Text(
               answered ? 'answered' : 'not answered',
-              style: const TextStyle(fontSize: 11, color: IunaPalette.ink3),
+              style: const TextStyle(fontSize: 12, color: IunaPalette.ink3),
             ),
           ),
           for (var i = 0; i < spec.questions.length; i++) ...[

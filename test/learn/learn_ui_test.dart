@@ -194,12 +194,12 @@ void main() {
 
     await tester.pumpWidget(MaterialApp(home: CardDetailScreen(db: db, cardId: id, learn: env)));
     await tester.pump();
-    expect(find.text('Kuma teach'), findsNothing, reason: 'no key, no tutor');
+    expect(find.text('Ask Kuma-sensei'), findsNothing, reason: 'no key, no tutor');
 
     await settings.setApiKey('sk-or-v1-abc');
     await tester.pump();
     expect(find.byType(TextField), findsNothing, reason: 'folded until asked');
-    await tester.tap(find.text('Kuma teach'));
+    await tester.tap(find.text('Ask Kuma-sensei'));
     await tester.pump();
     expect(find.text('Ask about 会議…'), findsOneWidget);
     expect(find.byIcon(Icons.bookmark_outline_rounded), findsOneWidget);
@@ -244,7 +244,7 @@ void main() {
 
     await tester.pumpWidget(MaterialApp(home: CardDetailScreen(db: db, cardId: id, learn: env)));
     await tester.pump();
-    await tester.tap(find.text('Give me examples'));
+    await tester.tap(find.text('Get examples'));
     await tester.pump();
     await tester.pump(const Duration(seconds: 1));
 
@@ -254,18 +254,19 @@ void main() {
     expect(request.messages.last['content'], 'Word: 会議（かいぎ）\nJLPT: N3\nSenses:\n1. meeting');
     expect(find.text('・会議は三時からです。'), findsOneWidget);
     expect(find.text('The meeting ran long.'), findsOneWidget);
-    expect(find.text('Give me examples'), findsNothing, reason: 'the card has examples now');
-    expect(find.text('Kuma teach'), findsNothing);
+    expect(find.text('Get examples'), findsNothing, reason: 'the card has examples now');
+    expect(find.text('Ask Kuma-sensei'), findsNothing);
     expect(find.text('Ask Kuma-sensei about 会議…'), findsOneWidget, reason: 'the plain chat bar');
     final kinds = await env.repo.db.select(env.repo.db.usageLog).get();
     expect([for (final u in kinds) u.kind], ['examples']);
 
     await tester.tap(find.text('Clear'));
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
+    // Long enough for the floating snack bar to slide in.
+    await tester.pump(const Duration(milliseconds: 400));
     expect(await deck.examplesForCard(id), isEmpty);
-    expect(find.text('Give me examples'), findsOneWidget);
-    expect(find.text('Kuma teach'), findsOneWidget, reason: 'folded again');
+    expect(find.text('Get examples'), findsOneWidget);
+    expect(find.text('Ask Kuma-sensei'), findsOneWidget, reason: 'folded again');
 
     await tester.tap(find.text('Undo'));
     await tester.pump();

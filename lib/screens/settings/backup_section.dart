@@ -138,9 +138,13 @@ class _BackupSectionState extends State<BackupSection> {
       case AuthDenied():
         showSnack(context, 'Drive access denied');
       case AuthNetworkError(:final message):
-        showSnack(context, 'Network error: ${message ?? 'check connection'}');
+        showErrorSnack(
+          context,
+          "Couldn't reach Google. Check your connection.",
+          message ?? 'network error',
+        );
       case AuthFailed(:final message):
-        showSnack(context, 'Sign-in failed: $message');
+        showErrorSnack(context, "Couldn't sign in to Google Drive.", message);
     }
   }
 
@@ -201,7 +205,11 @@ class _BackupSectionState extends State<BackupSection> {
       case DriveRestoreNotSignedIn():
         showSnack(context, 'Not signed in');
       case DriveRestoreFailed(:final message):
-        showSnack(context, 'Restore failed: $message');
+        showErrorSnack(
+          context,
+          "Couldn't download that snapshot. Try again later.",
+          message,
+        );
     }
   }
 
@@ -259,108 +267,116 @@ class _BackupSectionState extends State<BackupSection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const IunaSectionHeader('Backup & restore'),
-        ListTile(
-          leading: const Icon(
-            Icons.upload_file_rounded,
-            color: IunaPalette.pawBrown,
-          ),
-          title: const Text('Restore from file'),
-          subtitle: const Text(
-            'Replace your library with an Iuna sqlite snapshot. '
-            'Takes effect after restart.',
-          ),
-          trailing: chevron,
-          onTap: _restoreFromFile,
+        IunaGroup(
+          'Backup & restore',
+          children: [
+            ListTile(
+              leading: const Icon(
+                Icons.upload_file_rounded,
+                color: IunaPalette.pawBrown,
+              ),
+              title: const Text('Restore from file'),
+              subtitle: const Text(
+                'Replace your library with an Iuna sqlite snapshot. '
+                'Takes effect after restart.',
+              ),
+              trailing: chevron,
+              onTap: _restoreFromFile,
+            ),
+          ],
         ),
         const SizedBox(height: 16),
-        const IunaSectionHeader('Cloud backup'),
-        if (account == null)
-          ListTile(
-            leading: const Icon(
-              Icons.cloud_outlined,
-              color: IunaPalette.pawBrown,
-            ),
-            title: const Text('Sign in with Google'),
-            subtitle: const Text(
-              'Save your collection to your own Google Drive.',
-            ),
-            trailing: _busy
-                ? _spinner
-                : FilledButton(
-                    onPressed: _signIn,
-                    child: const Text('Sign in'),
-                  ),
-          )
-        else ...[
-          ListTile(
-            leading: const Icon(
-              Icons.account_circle_outlined,
-              color: IunaPalette.pawBrown,
-            ),
-            title: Text('Signed in: ${account.email}'),
-            subtitle: Text(
-              _lastBackup == null
-                  ? 'No backup yet'
-                  : 'Last backed up: ${_stamp(_lastBackup!)}',
-            ),
-            trailing: _busy
-                ? _spinner
-                : OutlinedButton(
-                    onPressed: _signOut,
-                    child: const Text('Sign out'),
-                  ),
-          ),
-          ListTile(
-            leading: const Icon(
-              Icons.cloud_upload_outlined,
-              color: IunaPalette.pawBrown,
-            ),
-            title: const Text('Back up now'),
-            subtitle: const Text(
-              'Upload your library to Google Drive. Courses go '
-              'along whenever they changed.',
-            ),
-            enabled: !_busy,
-            onTap: _backup,
-          ),
-          ListTile(
-            leading: const Icon(
-              Icons.cloud_download_outlined,
-              color: IunaPalette.pawBrown,
-            ),
-            title: const Text('Restore from Drive'),
-            subtitle: const Text(
-              'Pick a snapshot to stage. Takes effect after restart.',
-            ),
-            trailing: chevron,
-            enabled: !_busy,
-            onTap: () => _restore(
-              DriveArtifact.library,
-              what: 'library',
-              confirm: _confirmReplaceLibrary,
-            ),
-          ),
-          ListTile(
-            leading: const Icon(
-              Icons.school_outlined,
-              color: IunaPalette.pawBrown,
-            ),
-            title: const Text('Restore courses from Drive'),
-            subtitle: Text(
-              _lastLearnBackup == null
-                  ? 'Courses are backed up separately from your cards.'
-                  : 'Courses last backed up: ${_stamp(_lastLearnBackup!)}',
-            ),
-            trailing: chevron,
-            enabled: !_busy,
-            onTap: () => _restore(
-              kCoursesArtifact,
-              what: 'courses',
-              confirm: _confirmReplaceCourses,
-            ),
-          ),
-        ],
+        IunaGroup(
+          'Cloud backup',
+          children: [
+            if (account == null)
+              ListTile(
+                leading: const Icon(
+                  Icons.cloud_outlined,
+                  color: IunaPalette.pawBrown,
+                ),
+                title: const Text('Sign in with Google'),
+                subtitle: const Text(
+                  'Save your collection to your own Google Drive.',
+                ),
+                trailing: _busy
+                    ? _spinner
+                    : FilledButton(
+                        onPressed: _signIn,
+                        child: const Text('Sign in'),
+                      ),
+              )
+            else ...[
+              ListTile(
+                leading: const Icon(
+                  Icons.account_circle_outlined,
+                  color: IunaPalette.pawBrown,
+                ),
+                title: Text('Signed in: ${account.email}'),
+                subtitle: Text(
+                  _lastBackup == null
+                      ? 'No backup yet'
+                      : 'Last backed up: ${_stamp(_lastBackup!)}',
+                ),
+                trailing: _busy
+                    ? _spinner
+                    : OutlinedButton(
+                        onPressed: _signOut,
+                        child: const Text('Sign out'),
+                      ),
+              ),
+              ListTile(
+                leading: const Icon(
+                  Icons.cloud_upload_outlined,
+                  color: IunaPalette.pawBrown,
+                ),
+                title: const Text('Back up now'),
+                subtitle: const Text(
+                  'Upload your library to Google Drive. Courses go '
+                  'along whenever they changed.',
+                ),
+                enabled: !_busy,
+                onTap: _backup,
+              ),
+              ListTile(
+                leading: const Icon(
+                  Icons.cloud_download_outlined,
+                  color: IunaPalette.pawBrown,
+                ),
+                title: const Text('Restore from Drive'),
+                subtitle: const Text(
+                  'Pick a snapshot to stage. Takes effect after restart.',
+                ),
+                trailing: chevron,
+                enabled: !_busy,
+                onTap: () => _restore(
+                  DriveArtifact.library,
+                  what: 'library',
+                  confirm: _confirmReplaceLibrary,
+                ),
+              ),
+              ListTile(
+                leading: const Icon(
+                  Icons.school_outlined,
+                  color: IunaPalette.pawBrown,
+                ),
+                title: const Text('Restore courses from Drive'),
+                subtitle: Text(
+                  _lastLearnBackup == null
+                      ? 'Courses are backed up separately from your cards.'
+                      : 'Courses last backed up: ${_stamp(_lastLearnBackup!)}',
+                ),
+                trailing: chevron,
+                enabled: !_busy,
+                onTap: () => _restore(
+                  kCoursesArtifact,
+                  what: 'courses',
+                  confirm: _confirmReplaceCourses,
+                ),
+              ),
+            ],
+          ],
+        ),
       ],
     );
   }

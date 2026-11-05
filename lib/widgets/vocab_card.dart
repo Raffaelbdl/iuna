@@ -296,8 +296,8 @@ class CardStatusChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (label, color) = switch (status) {
-      CardLookupStatus.notFound => ('New card', IunaPalette.pawBrown),
-      CardLookupStatus.available => ('Available', IunaPalette.pawBrown),
+      CardLookupStatus.notFound ||
+      CardLookupStatus.available => ('Not collected yet', IunaPalette.pawBrown),
       CardLookupStatus.wishlisted => ('On wishlist', IunaPalette.ink2),
       CardLookupStatus.owned => ('In collection', IunaPalette.ink2),
     };

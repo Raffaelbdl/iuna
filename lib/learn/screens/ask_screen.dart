@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../theme/iuna_theme.dart';
+import '../../widgets/iuna_page.dart';
 import '../agent/bookmark_tool.dart';
 import '../agent/chat_controller.dart';
 import '../agent/chat_store.dart';
@@ -88,17 +88,13 @@ class _AskScreenState extends State<AskScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: IunaPalette.bg,
-      appBar: AppBar(title: const Text('Ask Kuma-sensei')),
-      body: DecoratedBox(
-        decoration: iunaPageBackground(),
-        child: ChatView(
-          controller: _chat,
-          hint: 'Ask a follow-up…',
-          picker: widget.env.photos,
-          bookmarks: widget.env.bookmarks,
-        ),
+    return IunaPage(
+      title: 'Ask Kuma-sensei',
+      body: ChatView(
+        controller: _chat,
+        hint: 'Ask a follow-up…',
+        picker: widget.env.photos,
+        bookmarks: widget.env.bookmarks,
       ),
     );
   }

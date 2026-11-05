@@ -13,6 +13,7 @@ import '../widgets/iuna_icon_button.dart';
 import '../widgets/progress_dots.dart';
 import '../widgets/section_header.dart';
 import '../widgets/sense_row.dart';
+import '../widgets/tappable.dart';
 import '../widgets/vocab_card.dart';
 import 'review_done_screen.dart';
 
@@ -422,21 +423,22 @@ class _TopBar extends StatelessWidget {
   final String label;
   final VoidCallback onClose;
 
-  /// When non-null, the left-side icon flips from a back chevron to an
-  /// undo arrow that rolls back the last grade. Hidden (chevron returns
-  /// to closing the screen) at the start of the session and immediately
-  /// after a successful undo, so the affordance only shows up when
-  /// there's actually something to roll back.
+  /// When non-null, an undo arrow on the left rolls back the last
+  /// grade. Absent at the start of the session and right after an undo,
+  /// so it only shows when there's something to roll back; the close
+  /// button on the right is the way out.
   final VoidCallback? onUndo;
 
   @override
   Widget build(BuildContext context) {
-    final undoActive = onUndo != null;
     return IunaTopBar(
-      leading: IunaIconButton(
-        icon: undoActive ? Icons.undo_rounded : Icons.chevron_left_rounded,
-        onTap: undoActive ? onUndo : onClose,
-      ),
+      leading: onUndo == null
+          ? null
+          : IunaIconButton(
+              icon: Icons.undo_rounded,
+              tooltip: 'Undo last card',
+              onTap: onUndo,
+            ),
       title: Text(
         label,
         style: const TextStyle(
@@ -445,7 +447,11 @@ class _TopBar extends StatelessWidget {
           color: IunaPalette.ink2,
         ),
       ),
-      trailing: IunaIconButton(icon: Icons.close_rounded, onTap: onClose),
+      trailing: IunaIconButton(
+        icon: Icons.close_rounded,
+        tooltip: 'End review',
+        onTap: onClose,
+      ),
     );
   }
 }
@@ -526,12 +532,12 @@ class _ReviewVocab extends StatelessWidget {
                       children: [
                         RarityChip(rarity: card.rarity),
                         if (flipped)
-                          GestureDetector(
-                            behavior: HitTestBehavior.opaque,
+                          Tappable(
                             onTap: onDetails,
+                            label: 'Card details',
                             child: Container(
-                              width: 28,
-                              height: 28,
+                              width: 40,
+                              height: 40,
                               alignment: Alignment.center,
                               child: const Icon(
                                 Icons.info_outline_rounded,
@@ -646,7 +652,7 @@ class _ReviewVocab extends StatelessWidget {
                       style: const TextStyle(
                         fontSize: 12,
                         fontStyle: FontStyle.italic,
-                        color: IunaPalette.inkMute,
+                        color: IunaPalette.ink3,
                       ),
                     ),
                   ],
@@ -736,7 +742,7 @@ class _AnswerBtn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return Tappable(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 14),
@@ -783,7 +789,7 @@ class _GhostHint extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: GestureDetector(
+      child: Tappable(
         onTap: onTap,
         child: Container(
           width: double.infinity,
@@ -978,7 +984,7 @@ class _SuspendTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return Tappable(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
@@ -1069,7 +1075,11 @@ class _SheetHeader extends StatelessWidget {
               ],
             ),
           ),
-          IunaIconButton(icon: Icons.close_rounded, onTap: onClose),
+          IunaIconButton(
+            icon: Icons.close_rounded,
+            tooltip: 'Close',
+            onTap: onClose,
+          ),
         ],
       ),
     );

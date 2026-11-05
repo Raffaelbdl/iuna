@@ -108,10 +108,9 @@ class _TutorSettingsSectionState extends State<TutorSettingsSection> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    return IunaGroup(
+      'AI tutor',
       children: [
-        const IunaSectionHeader('AI tutor'),
         ListTile(
           leading: const Icon(Icons.key_rounded, color: IunaPalette.pawBrown),
           title: const Text('OpenRouter API key'),
@@ -140,7 +139,7 @@ class _TutorSettingsSectionState extends State<TutorSettingsSection> {
               const SizedBox(height: 2),
               Text(
                 'Photos go to $kPhotoFallbackModel when this one cannot read them.',
-                style: const TextStyle(fontSize: 11, color: IunaPalette.ink3),
+                style: const TextStyle(fontSize: 12, color: IunaPalette.ink3),
               ),
             ],
           ),

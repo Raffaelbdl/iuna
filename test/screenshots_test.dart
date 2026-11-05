@@ -505,6 +505,7 @@ Future<void> _shoot(
   double pixelRatio = 2.0,
   Duration settle = const Duration(milliseconds: 200),
   Future<void> Function()? act,
+  double textScale = 1,
 }) async {
   tester.view.physicalSize = Size(
     logical.width * pixelRatio,
@@ -518,6 +519,14 @@ Future<void> _shoot(
     MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: buildIunaTheme(),
+      builder: textScale == 1
+          ? null
+          : (context, app) => MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: TextScaler.linear(textScale)),
+              child: app!,
+            ),
       home: child,
     ),
   );
@@ -802,6 +811,66 @@ void main() {
     await _shoot(tester, 'home_pack_opened', HomeScreen(db: db, kumaSeed: 1));
   });
 
+  testWidgets('home — large text (1.5×) grows instead of overflowing', (
+    tester,
+  ) async {
+    final db = await _emptyDb();
+    addTearDown(db.close);
+    final now = DateTime.now();
+    for (final (i, pair) in const [
+      ('猫', 'ねこ', 'cat'),
+      ('犬', 'いぬ', 'dog'),
+      ('熊', 'くま', 'bear'),
+    ].indexed) {
+      final id = await _seedCard(
+        db,
+        kanji: pair.$1,
+        kana: pair.$2,
+        meaning: pair.$3,
+        rarity: Rarity.common,
+      );
+      await db
+          .into(db.userCards)
+          .insert(
+            UserCardsCompanion.insert(
+              cardId: Value(id),
+              nextDue: now.subtract(const Duration(hours: 1)),
+              obtainedAt: now.subtract(Duration(days: i + 1)),
+            ),
+          );
+    }
+    for (var i = 0; i < 8; i++) {
+      await _seedCard(
+        db,
+        kanji: 'k$i',
+        kana: 'kana$i',
+        meaning: 'word $i',
+        rarity: Rarity.common,
+      );
+    }
+    await _shoot(
+      tester,
+      'home_text_scale',
+      HomeScreen(db: db, kumaSeed: 0),
+      logical: const Size(360, 1100),
+      textScale: 1.5,
+    );
+  });
+
+  testWidgets('collection — large text (1.5×)', (tester) async {
+    final db = await _emptyDb();
+    addTearDown(db.close);
+    await _seedCollection(db);
+    await _shoot(
+      tester,
+      'collection_text_scale',
+      CollectionScreen(db: db),
+      logical: const Size(360, 900),
+      settle: const Duration(seconds: 3),
+      textScale: 1.5,
+    );
+  });
+
   testWidgets('settings — sound toggle and JMdict notice', (tester) async {
     await _withLearnSettings();
     useTempDocumentsDir('iuna_settings_shot_');
@@ -837,8 +906,9 @@ void main() {
     await _shoot(
       tester,
       'stats_screen',
-      StatsScreen(db: db, now: DateTime(2026, 4, 26, 12)),
-      logical: const Size(360, 3400),
+      // Unfolded, so every chart is in the shot.
+      StatsScreen(db: db, now: DateTime(2026, 4, 26, 12), detailsOpen: true),
+      logical: const Size(360, 3500),
       settle: const Duration(milliseconds: 500),
     );
   });
@@ -889,12 +959,7 @@ void main() {
     await tester.pump(const Duration(seconds: 3));
 
     // Toggle the "Show missing" chip — picks up unowned cards as silhouettes.
-    // The chip sits at the right end of a horizontal scroll row and is
-    // typically offscreen-right at the default device width, so we
-    // ensureVisible before tapping.
     final chip = find.text('Show missing');
-    await tester.ensureVisible(chip);
-    await tester.pump();
     await tester.tap(chip);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
@@ -965,7 +1030,7 @@ void main() {
     );
   });
 
-  testWidgets('card detail — Kuma teach opens the chat bar', (tester) async {
+  testWidgets('card detail — Ask Kuma-sensei opens the chat bar', (tester) async {
     final (env, deckDb, cardId) = await tutorCard();
     await _shoot(
       tester,
@@ -974,7 +1039,7 @@ void main() {
       logical: const Size(360, 900),
       settle: const Duration(milliseconds: 500),
       act: () async {
-        await tester.tap(find.text('Kuma teach'));
+        await tester.tap(find.text('Ask Kuma-sensei'));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 300));
       },

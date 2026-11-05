@@ -26,6 +26,10 @@ class AskBar extends StatefulWidget {
   /// How far a screen's content scrolls clear of the bar and the nav.
   static const double inset = 190;
 
+  /// How far a snack bar sits above the screen bottom to clear the bar
+  /// and the nav.
+  static const double snackInset = 150;
+
   final LearnEnv env;
   final String hint;
   final Widget nav;
@@ -156,7 +160,7 @@ class _AskBarState extends State<AskBar> with WidgetsBindingObserver {
   }
 }
 
-/// A frosted pill for an [AskBar]: an icon and a label, or the icon
+/// A paper pill for an [AskBar]: an icon and a label, or the icon
 /// alone as a round button beside the open composer.
 class AskBarButton extends StatelessWidget {
   const AskBarButton({
@@ -190,10 +194,7 @@ class AskBarButton extends StatelessWidget {
         child: Ink(
           height: 48,
           width: label == null ? 48 : null,
-          decoration: ghostPillDecoration(
-            color: const Color(0xE6FFFDF6),
-            boxShadow: panelShadow(),
-          ),
+          decoration: ghostPillDecoration(boxShadow: panelShadow()),
           child: label == null
               ? Center(child: glyph)
               : Padding(
