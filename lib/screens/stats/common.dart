@@ -27,7 +27,6 @@ class _StatCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(child: IunaPanelTitle(title)),
               ?trailing,
@@ -66,24 +65,45 @@ class _ChipRow<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: IunaPalette.chipBg,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final o in options)
-            _ChipButton(
-              label: labels[o] ?? o.toString(),
-              selected: o == value,
-              compact: compact,
-              onTap: () => onChange(o),
+    // Each option carries its slice of the track, so its tap target
+    // can run the full 48 px above and below the slim pill.
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final (i, o) in options.indexed)
+          Tappable(
+            onTap: () => onChange(o),
+            selected: o == value,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 48),
+              child: Center(
+                widthFactor: 1,
+                child: Container(
+                  padding: EdgeInsets.only(
+                    left: i == 0 ? 3 : 0,
+                    right: i == options.length - 1 ? 3 : 0,
+                    top: 3,
+                    bottom: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: IunaPalette.chipBg,
+                    borderRadius: BorderRadius.horizontal(
+                      left: Radius.circular(i == 0 ? 999 : 0),
+                      right: Radius.circular(
+                        i == options.length - 1 ? 999 : 0,
+                      ),
+                    ),
+                  ),
+                  child: _ChipButton(
+                    label: labels[o] ?? o.toString(),
+                    selected: o == value,
+                    compact: compact,
+                  ),
+                ),
+              ),
             ),
-        ],
-      ),
+          ),
+      ],
     );
   }
 }
@@ -92,38 +112,32 @@ class _ChipButton extends StatelessWidget {
   const _ChipButton({
     required this.label,
     required this.selected,
-    required this.onTap,
     required this.compact,
   });
 
   final String label;
   final bool selected;
-  final VoidCallback onTap;
   final bool compact;
 
   @override
   Widget build(BuildContext context) {
-    return Tappable(
-      onTap: onTap,
-      selected: selected,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: EdgeInsets.symmetric(
-          horizontal: compact ? 9 : 12,
-          vertical: compact ? 5 : 6,
-        ),
-        decoration: BoxDecoration(
-          color: selected ? IunaPalette.bellGold : Colors.transparent,
-          borderRadius: BorderRadius.circular(999),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: IunaText.caption.fontSize,
-            fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
-            color: selected ? IunaPalette.ink : IunaPalette.ink3,
-            letterSpacing: 0.2,
-          ),
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 150),
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 9 : 12,
+        vertical: compact ? 5 : 6,
+      ),
+      decoration: BoxDecoration(
+        color: selected ? IunaPalette.bellGold : Colors.transparent,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: IunaText.caption.fontSize,
+          fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+          color: selected ? IunaPalette.ink : IunaPalette.ink3,
+          letterSpacing: 0.2,
         ),
       ),
     );

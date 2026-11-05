@@ -17,6 +17,8 @@ import '../widgets/vocab_card.dart';
 import 'card_detail_screen.dart';
 import 'collection_screen.dart';
 import 'review_screen.dart';
+import 'settings_screen.dart';
+import 'today_flow.dart';
 
 /// End-of-session celebration. Tier copy keys off accuracy:
 /// ≥90% / ≥70% / ≥50% / else, with kicker JP + headline + italic note.
@@ -69,6 +71,7 @@ class _ReviewDoneScreenState extends State<ReviewDoneScreen>
   List<CardRow> _doneCards = const [];
   ({DateTime nextDay, DateTime? nextReview})? _upcoming;
   bool _poolEmpty = false;
+  String? _drawFilter;
 
   /// Cards due again before the day ends: the ones just missed, back
   /// after a short gap.
@@ -83,14 +86,16 @@ class _ReviewDoneScreenState extends State<ReviewDoneScreen>
   Future<void> _load() async {
     final now = widget.now;
     try {
-      final (streak, today, cards, upcoming, booster, dueAgain) = await (
-        _repo.recordStreak(now: now),
-        _repo.todayStats(now: now),
-        _repo.cardsByIds(widget.doneCardIds),
-        _repo.upcoming(now: now),
-        _repo.boosterPreview(now: now),
-        _repo.dueCountToday(now: now),
-      ).wait;
+      final (streak, today, cards, upcoming, booster, dueAgain, filter) =
+          await (
+            _repo.recordStreak(now: now),
+            _repo.todayStats(now: now),
+            _repo.cardsByIds(widget.doneCardIds),
+            _repo.upcoming(now: now),
+            _repo.boosterPreview(now: now),
+            _repo.dueCountToday(now: now),
+            _repo.drawFilterName(),
+          ).wait;
       if (!mounted) return;
       setState(() {
         _streak = streak;
@@ -100,6 +105,7 @@ class _ReviewDoneScreenState extends State<ReviewDoneScreen>
         _upcoming = upcoming;
         _poolEmpty = booster.packs > 0 && booster.newCards == 0;
         _dueAgain = dueAgain;
+        _drawFilter = filter;
       });
     } catch (e, s) {
       // The recap still stands on the session's own numbers.
@@ -112,8 +118,12 @@ class _ReviewDoneScreenState extends State<ReviewDoneScreen>
   /// A fresh session over the cards due again, in place of this recap
   /// and the review under it.
   void _reviewAgain() => Navigator.of(context).pushAndRemoveUntil(
-    MaterialPageRoute(builder: (_) => ReviewScreen(db: widget.db)),
+    todayRoute((_) => ReviewScreen(db: widget.db, now: widget.now)),
     (r) => r.isFirst,
+  );
+
+  void _openSettings() => Navigator.of(context).push(
+    MaterialPageRoute(builder: (_) => SettingsScreen(db: widget.db)),
   );
 
   void _openCollection() {
@@ -268,6 +278,8 @@ class _ReviewDoneScreenState extends State<ReviewDoneScreen>
                               nextDay: upcoming.nextDay,
                               nextReview: upcoming.nextReview,
                               poolEmpty: _poolEmpty,
+                              drawFilter: _drawFilter,
+                              onWidenDraw: _openSettings,
                               now: widget.now ?? DateTime.now(),
                             ),
                           ],
@@ -421,6 +433,8 @@ class _ComingUp extends StatelessWidget {
     required this.nextDay,
     required this.nextReview,
     required this.poolEmpty,
+    required this.drawFilter,
+    required this.onWidenDraw,
     required this.now,
   });
 
@@ -429,6 +443,10 @@ class _ComingUp extends StatelessWidget {
 
   /// Every card in the draw pool is collected: no pack is coming.
   final bool poolEmpty;
+
+  /// What the draw is narrowed to, which Settings can widen.
+  final String? drawFilter;
+  final VoidCallback onWidenDraw;
   final DateTime now;
 
   @override
@@ -442,10 +460,21 @@ class _ComingUp extends StatelessWidget {
           _ComingRow(
             icon: Icons.card_giftcard_rounded,
             label: 'Next pack',
-            value: poolEmpty
-                ? 'Every card is collected'
-                : _capitalized(whenWords(nextDay, now)),
+            value: !poolEmpty
+                ? _capitalized(whenWords(nextDay, now))
+                : drawFilter != null
+                ? 'Every $drawFilter card is collected'
+                : 'Every card is collected',
           ),
+          if (poolEmpty && drawFilter != null)
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: onWidenDraw,
+                style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+                child: const Text('Draw from more in Settings'),
+              ),
+            ),
           if (nextReview != null)
             _ComingRow(
               icon: Icons.schedule_rounded,

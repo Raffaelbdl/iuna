@@ -55,7 +55,7 @@ void main() {
       throwsA(
         isA<LlmException>()
             .having((e) => e.status, 'status', 402)
-            .having((e) => e.friendly, 'friendly', 'Your OpenRouter account is out of credits.'),
+            .having((e) => e.friendly, 'friendly', 'Your OpenRouter account is out of credits. Add some on openrouter.ai, or use another key.'),
       ),
     );
   });

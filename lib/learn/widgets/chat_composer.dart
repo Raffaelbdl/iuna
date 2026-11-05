@@ -574,9 +574,8 @@ class _RecordingBarState extends State<_RecordingBar> with SingleTickerProviderS
           TextButton(
             onPressed: widget.onCancel,
             style: TextButton.styleFrom(
-              minimumSize: const Size(0, 32),
+              minimumSize: const Size(48, 48),
               padding: const EdgeInsets.symmetric(horizontal: 10),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               foregroundColor: IunaPalette.raritySsrInk,
             ),
             child: Text(

@@ -167,54 +167,22 @@ class GradientTranslation extends GradientTransform {
 
 /// Per-size metrics for [RarityChip].
 enum RarityChipSize {
-  regular(
-    padH: 10,
-    padV: 5,
-    codeSize: 12,
-    letterSpacing: 0.6,
-    gap: 5,
-    starSize: 9,
-  ),
-  compact(
-    padH: 8,
-    padV: 4,
-    codeSize: 11,
-    letterSpacing: 0.6,
-    gap: 4,
-    starSize: 8,
-  ),
-  header(
-    padH: 10,
-    padV: 5,
-    codeSize: 11,
-    letterSpacing: null,
-    gap: 4,
-    starSize: 9,
-  ),
-  tiny(
-    padH: 6,
-    padV: 3,
-    codeSize: 11,
-    letterSpacing: 0.4,
-    gap: 3,
-    starSize: 7,
-  );
+  regular(padH: 10, padV: 5, letterSpacing: 0.6, gap: 5),
+  compact(padH: 8, padV: 4, letterSpacing: 0.6, gap: 4),
+  header(padH: 10, padV: 5, letterSpacing: null, gap: 4),
+  tiny(padH: 6, padV: 3, letterSpacing: 0.4, gap: 3);
 
   const RarityChipSize({
     required this.padH,
     required this.padV,
-    required this.codeSize,
     required this.letterSpacing,
     required this.gap,
-    required this.starSize,
   });
 
   final double padH;
   final double padV;
-  final double codeSize;
   final double? letterSpacing;
   final double gap;
-  final double starSize;
 }
 
 /// Gacha-style rarity badge in the redesign style: small letter +
@@ -225,9 +193,13 @@ class RarityChip extends StatelessWidget {
     required this.rarity,
     this.size = RarityChipSize.regular,
     this.named = false,
+    this.stars = true,
   });
   final Rarity rarity;
   final RarityChipSize size;
+
+  /// Off where the card already shows its stars large, as on the reveal.
+  final bool stars;
 
   /// Spells the tier out after the stars ("Super Rare").
   final bool named;
@@ -250,30 +222,24 @@ class RarityChip extends StatelessWidget {
         children: [
           Text(
             rarityCode(rarity),
-            style: TextStyle(
-              fontSize: size.codeSize,
+            style: IunaText.chip.copyWith(
               fontWeight: FontWeight.w800,
               color: ink,
               letterSpacing: size.letterSpacing,
             ),
           ),
-          SizedBox(width: size.gap),
-          Text(
-            '★' * rarityStars(rarity),
-            style: TextStyle(
-              fontSize: size.starSize,
-              color: ink.withValues(alpha: 0.7),
+          if (stars) ...[
+            SizedBox(width: size.gap),
+            Text(
+              '★' * rarityStars(rarity),
+              style: TextStyle(fontSize: 10, color: ink),
             ),
-          ),
+          ],
           if (named) ...[
             SizedBox(width: size.gap + 2),
             Text(
               rarityName(rarity),
-              style: TextStyle(
-                fontSize: size.codeSize,
-                fontWeight: FontWeight.w600,
-                color: ink,
-              ),
+              style: IunaText.chip.copyWith(color: ink),
             ),
           ],
         ],

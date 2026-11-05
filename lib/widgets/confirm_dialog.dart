@@ -36,4 +36,7 @@ Future<bool> showConfirmDialog(
 ButtonStyle destructiveButtonStyle() => FilledButton.styleFrom(
   backgroundColor: IunaPalette.danger,
   foregroundColor: IunaPalette.paper,
+  // Plain red, not the theme's honey.
+  backgroundBuilder: (context, states, child) =>
+      child ?? const SizedBox.shrink(),
 );

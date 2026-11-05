@@ -10,12 +10,16 @@ class Tappable extends StatelessWidget {
     required this.child,
     this.label,
     this.selected,
+    this.expanded,
   });
 
   final VoidCallback? onTap;
   final Widget child;
   final String? label;
   final bool? selected;
+
+  /// For a row that opens more below it.
+  final bool? expanded;
 
   @override
   Widget build(BuildContext context) {
@@ -24,6 +28,7 @@ class Tappable extends StatelessWidget {
         button: true,
         enabled: onTap != null,
         selected: selected,
+        expanded: expanded,
         label: label,
         child: GestureDetector(
           onTap: onTap,

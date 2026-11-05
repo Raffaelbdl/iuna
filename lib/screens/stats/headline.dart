@@ -11,7 +11,8 @@ class _Headline extends StatelessWidget {
 
   final int reviews;
 
-  /// Review-kind only — null when there are no review-kind rows yet.
+  /// Pass rate on known cards, as "New vs known cards" counts them;
+  /// null before the first.
   final ({int correct, int total})? trueRetention;
   final int learned;
 
@@ -69,7 +70,8 @@ class _Headline extends StatelessWidget {
         : '${((acc.correct / acc.total) * 100).round()}%';
     final accSub = acc == null
         ? 'no known cards yet'
-        : 'known cards · ${_compact(acc.total, threshold: 10000)}';
+        : 'known cards\n${_compact(acc.total, threshold: 10000)} '
+              '${acc.total == 1 ? 'review' : 'reviews'}';
 
     return Container(
       decoration: paperPanelDecoration(),

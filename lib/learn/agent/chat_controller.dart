@@ -97,6 +97,10 @@ class ChatController extends ChangeNotifier {
 
   String? get status => _status;
   String? get error => _error;
+
+  /// The [error] is the key or the credits, which Settings can fix.
+  bool get errorInSettings => _error != null && _errorInSettings;
+  bool _errorInSettings = false;
   bool get busy => _busy;
   bool get loaded => _loaded;
   PendingQuiz? get pendingQuiz => _quiz;
@@ -238,9 +242,11 @@ class ChatController extends ChangeNotifier {
       finished = await _loop();
     } on LlmException catch (e) {
       _error = e.friendly;
+      _errorInSettings = e.status == 401 || e.status == 402;
     } catch (e) {
       debugPrint('Tutor turn failed: $e');
       _error = "Kuma-sensei couldn't answer just now. Try again.";
+      _errorInSettings = false;
     } finally {
       _busy = false;
       _setStreaming('');

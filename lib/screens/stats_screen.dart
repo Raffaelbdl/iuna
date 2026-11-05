@@ -71,7 +71,8 @@ class _StatsScreenState extends State<StatsScreen> {
   /// fallback to lifetime accuracy, because the learn-phase pass rate
   /// isn't comparable to SM-2's 90% target.
   ({int total, int correct})? _trueRet;
-  Map<ReviewKind, ({int total, int correct})> _byKind = const {};
+  ({int total, int correct}) _knownRet = (total: 0, correct: 0);
+  ({int total, int correct}) _newRet = (total: 0, correct: 0);
   Map<Rarity, ({int total, int correct})> _byRarity = const {};
   Map<int, ({int owned, int total})> _byJlpt = const {};
   Map<String, ({String label, int owned, int total})> _byPack = const {};
@@ -162,7 +163,8 @@ class _StatsScreenState extends State<StatsScreen> {
       _trueRet = breakdown.trueRetention.total == 0
           ? null
           : breakdown.trueRetention;
-      _byKind = breakdown.byKind;
+      _knownRet = breakdown.trueRetention;
+      _newRet = breakdown.newRetention;
       _byRarity = breakdown.byRarity;
       _byJlpt = r1.$2;
       _heatmap = r1.$3;
@@ -245,14 +247,16 @@ class _StatsScreenState extends State<StatsScreen> {
                 const SizedBox(height: 14),
                 _StatCard(
                   title: 'JLPT progress',
-                  subtitle: 'Cards collected per level. 完 = complete.',
+                  subtitle: 'Cards collected per level. 完 marks a complete '
+                      'one.',
                   child: _JlptProgress(byLevel: _byJlpt),
                 ),
                 if (_byPack.isNotEmpty) ...[
                   const SizedBox(height: 14),
                   _StatCard(
                     title: 'Themed packs',
-                    subtitle: 'Cards collected per pack. 完 = complete.',
+                    subtitle: 'Cards collected per pack. 完 marks a '
+                        'complete one.',
                     child: _PackProgress(byPack: _byPack),
                   ),
                 ],
@@ -271,14 +275,14 @@ class _StatsScreenState extends State<StatsScreen> {
   List<Widget> _details() => [
     const SizedBox(height: 6),
     _StatCard(
-      title: 'Year heatmap',
+      title: 'Your year',
       subtitle:
           'Every square is a day. Darker = more reviews. Quiet stretches show as light squares.',
       child: _YearHeatmap(days: _heatmap),
     ),
     const SizedBox(height: 14),
     _StatCard(
-      title: 'Retention curve',
+      title: 'How long you remember',
       subtitle:
           'How often you remember a card after each gap between reviews. '
           'Below the dashed line, that gap is too long for you.',
@@ -297,11 +301,12 @@ class _StatsScreenState extends State<StatsScreen> {
     ),
     const SizedBox(height: 14),
     _StatCard(
-      title: 'Pass rate by card stage',
+      title: 'New vs known cards',
       subtitle:
-          'Known cards show how well you remember. New and relearning cards '
-          'are still settling, so they swing more.',
-      child: _KindBreakdownDonut(byKind: _byKind),
+          'How often you get each right. Known cards, a day or more since '
+          'their last review, show how well you remember; new ones are '
+          'still settling.',
+      child: _StageDonut(newCards: _newRet, knownCards: _knownRet),
     ),
     const SizedBox(height: 14),
     _StatCard(

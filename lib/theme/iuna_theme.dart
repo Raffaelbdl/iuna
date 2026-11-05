@@ -315,9 +315,9 @@ String rarityName(Rarity r) {
     case Rarity.superRare:
       return 'Super Rare';
     case Rarity.ssr:
-      return 'Ultra Rare';
+      return 'Super Super Rare';
     case Rarity.ur:
-      return 'Legendary';
+      return 'Ultra Rare';
   }
 }
 
@@ -417,6 +417,19 @@ ThemeData buildIunaTheme() {
         padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
         textStyle: buttonLabel,
         shape: pill,
+        // The same honey as IunaCtaButton, so a compact action in a
+        // list or dialog reads as the screen's primary one does; no
+        // drop shadow at this size.
+        backgroundBuilder: (context, states, child) =>
+            states.contains(WidgetState.disabled)
+            ? child ?? const SizedBox.shrink()
+            : DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: ctaGradient,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: child,
+              ),
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(

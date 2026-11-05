@@ -20,8 +20,9 @@ import '../widgets/vocab_card.dart';
 /// One-by-one card reveal after the pack-intro splash. Tap or press
 /// "Next card" to advance; the final card, or "Skip to review", pops
 /// the screen with the picked ids so the caller can route into the
-/// review flow. System Back pops with null and goes home: the cards are
-/// already in the collection and their review stays due. When the
+/// review flow. The close button and system Back pop with null and go
+/// home: the cards are already in the collection and their review
+/// stays due. When the
 /// user has more than one daily pack remaining, all of them are claimed
 /// upfront and revealed in one chained sequence — a short pack-tear
 /// animation plays between packs so the boundary stays felt.
@@ -204,7 +205,16 @@ class _BoosterRevealScreenState extends State<BoosterRevealScreen>
     final animFuture = _swap.forward(from: 0);
     final swapFuture = _repo.suspendAndReplace(suspendCardIds: [card.id]);
     await animFuture;
-    final swap = await swapFuture;
+    final BoosterSwap swap;
+    try {
+      swap = await swapFuture;
+    } catch (e) {
+      if (!mounted) return;
+      _swap.reset();
+      setState(() => _swapping = false);
+      showErrorSnack(context, "Couldn't swap that card.", e);
+      return;
+    }
     if (!mounted) return;
     _offerUndo(swap, slot: slot, original: card);
 
@@ -318,7 +328,8 @@ class _BoosterRevealScreenState extends State<BoosterRevealScreen>
       children: [
         _TopBar(
           label: '$packLabel${_index + 1} / ${_cards.length}',
-          onClose: _finalizeAndPop,
+          onLeave: () => _finalizeAndPop(toReview: false),
+          onSkip: _finalizeAndPop,
         ),
         ProgressDots(count: _cards.length, index: _index, revealed: _revealed),
         const SizedBox(height: 6),
@@ -450,18 +461,13 @@ class _BoosterRevealScreenState extends State<BoosterRevealScreen>
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 18),
-          child: Row(
-            children: [
-              _SuspendPill(onTap: _swapping ? null : _suspendCurrent),
-              const SizedBox(width: 10),
-              Expanded(
-                child: IunaCtaButton(
-                  label: isLast ? 'Start review' : 'Next card',
-                  onTap: _advance,
-                  trailingIcon: Icons.arrow_forward_rounded,
-                ),
-              ),
-            ],
+          child: _RevealActions(
+            next: IunaCtaButton(
+              label: isLast ? 'Start review' : 'Next card',
+              onTap: _advance,
+              trailingIcon: Icons.arrow_forward_rounded,
+            ),
+            swap: _SuspendPill(onTap: _swapping ? null : _suspendCurrent),
           ),
         ),
       ],
@@ -494,6 +500,31 @@ ColorFilter _grayscale(double amount) {
     0, 0, 0, 1, 0,
   ]);
   // dart format on
+}
+
+/// The swap pill beside the CTA, or under it once large text would
+/// wrap the CTA's label.
+class _RevealActions extends StatelessWidget {
+  const _RevealActions({required this.next, required this.swap});
+  final Widget next;
+  final Widget swap;
+
+  @override
+  Widget build(BuildContext context) {
+    if (MediaQuery.textScalerOf(context).scale(10) > 12) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [next, const SizedBox(height: 18), swap],
+      );
+    }
+    return Row(
+      children: [
+        swap,
+        const SizedBox(width: 10),
+        Expanded(child: next),
+      ],
+    );
+  }
 }
 
 class _SuspendPill extends StatelessWidget {
@@ -541,29 +572,65 @@ class _SuspendPill extends StatelessWidget {
 }
 
 class _TopBar extends StatelessWidget {
-  const _TopBar({required this.label, required this.onClose});
+  const _TopBar({
+    required this.label,
+    required this.onLeave,
+    required this.onSkip,
+  });
   final String label;
-  final VoidCallback onClose;
+  final VoidCallback onLeave;
+  final VoidCallback onSkip;
 
   @override
   Widget build(BuildContext context) {
-    return IunaTopBar(
-      // The cards are already collected, so skipping goes on to the
-      // review.
-      trailing: TextButton(
-        onPressed: onClose,
-        style: TextButton.styleFrom(
-          minimumSize: const Size(IunaIconButton.size, IunaIconButton.size),
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-        ),
-        child: const Text('Skip to review'),
-      ),
-      title: Text(
-        label,
-        style: IunaText.bodySmall.copyWith(
-          fontWeight: FontWeight.w600,
-          color: IunaPalette.ink2,
-          height: 1,
+    // Equal sides keep the counter centred against the wider skip
+    // button.
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 6, 10, 2),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: IunaIconButton.size),
+        child: Row(
+          children: [
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                // The cards are already collected; their review waits
+                // on Home.
+                child: IunaIconButton(
+                  icon: Icons.close_rounded,
+                  tooltip: 'Review later',
+                  onTap: onLeave,
+                ),
+              ),
+            ),
+            Text(
+              label,
+              style: IunaText.bodySmall.copyWith(
+                fontWeight: FontWeight.w600,
+                color: IunaPalette.ink2,
+                height: 1,
+              ),
+            ),
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: TextButton(
+                    onPressed: onSkip,
+                    style: TextButton.styleFrom(
+                      minimumSize: const Size(
+                        IunaIconButton.size,
+                        IunaIconButton.size,
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                    child: const Text('Skip to review'),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -591,7 +658,7 @@ class _RevealCard extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    RarityChip(rarity: card.rarity),
+                    RarityChip(rarity: card.rarity, stars: false),
                     if (rarityStars(card.rarity) >= 4)
                       const Icon(
                         Icons.auto_awesome_rounded,

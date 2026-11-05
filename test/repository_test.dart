@@ -137,7 +137,7 @@ void main() {
     }
   });
 
-  test('ownedCards wishedOnly returns wishlisted cards regardless of ownership',
+  test('ownedCards wishedOnly returns the wishlisted cards still to collect',
       () async {
     final ownedWished = await _seedCard(db, 'a', 'a', Rarity.common);
     final unownedWished =
@@ -152,13 +152,34 @@ void main() {
             obtainedAt: DateTime.now(),
           ));
     }
-    await repo.toggleWishlist(ownedWished);
+    // A row from before owned cards were kept off the wishlist.
+    await db.into(db.wishlist).insert(WishlistCompanion.insert(
+          cardId: Value(ownedWished),
+          addedAt: DateTime.now(),
+        ));
     await repo.toggleWishlist(unownedWished);
 
     final wished = await repo.ownedCards(wishedOnly: true);
     final ids = wished.map((e) => e.card.id).toSet();
-    expect(ids, {ownedWished, unownedWished});
-    expect(await repo.wishedCount(), 2);
+    expect(ids, {unownedWished});
+    expect(await repo.wishedCount(), 1);
+  });
+
+  test('an owned card can come off the wishlist but not go on', () async {
+    final id = await _seedCard(db, 'a', 'a', Rarity.common);
+    await db.into(db.userCards).insert(UserCardsCompanion.insert(
+          cardId: Value(id),
+          nextDue: DateTime(2026),
+          obtainedAt: DateTime(2026),
+        ));
+    expect(await repo.toggleWishlist(id), isFalse);
+    expect(await repo.isWished(id), isFalse);
+
+    await db.into(db.wishlist).insert(
+          WishlistCompanion.insert(cardId: Value(id), addedAt: DateTime(2026)),
+        );
+    expect(await repo.toggleWishlist(id), isFalse);
+    expect(await repo.isWished(id), isFalse);
   });
 
   test('toggleWishlist round-trips and isWished reflects state',
@@ -1546,10 +1567,10 @@ void main() {
         b.trueRetention,
         count(rows.where((r) => r.prevIntervalMinutes >= 60 * 24)),
       );
-      expect(b.byKind, {
-        for (final k in ReviewKind.values)
-          k: count(rows.where((r) => r.kind == k)),
-      });
+      expect(
+        b.newRetention,
+        count(rows.where((r) => r.prevIntervalMinutes < 60 * 24)),
+      );
       expect(b.byRarity, {
         for (final r in Rarity.values)
           r: count(rows.where((row) => row.rarity == r.index)),

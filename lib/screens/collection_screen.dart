@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../core/japanese_text.dart';
 import '../db/database.dart';
 import '../db/repository.dart';
 import '../services/dict_download.dart';
@@ -136,12 +137,12 @@ class _CollectionScreenState extends State<CollectionScreen> {
       return;
     }
     if (!mounted) return;
-    final ready = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) => _DictionaryOffer(
-        onReady: () => Navigator.of(ctx).pop(true),
-      ),
+    final ready = await showDictionaryOffer(
+      context,
+      title: 'Add any word to your wishlist',
+      body:
+          'Look a word up in the offline dictionary and bookmark it. It '
+          'shows up in a pack soon. The dictionary is a one-time download.',
     );
     await _probeDict();
     if (ready == true && mounted) await _openAddCard();
@@ -321,15 +322,11 @@ class _CollectionScreenState extends State<CollectionScreen> {
                   onToggleWishedOnly: _toggleWishedOnly,
                   suspendedOnly: _suspendedOnly,
                   onToggleSuspendedOnly: _toggleSuspendedOnly,
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: _ProgressStrip(
-                  stats: stats,
                   showMissing: _showMissing,
                   onToggleShowMissing: _toggleShowMissing,
                 ),
               ),
+              SliverToBoxAdapter(child: _ProgressStrip(stats: stats)),
               if (_entries.isEmpty)
                 SliverFillRemaining(
                   hasScrollBody: false,
@@ -341,7 +338,9 @@ class _CollectionScreenState extends State<CollectionScreen> {
                             !_suspendedOnly
                         ? _NotCollected(
                             onShowMissing: _toggleShowMissing,
-                            onSearchDictionary: _dictInstalled
+                            // The dictionary looks up Japanese only.
+                            onSearchDictionary:
+                                _dictInstalled && japaneseRun.hasMatch(_query)
                                 ? _openAddCard
                                 : null,
                             onClearSearch: _clearFilters,
@@ -395,6 +394,8 @@ class _RarityFilters extends StatelessWidget {
     required this.onToggleWishedOnly,
     required this.suspendedOnly,
     required this.onToggleSuspendedOnly,
+    required this.showMissing,
+    required this.onToggleShowMissing,
   });
 
   final Set<Rarity> selected;
@@ -405,11 +406,13 @@ class _RarityFilters extends StatelessWidget {
   final VoidCallback onToggleWishedOnly;
   final bool suspendedOnly;
   final VoidCallback onToggleSuspendedOnly;
+  final bool showMissing;
+  final VoidCallback onToggleShowMissing;
 
   @override
   Widget build(BuildContext context) {
     // Rows that wrap, so no filter hides off-screen: rarity, then
-    // which cards. "Show missing" sits with the collected count.
+    // which cards.
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Column(
@@ -436,15 +439,18 @@ class _RarityFilters extends StatelessWidget {
             children: [
               _Chip(
                 label: wishCount > 0 ? 'Wishlist · $wishCount' : 'Wishlist',
-                icon: Icons.bookmark_rounded,
                 active: wishedOnly,
                 onTap: onToggleWishedOnly,
               ),
               _Chip(
                 label: 'Suspended',
-                icon: Icons.pause_circle_outline_rounded,
                 active: suspendedOnly,
                 onTap: onToggleSuspendedOnly,
+              ),
+              _Chip(
+                label: 'Show missing',
+                active: showMissing,
+                onTap: onToggleShowMissing,
               ),
             ],
           ),
@@ -461,14 +467,12 @@ class _Chip extends StatelessWidget {
     required this.label,
     required this.active,
     required this.onTap,
-    this.icon,
     this.rarity,
     this.semanticLabel,
   });
   final String label;
   final bool active;
   final VoidCallback onTap;
-  final IconData? icon;
   final Rarity? rarity;
   final String? semanticLabel;
 
@@ -488,7 +492,6 @@ class _Chip extends StatelessWidget {
       bg = IunaPalette.chipBg;
       fg = IunaPalette.ink2;
     }
-    final glyph = active ? Icons.check_rounded : icon;
     return Tappable(
       onTap: onTap,
       selected: active,
@@ -514,8 +517,8 @@ class _Chip extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (glyph != null) ...[
-                Icon(glyph, size: 14, color: fg),
+              if (active) ...[
+                Icon(Icons.check_rounded, size: 14, color: fg),
                 const SizedBox(width: 4),
               ],
               Text(
@@ -532,113 +535,140 @@ class _Chip extends StatelessWidget {
   }
 }
 
-class _ProgressStrip extends StatelessWidget {
-  const _ProgressStrip({
-    required this.stats,
-    required this.showMissing,
-    required this.onToggleShowMissing,
-  });
+/// How much of the deck is collected: one line and a bar, opening on
+/// tap to the per-tier counts.
+class _ProgressStrip extends StatefulWidget {
+  const _ProgressStrip({required this.stats});
   final CollectionStats stats;
-  final bool showMissing;
-  final VoidCallback onToggleShowMissing;
+
+  @override
+  State<_ProgressStrip> createState() => _ProgressStripState();
+}
+
+class _ProgressStripState extends State<_ProgressStrip> {
+  bool _open = false;
 
   @override
   Widget build(BuildContext context) {
+    final stats = widget.stats;
     final pct = stats.total == 0 ? 0.0 : stats.owned / stats.total;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
       child: Container(
-        padding: const EdgeInsets.fromLTRB(14, 4, 8, 12),
         decoration: paperPanelDecoration(
           borderRadius: BorderRadius.circular(IunaRadii.md),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+        child: Tappable(
+          onTap: () => setState(() => _open = !_open),
+          expanded: _open,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 10, 10, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Text.rich(
-                    TextSpan(
-                      text:
-                          '${_format(stats.owned)} / ${_format(stats.total)} '
-                          'collected',
-                      children: [
-                        TextSpan(
-                          text: ' · ${(pct * 100).toStringAsFixed(1)}%',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w500,
-                            color: IunaPalette.ink3,
-                            fontFeatures: [FontFeature.tabularFigures()],
-                          ),
-                        ),
-                      ],
-                    ),
-                    style: IunaText.bodySmall.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: IunaPalette.ink,
-                    ),
-                  ),
-                ),
-                _Chip(
-                  label: 'Show missing',
-                  icon: Icons.help_outline_rounded,
-                  active: showMissing,
-                  onTap: onToggleShowMissing,
-                ),
-              ],
-            ),
-            const SizedBox(height: 2),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(999),
-              child: SizedBox(
-                height: 8,
-                child: Row(
+                Row(
                   children: [
-                    // A tier with no cards gets no segment: a zero flex
-                    // would leave it unbounded.
-                    for (final r in Rarity.values)
-                      if ((stats.totalByRarity[r] ?? 0) > 0)
-                        Expanded(
-                          flex: stats.totalByRarity[r]!,
-                          child: _RaritySegment(
-                            owned: stats.ownedByRarity[r] ?? 0,
-                            total: stats.totalByRarity[r] ?? 0,
-                            color: rarityColor(r),
-                          ),
+                    Expanded(
+                      child: Text.rich(
+                        TextSpan(
+                          text:
+                              '${_thousands(stats.owned)} / '
+                              '${_thousands(stats.total)} '
+                              'collected',
+                          children: [
+                            TextSpan(
+                              text: ' · ${_percent(pct)}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w500,
+                                color: IunaPalette.ink3,
+                                fontFeatures: [FontFeature.tabularFigures()],
+                              ),
+                            ),
+                          ],
                         ),
+                        style: IunaText.bodySmall.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: IunaPalette.ink,
+                        ),
+                      ),
+                    ),
+                    AnimatedRotation(
+                      turns: _open ? 0.5 : 0,
+                      duration: const Duration(milliseconds: 180),
+                      child: const Icon(
+                        Icons.expand_more_rounded,
+                        size: 20,
+                        color: IunaPalette.ink3,
+                      ),
+                    ),
                   ],
                 ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 12,
-              runSpacing: 4,
-              children: [
-                for (final r in Rarity.values)
-                  _LegendChip(
-                    rarity: r,
-                    owned: stats.ownedByRarity[r] ?? 0,
-                    total: stats.totalByRarity[r] ?? 0,
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: SizedBox(
+                    height: 8,
+                    child: Row(
+                      children: [
+                        // A tier with no cards gets no segment: a zero
+                        // flex would leave it unbounded.
+                        for (final r in Rarity.values)
+                          if ((stats.totalByRarity[r] ?? 0) > 0)
+                            Expanded(
+                              flex: stats.totalByRarity[r]!,
+                              child: _RaritySegment(
+                                owned: stats.ownedByRarity[r] ?? 0,
+                                total: stats.totalByRarity[r] ?? 0,
+                                color: rarityColor(r),
+                              ),
+                            ),
+                      ],
+                    ),
                   ),
+                ),
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 180),
+                  alignment: Alignment.topCenter,
+                  child: !_open
+                      ? const SizedBox(width: double.infinity)
+                      : Padding(
+                          padding: const EdgeInsets.only(top: 10),
+                          child: Wrap(
+                            spacing: 12,
+                            runSpacing: 4,
+                            children: [
+                              for (final r in Rarity.values)
+                                _LegendChip(
+                                  rarity: r,
+                                  owned: stats.ownedByRarity[r] ?? 0,
+                                  total: stats.totalByRarity[r] ?? 0,
+                                ),
+                            ],
+                          ),
+                        ),
+                ),
               ],
             ),
-          ],
+          ),
         ),
       ),
     );
   }
+}
 
-  static String _format(int n) {
-    final s = n.toString();
-    final out = StringBuffer();
-    for (var i = 0; i < s.length; i++) {
-      if (i > 0 && (s.length - i) % 3 == 0) out.write(',');
-      out.write(s[i]);
-    }
-    return out.toString();
+String _percent(double pct) {
+  if (pct > 0 && pct < 0.01) return '<1%';
+  return '${(pct * 100).floor()}%';
+}
+
+String _thousands(int n) {
+  final s = n.toString();
+  final out = StringBuffer();
+  for (var i = 0; i < s.length; i++) {
+    if (i > 0 && (s.length - i) % 3 == 0) out.write(',');
+    out.write(s[i]);
   }
+  return out.toString();
 }
 
 class _RaritySegment extends StatelessWidget {
@@ -860,14 +890,6 @@ class _HexTile extends StatelessWidget {
                   ),
                 ),
               ),
-            Positioned(
-              top: 8,
-              left: 8,
-              child: RarityChip(
-                rarity: card.rarity,
-                size: RarityChipSize.tiny,
-              ),
-            ),
             if (suspended)
               // Whole-tile wash so a suspended card reads as inactive
               // at a glance, without hiding the kanji the way the
@@ -877,14 +899,40 @@ class _HexTile extends StatelessWidget {
                   child: Container(color: IunaPalette.paperGlass),
                 ),
               ),
-            if (suspended)
-              const Positioned(top: 8, right: 8, child: _SuspendedBadge())
-            else if (owned && (entry.userCard?.level ?? 0) > 0)
-              Positioned(
-                top: 8,
-                right: 8,
-                child: _LevelPill(level: entry.userCard!.level),
+            // One row, so a long rarity chip shrinks rather than runs
+            // under the badge at large text.
+            Positioned(
+              top: 8,
+              left: 8,
+              right: 8,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      heightFactor: 1,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Opacity(
+                          opacity: suspended ? 0.5 : 1,
+                          child: RarityChip(
+                            rarity: card.rarity,
+                            size: RarityChipSize.tiny,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (suspended) ...[
+                    const SizedBox(width: 6),
+                    const _SuspendedBadge(),
+                  ] else if (owned && (entry.userCard?.level ?? 0) > 0) ...[
+                    const SizedBox(width: 6),
+                    _LevelPill(level: entry.userCard!.level),
+                  ],
+                ],
               ),
+            ),
           ],
         ),
       ),
@@ -1075,48 +1123,6 @@ class _NotCollected extends StatelessWidget {
               style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
               child: const Text('Clear search'),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// The "+" without the dictionary: what it would do, and the download.
-class _DictionaryOffer extends StatelessWidget {
-  const _DictionaryOffer({required this.onReady});
-
-  final VoidCallback onReady;
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.only(bottom: 16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-              child: Text(
-                'Add any word to your wishlist',
-                style: IunaText.title.copyWith(color: IunaPalette.ink),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 6, 20, 4),
-              child: Text(
-                'Look a word up in the offline dictionary and bookmark it. '
-                'It shows up in a pack soon. The dictionary is a one-time '
-                'download.',
-                style: IunaText.body.copyWith(
-                  color: IunaPalette.ink2,
-                  height: 1.4,
-                ),
-              ),
-            ),
-            DictionarySection(onReady: onReady),
           ],
         ),
       ),

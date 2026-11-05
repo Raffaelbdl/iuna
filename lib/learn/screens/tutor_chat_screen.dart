@@ -119,6 +119,11 @@ class _TutorChatScreenState extends State<TutorChatScreen>
     await chat.open();
   }
 
+  VoidCallback? get _openSettings => switch (widget.env.openSettings) {
+        final open? => () => open(context),
+        null => null,
+      };
+
   Future<void> _reload() async {
     final course = await _repo.course(widget.courseId);
     final key = widget.chapterKey;
@@ -140,10 +145,18 @@ class _TutorChatScreenState extends State<TutorChatScreen>
             listenable: chat,
             builder: (context, _) {
               final started = chat.messages.any((m) => m.role == MessageRole.user);
+              // Disabled, the tooltip says why.
+              final reason = !started
+                  ? 'Say something to Kuma-sensei first'
+                  : chat.pendingQuiz != null
+                  ? 'Answer the quick check first'
+                  : chat.busy
+                  ? 'Wait for Kuma-sensei to finish'
+                  : null;
               return Tooltip(
-                message: 'End the session and save notes',
+                message: reason ?? 'End the session and save notes',
                 child: TextButton(
-                  onPressed: chat.busy || !started ? null : () => _wrapUp(chat),
+                  onPressed: reason != null ? null : () => _wrapUp(chat),
                   style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
                   child: const Text('Wrap up'),
                 ),
@@ -159,6 +172,7 @@ class _TutorChatScreenState extends State<TutorChatScreen>
                 noteCaptions: _noteCaptions,
                 picker: widget.env.photos,
                 bookmarks: widget.env.bookmarks,
+                onOpenSettings: _openSettings,
               )
             : TabBarView(
                 controller: _tabs,
@@ -169,6 +183,7 @@ class _TutorChatScreenState extends State<TutorChatScreen>
                     noteCaptions: _noteCaptions,
                     picker: widget.env.photos,
                     bookmarks: widget.env.bookmarks,
+                    onOpenSettings: _openSettings,
                     onActivityTap: (tool) {
                       if (tool is CourseWriteTool) _tabs?.animateTo(1);
                     },

@@ -29,6 +29,7 @@ class ChatView extends StatefulWidget {
     this.hint = 'Message Kuma-sensei…',
     this.picker,
     this.bookmarks,
+    this.onOpenSettings,
   });
 
   final ChatController controller;
@@ -48,6 +49,9 @@ class ChatView extends StatefulWidget {
 
   /// Where a word tapped in a reply can be wishlisted.
   final WordBookmarks? bookmarks;
+
+  /// Offered beside Retry when the key or the credits failed.
+  final VoidCallback? onOpenSettings;
 
   @override
   State<ChatView> createState() => _ChatViewState();
@@ -227,7 +231,13 @@ class _ChatViewState extends State<ChatView> {
       out.add(_Typing(label: c.status ?? 'Kuma-sensei is thinking…'));
     }
     final error = c.error;
-    if (error != null) out.add(_ErrorNote(text: error, onRetry: c.retry));
+    if (error != null) {
+      out.add(_ErrorNote(
+        text: error,
+        onRetry: c.retry,
+        onOpenSettings: c.errorInSettings ? widget.onOpenSettings : null,
+      ));
+    }
     return out;
   }
 
@@ -351,34 +361,44 @@ class _ToolChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = failed ? IunaPalette.raritySsrInk : IunaPalette.ink2;
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 3),
-        child: Material(
-          color: failed ? const Color(0x1FF3A7B5) : const Color.fromRGBO(74, 53, 32, 0.05),
-          shape: const StadiumBorder(),
-          child: InkWell(
-            customBorder: const StadiumBorder(),
-            onTap: onTap,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(icon, size: 14, color: color),
-                  const SizedBox(width: 6),
-                  Text(label, style: IunaText.chip.copyWith(color: color)),
-                  if (onTap != null) ...[
-                    const SizedBox(width: 2),
-                    Icon(Icons.chevron_right_rounded, size: 14, color: color),
-                  ],
-                ],
-              ),
-            ),
+    final onTap = this.onTap;
+    final chip = Material(
+      color: failed ? const Color(0x1FF3A7B5) : const Color.fromRGBO(74, 53, 32, 0.05),
+      shape: const StadiumBorder(),
+      child: InkWell(
+        customBorder: const StadiumBorder(),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 14, color: color),
+              const SizedBox(width: 6),
+              Text(label, style: IunaText.chip.copyWith(color: color)),
+              if (onTap != null) ...[
+                const SizedBox(width: 2),
+                Icon(Icons.chevron_right_rounded, size: 14, color: color),
+              ],
+            ],
           ),
         ),
       ),
+    );
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: onTap == null
+          ? Padding(padding: const EdgeInsets.symmetric(vertical: 3), child: chip)
+          // A 48 px tap target around the slim chip.
+          : GestureDetector(
+              onTap: onTap,
+              behavior: HitTestBehavior.opaque,
+              excludeFromSemantics: true,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 48),
+                child: Center(widthFactor: 1, child: chip),
+              ),
+            ),
     );
   }
 }
@@ -460,9 +480,10 @@ class _TypingState extends State<_Typing> with SingleTickerProviderStateMixin {
 }
 
 class _ErrorNote extends StatelessWidget {
-  const _ErrorNote({required this.text, required this.onRetry});
+  const _ErrorNote({required this.text, required this.onRetry, this.onOpenSettings});
   final String text;
   final VoidCallback onRetry;
+  final VoidCallback? onOpenSettings;
 
   @override
   Widget build(BuildContext context) {
@@ -473,14 +494,27 @@ class _ErrorNote extends StatelessWidget {
         color: const Color(0x26F3A7B5),
         borderRadius: BorderRadius.circular(IunaRadii.md),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          const Icon(Icons.error_outline_rounded, size: 18, color: IunaPalette.raritySsrInk),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(text, style: IunaText.bodySmall.copyWith(color: IunaPalette.ink, height: 1.35)),
+          Row(
+            children: [
+              const Icon(Icons.error_outline_rounded, size: 18, color: IunaPalette.raritySsrInk),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(text, style: IunaText.bodySmall.copyWith(color: IunaPalette.ink, height: 1.35)),
+              ),
+              if (onOpenSettings == null) TextButton(onPressed: onRetry, child: const Text('Retry')),
+            ],
           ),
-          TextButton(onPressed: onRetry, child: const Text('Retry')),
+          if (onOpenSettings case final open?)
+            Wrap(
+              alignment: WrapAlignment.end,
+              children: [
+                TextButton(onPressed: open, child: const Text('Open Settings')),
+                TextButton(onPressed: onRetry, child: const Text('Retry')),
+              ],
+            ),
         ],
       ),
     );

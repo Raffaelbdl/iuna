@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../core/japanese_text.dart';
 import '../db/database.dart';
 import '../db/jmdict_lookup.dart';
 import '../db/repository.dart';
@@ -75,8 +76,21 @@ class _AddCardScreenState extends State<AddCardScreen> {
       });
       return;
     }
+    if (!japaneseRun.hasMatch(q)) {
+      setState(() {
+        _results = const [];
+        _searching = false;
+      });
+      return;
+    }
     setState(() => _searching = true);
-    final hits = await JmdictLookup.instance.search(q, limit: 50);
+    List<JmdictHit> hits;
+    try {
+      hits = await JmdictLookup.instance.search(q, limit: 50);
+    } catch (e) {
+      if (mounted) showErrorSnack(context, "Couldn't search the dictionary.", e);
+      hits = const [];
+    }
     if (!mounted || _query.trim() != q) return;
     setState(() {
       _results = hits;
@@ -165,6 +179,14 @@ class _AddCardScreenState extends State<AddCardScreen> {
     }
     if (_searching && _results.isEmpty) {
       return const Center(child: CircularProgressIndicator());
+    }
+    if (!japaneseRun.hasMatch(_query)) {
+      return const _EmptyState(
+        icon: Icons.translate_rounded,
+        text:
+            'The dictionary looks words up in Japanese. Type the word in '
+            'kanji or kana.',
+      );
     }
     if (_results.isEmpty) {
       return const _EmptyState(

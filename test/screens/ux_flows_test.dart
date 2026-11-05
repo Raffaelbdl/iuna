@@ -3,6 +3,10 @@ import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:iuna/db/database.dart';
+import 'package:iuna/db/repository.dart';
+import 'package:iuna/screens/add_card_screen.dart';
+import 'package:iuna/screens/card_detail_screen.dart';
+import 'package:iuna/screens/home_screen.dart';
 import 'package:iuna/screens/booster_reveal_screen.dart';
 import 'package:iuna/screens/collection_screen.dart';
 import 'package:iuna/screens/pack_intro_screen.dart';
@@ -57,6 +61,10 @@ Future<List<List<int>?>> _openReveal(
   return popped;
 }
 
+/// Midday, far from the 4am rollover, so a missed card's short gap
+/// still lands today.
+final _now = DateTime(2026, 6, 10, 12);
+
 String _shownKanji(WidgetTester tester) {
   for (var i = 0; i < 20; i++) {
     if (find.text('k$i').evaluate().isNotEmpty) return 'k$i';
@@ -108,6 +116,19 @@ void main() {
     await _frames(tester);
     expect(popped, hasLength(1));
     expect(popped.single, isNull, reason: 'no review follows');
+    expect(await db.select(db.userCards).get(), isNotEmpty);
+  });
+
+  testWidgets('the reveal can be left for later from its close button', (
+    tester,
+  ) async {
+    await _seedCards(db, 12);
+    final popped = await _openReveal(tester, db);
+
+    await tester.tap(find.byTooltip('Review later'));
+    await _frames(tester);
+    expect(popped, hasLength(1));
+    expect(popped.single, isNull, reason: 'home, not the review');
     expect(await db.select(db.userCards).get(), isNotEmpty);
   });
 
@@ -166,6 +187,21 @@ void main() {
     await _frames(tester);
   }
 
+  Future<void> ownAll(List<int> ids, {DateTime? due}) async {
+    for (final id in ids) {
+      await db
+          .into(db.userCards)
+          .insert(
+            UserCardsCompanion.insert(
+              cardId: Value(id),
+              nextDue: due ?? DateTime(2026),
+              obtainedAt: DateTime(2026),
+              isNew: const Value(false),
+            ),
+          );
+    }
+  }
+
   testWidgets('Collection says when nothing is suspended', (tester) async {
     final ids = await _seedCards(db, 2);
     await db
@@ -183,6 +219,121 @@ void main() {
     await tester.tap(find.text('Suspended'));
     await _frames(tester);
     expect(find.text('No suspended cards.'), findsOneWidget);
+  });
+
+  testWidgets('Collection keeps the tier counts one tap away', (
+    tester,
+  ) async {
+    await ownAll(await _seedCards(db, 3));
+    await openCollection(tester);
+    expect(find.text('3 / 3 collected'), findsNothing);
+    expect(find.textContaining('collected'), findsOneWidget);
+    expect(find.text('Common'), findsNothing);
+
+    await tester.tap(find.textContaining('collected'));
+    await _frames(tester, 300);
+    expect(find.text('Common'), findsOneWidget);
+  });
+
+  testWidgets('a word not yet collected is wished for from its card, and '
+      'an owned one is not', (tester) async {
+    final ids = await _seedCards(db, 2);
+    await ownAll([ids.first]);
+    Future<void> open(int id) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildIunaTheme(),
+          home: CardDetailScreen(
+            key: ValueKey(id),
+            db: db,
+            cardId: id,
+            now: _now,
+          ),
+        ),
+      );
+      await _frames(tester);
+    }
+
+    await open(ids.last);
+    expect(find.text('Not in your collection yet'), findsOneWidget);
+    await tester.tap(find.text('Add to wishlist'));
+    await _frames(tester);
+    expect(find.text('On your wishlist'), findsOneWidget);
+    expect(find.text('Add to wishlist'), findsNothing);
+    expect(find.byTooltip('Remove from wishlist'), findsOneWidget);
+
+    await open(ids.first);
+    expect(find.text('Add to wishlist'), findsNothing);
+    expect(find.byTooltip('Add to wishlist'), findsNothing);
+    expect(find.byTooltip('Remove from wishlist'), findsNothing);
+  });
+
+  testWidgets('Add card says the dictionary reads Japanese', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildIunaTheme(),
+        home: AddCardScreen(db: db, initialQuery: 'dog'),
+      ),
+    );
+    await _frames(tester);
+    expect(find.textContaining('Type the word in kanji or kana'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+  });
+
+  testWidgets('out of cards under a draw filter, Home names it', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360 * 2, 1400 * 2);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    await IunaRepository(db).setJlptOnly(true);
+    await _seedCards(db, 2); // none tagged with a JLPT level
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildIunaTheme(),
+        home: HomeScreen(db: db, kumaSeed: 0),
+      ),
+    );
+    await _frames(tester);
+    expect(find.text('No new cards left'), findsOneWidget);
+    expect(find.textContaining('Every JLPT card is collected'), findsOneWidget);
+    expect(find.text('Open Settings'), findsOneWidget);
+  });
+
+  testWidgets('Today from a card opened on the recap goes back to that '
+      'recap', (tester) async {
+    tester.view.physicalSize = const Size(360 * 2, 1400 * 2);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    await ownAll(await _seedCards(db, 1), due: DateTime(2020));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildIunaTheme(),
+        home: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => openTodayFlow(context, db),
+            child: const Text('today'),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('today'));
+    await _frames(tester, 1500);
+    await tester.tap(find.text('k0'));
+    await _frames(tester, 400);
+    await tester.tap(find.text('Got it'));
+    await _frames(tester, 1200);
+    expect(find.byType(ReviewDoneScreen), findsOneWidget);
+
+    await tester.tap(find.text('k0'));
+    await _frames(tester, 1200);
+    expect(find.byType(CardDetailScreen), findsOneWidget);
+    await tester.tap(find.text('Today').last);
+    await _frames(tester, 1200);
+    expect(find.byType(CardDetailScreen), findsNothing);
+    expect(find.byType(ReviewDoneScreen), findsOneWidget);
+    expect(find.text('k0'), findsOneWidget,
+        reason: "the session's recap, not a fresh one on top");
   });
 
   testWidgets('Collection can open on the wishlist', (tester) async {
@@ -205,27 +356,12 @@ void main() {
     );
     await _frames(tester);
     expect(find.text('Tricky cards'), findsOneWidget);
-    expect(find.text('Retention curve'), findsNothing);
+    expect(find.text('How long you remember'), findsNothing);
 
     await tester.tap(find.text('More stats'));
     await _frames(tester, 300);
-    expect(find.text('Retention curve'), findsOneWidget);
+    expect(find.text('How long you remember'), findsOneWidget);
   });
-
-  Future<void> ownAll(List<int> ids, {DateTime? due}) async {
-    for (final id in ids) {
-      await db
-          .into(db.userCards)
-          .insert(
-            UserCardsCompanion.insert(
-              cardId: Value(id),
-              nextDue: due ?? DateTime(2026),
-              obtainedAt: DateTime(2026),
-              isNew: const Value(false),
-            ),
-          );
-    }
-  }
 
   testWidgets('Collection: a search with no match can be cleared', (
     tester,
@@ -327,12 +463,14 @@ void main() {
     tester,
   ) async {
     final ids = await _seedCards(db, 1);
-    final due = DateTime.now().subtract(const Duration(hours: 1));
-    await ownAll(ids, due: due);
+    await ownAll(ids, due: _now.subtract(const Duration(hours: 1)));
     final before = (await db.select(db.userCards).getSingle());
 
     await tester.pumpWidget(
-      MaterialApp(theme: buildIunaTheme(), home: ReviewScreen(db: db)),
+      MaterialApp(
+        theme: buildIunaTheme(),
+        home: ReviewScreen(db: db, now: _now),
+      ),
     );
     await _frames(tester);
     await tester.tap(find.text('k0'));
@@ -360,10 +498,13 @@ void main() {
     addTearDown(tester.view.reset);
     await ownAll(
       await _seedCards(db, 1),
-      due: DateTime.now().subtract(const Duration(hours: 1)),
+      due: _now.subtract(const Duration(hours: 1)),
     );
     await tester.pumpWidget(
-      MaterialApp(theme: buildIunaTheme(), home: ReviewScreen(db: db)),
+      MaterialApp(
+        theme: buildIunaTheme(),
+        home: ReviewScreen(db: db, now: _now),
+      ),
     );
     await _frames(tester);
     await tester.tap(find.text('k0'));

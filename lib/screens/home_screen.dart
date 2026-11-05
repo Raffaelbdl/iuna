@@ -56,6 +56,7 @@ class _HomeScreenState extends State<HomeScreen> {
   int _learned = 0;
   int _wishCount = 0;
   int _resetHour = 0;
+  String? _drawFilter;
   List<RecentLearned> _recent = const [];
 
   /// Whether a Google account is signed in for Drive backup. The home
@@ -92,17 +93,27 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _refresh() async {
     unawaited(refreshTodayCount(widget.db));
     try {
-      final (preview, due, streak, stats, wishCount, recent, resetHour) =
-          await (
-            _repo.boosterPreview(),
-            _repo.dueCountToday(),
-            _repo.recordStreak(),
-            _repo.collectionStats(),
-            _repo.wishedCount(),
-            _repo.recentlyObtained(limit: 10),
-            _repo.getResetHour(),
-          ).wait;
+      final (
+        preview,
+        due,
+        streak,
+        stats,
+        wishCount,
+        recent,
+        resetHour,
+        drawFilter,
+      ) = await (
+        _repo.boosterPreview(),
+        _repo.dueCountToday(),
+        _repo.recordStreak(),
+        _repo.collectionStats(),
+        _repo.wishedCount(),
+        _repo.recentlyObtained(limit: 10),
+        _repo.getResetHour(),
+        _repo.drawFilterName(),
+      ).wait;
       if (!mounted) return;
+      _drawFilter = drawFilter;
       _show(preview, due, streak, stats, wishCount, recent, resetHour);
     } catch (e, s) {
       logLoadError('Home', e, s);
@@ -300,7 +311,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     booster: _booster,
                     dueCount: _dueCount,
                     resetHour: _resetHour,
+                    drawFilter: _drawFilter,
                     onTap: _openTodayFlow,
+                    onWidenDraw: _openSettings,
                     kumaSeed: widget.kumaSeed,
                   ),
                 ),
@@ -430,6 +443,8 @@ class _HeroPack extends StatelessWidget {
     required this.dueCount,
     required this.resetHour,
     required this.onTap,
+    required this.onWidenDraw,
+    this.drawFilter,
     this.kumaSeed,
   });
 
@@ -439,6 +454,11 @@ class _HeroPack extends StatelessWidget {
   /// When the day, and the next pack, rolls over.
   final int resetHour;
   final VoidCallback onTap;
+
+  /// What the draw is narrowed to ("JLPT", a pack), if anything: then
+  /// running out of cards is a setting, not the end of the dictionary.
+  final String? drawFilter;
+  final VoidCallback onWidenDraw;
   final int? kumaSeed;
 
   @override
@@ -454,14 +474,23 @@ class _HeroPack extends StatelessWidget {
     } else {
       final outOfCards = booster.packs > 0;
       title = outOfCards ? 'No new cards left' : "Today's pack is open";
-      final next = outOfCards
-          ? 'You have every card in the draw pool.'
-          : 'Next pack at ${hourWords(resetHour)}.';
+      final next = !outOfCards
+          ? 'Next pack at ${hourWords(resetHour)}.'
+          : drawFilter != null
+          ? 'Every $drawFilter card is collected. Draw from more in '
+                'Settings.'
+          : "You've collected every card.";
       sub = dueCount > 0 ? '$reviews due today · $next' : next;
     }
+    final widen =
+        !available && booster.packs > 0 && drawFilter != null && dueCount == 0;
     final String? cta = available
         ? 'Open & review'
-        : (dueCount > 0 ? 'Start review' : null);
+        : dueCount > 0
+        ? 'Start review'
+        : widen
+        ? 'Open Settings'
+        : null;
 
     final hero = Container(
       // A floor, not a height: larger text grows the hero instead of
@@ -552,7 +581,9 @@ class _HeroPack extends StatelessWidget {
     );
     // With nothing to open or review, the hero only tells the time of
     // the next pack: no tap, and nothing for a screen reader to press.
-    return cta == null ? hero : Tappable(onTap: onTap, child: hero);
+    return cta == null
+        ? hero
+        : Tappable(onTap: widen ? onWidenDraw : onTap, child: hero);
   }
 }
 

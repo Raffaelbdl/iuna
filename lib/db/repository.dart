@@ -366,6 +366,18 @@ class IunaRepository with MetaTimestamps {
     return (raw == null || raw.isEmpty) ? null : raw;
   }
 
+  /// What the draw is narrowed to, as a learner reads it ("JLPT", a
+  /// pack's label), or null for the whole dictionary.
+  Future<String?> drawFilterName() async {
+    final (jlptOnly, pack) =
+        await (getJlptOnly(), getBoosterPackFilter()).wait;
+    if (jlptOnly) return 'JLPT';
+    if (pack == null) return null;
+    final row = await (db.select(db.packs)..where((p) => p.name.equals(pack)))
+        .getSingleOrNull();
+    return row?.label ?? pack;
+  }
+
   /// The two draw filters would intersect to almost nothing — pack
   /// cards are specialist vocabulary that JLPT doesn't rank — so
   /// turning one on clears the other rather than silently emptying the
@@ -514,7 +526,8 @@ class IunaRepository with MetaTimestamps {
   // ---------- wishlist ----------
 
   /// Toggles a card's wishlist state. Returns the new value (`true`
-  /// for wishlisted, `false` for not). Idempotent.
+  /// for wishlisted, `false` for not). An owned card can only come
+  /// off: packs never draw it, so wishing for it would promise nothing.
   Future<bool> toggleWishlist(int cardId, {DateTime? now}) async {
     final wished = await isWished(cardId);
     if (wished) {
@@ -523,6 +536,10 @@ class IunaRepository with MetaTimestamps {
           .go();
       return false;
     }
+    final owned = await (db.select(db.userCards)
+          ..where((u) => u.cardId.equals(cardId)))
+        .getSingleOrNull();
+    if (owned != null) return false;
     await db.into(db.wishlist).insert(
           WishlistCompanion.insert(
             cardId: Value(cardId),
@@ -1116,9 +1133,8 @@ class IunaRepository with MetaTimestamps {
   /// [includeUnowned] to surface every card in existence — unowned
   /// ones come back with [CollectionEntry.userCard] null so the UI can
   /// render them as silhouettes (the in-app "Show missing" toggle).
-  /// Pass [wishedOnly] to intersect with the wishlist (forces
-  /// [includeUnowned] effectively, since wishlisted-but-unowned cards
-  /// are the whole point of the bookmark). Filters stack: free-text
+  /// Pass [wishedOnly] for the wishlist: the cards still to collect,
+  /// so owned ones are left out. Filters stack: free-text
   /// [query] (kanji / kana / meaning, case-insensitive) AND a
   /// [rarities] set. Ordered by rarity desc then kanji asc so rarer
   /// cards surface first.
@@ -1129,8 +1145,8 @@ class IunaRepository with MetaTimestamps {
     bool wishedOnly = false,
     bool suspendedOnly = false,
   }) async {
-    // Wishlist mode always wants unowned + owned wishlisted cards.
-    // Suspended mode forces an inner join so we never widen to unowned
+    // Wishlist mode wants the unowned wishlisted cards. Suspended
+    // mode forces an inner join so we never widen to unowned
     // cards (you can't suspend something you don't own).
     final pickUnowned = (includeUnowned || wishedOnly) && !suspendedOnly;
     final joins = <Join>[
@@ -1147,6 +1163,7 @@ class IunaRepository with MetaTimestamps {
     if (suspendedOnly) {
       select.where(db.userCards.suspended.equals(true));
     }
+    if (wishedOnly) select.where(db.userCards.cardId.isNull());
 
     final trimmed = query.trim();
     if (trimmed.isNotEmpty) {
@@ -1177,11 +1194,19 @@ class IunaRepository with MetaTimestamps {
         .toList();
   }
 
-  /// Number of cards currently on the wishlist. Cheap read so the
+  /// Number of wishlisted cards still to collect. Cheap read so the
   /// collection chip can render a live count badge.
   Future<int> wishedCount() async {
     final count = db.wishlist.cardId.count();
-    final row = await (db.selectOnly(db.wishlist)..addColumns([count]))
+    final row = await (db.selectOnly(db.wishlist).join([
+      leftOuterJoin(
+        db.userCards,
+        db.userCards.cardId.equalsExp(db.wishlist.cardId),
+        useColumns: false,
+      ),
+    ])
+          ..addColumns([count])
+          ..where(db.userCards.cardId.isNull()))
         .getSingle();
     return row.read(count) ?? 0;
   }

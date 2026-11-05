@@ -194,9 +194,13 @@ class _BackupSectionState extends State<BackupSection> {
 
   Future<void> _signIn() async {
     setState(() => _busy = true);
-    final result = await DriveAuth.instance.signIn();
+    final AuthResult result;
+    try {
+      result = await DriveAuth.instance.signIn();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
     if (!mounted) return;
-    setState(() => _busy = false);
     switch (result) {
       case AuthSigned():
         showSnack(context, 'Signed in to Google Drive');
@@ -218,26 +222,38 @@ class _BackupSectionState extends State<BackupSection> {
 
   Future<void> _signOut() async {
     setState(() => _busy = true);
-    await DriveAuth.instance.signOut();
-    if (!mounted) return;
-    setState(() => _busy = false);
-    showSnack(context, 'Signed out of Google Drive');
+    try {
+      await DriveAuth.instance.signOut();
+    } catch (e) {
+      if (mounted) showErrorSnack(context, "Couldn't sign out.", e);
+      return;
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+    if (mounted) showSnack(context, 'Signed out of Google Drive');
   }
 
   Future<void> _backup() async {
     setState(() => _busy = true);
-    final courses = await Learn.instance.snapshots();
-    final result = await DriveSync(_repo).backupAll(alongside: courses);
-    final libraryStamp = await _repo.getLastDriveBackup();
-    final learnStamp = await courses?.lastDriveBackup();
-    if (!mounted) return;
-    setState(() {
-      _busy = false;
-      _lastBackup = libraryStamp;
-      _lastLearnBackup = learnStamp;
-    });
-    final message = backupMessage(result, alongside: courses);
-    if (message != null) showSnack(context, message);
+    try {
+      final courses = await Learn.instance.snapshots();
+      final result = await DriveSync(_repo).backupAll(alongside: courses);
+      final libraryStamp = await _repo.getLastDriveBackup();
+      final learnStamp = await courses?.lastDriveBackup();
+      if (!mounted) return;
+      setState(() {
+        _lastBackup = libraryStamp;
+        _lastLearnBackup = learnStamp;
+      });
+      final message = backupMessage(result, alongside: courses);
+      if (message != null) showSnack(context, message);
+    } catch (e) {
+      if (mounted) {
+        showErrorSnack(context, "Couldn't back up. Try again later.", e);
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _restore(
@@ -247,9 +263,22 @@ class _BackupSectionState extends State<BackupSection> {
   }) async {
     setState(() => _busy = true);
     final sync = DriveSync(_repo);
-    final snapshots = await sync.listSnapshots(artifact: artifact);
+    final List<DriveSnapshot> snapshots;
+    try {
+      snapshots = await sync.listSnapshots(artifact: artifact);
+    } catch (e) {
+      if (mounted) {
+        showErrorSnack(
+          context,
+          "Couldn't reach Google Drive. Check your connection.",
+          e,
+        );
+      }
+      return;
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
     if (!mounted) return;
-    setState(() => _busy = false);
 
     if (snapshots.isEmpty) {
       showSnack(context, 'No backups on Drive yet');
@@ -263,9 +292,22 @@ class _BackupSectionState extends State<BackupSection> {
     if (!confirmed || !mounted) return;
 
     setState(() => _busy = true);
-    final result = await sync.restoreFromSnapshot(picked, artifact: artifact);
+    final DriveRestoreResult result;
+    try {
+      result = await sync.restoreFromSnapshot(picked, artifact: artifact);
+    } catch (e) {
+      if (mounted) {
+        showErrorSnack(
+          context,
+          "Couldn't download that backup. Try again later.",
+          e,
+        );
+      }
+      return;
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
     if (!mounted) return;
-    setState(() => _busy = false);
 
     switch (result) {
       case DriveRestoreStaged():
@@ -377,7 +419,8 @@ class _BackupSectionState extends State<BackupSection> {
                 ),
                 title: const Text('Sign in with Google'),
                 subtitle: const Text(
-                  'Save your collection to your own Google Drive.',
+                  'Keep a copy of your collection in your own Google '
+                  'Drive, made whenever you ask.',
                 ),
                 trailing: _busy
                     ? _spinner
@@ -412,8 +455,9 @@ class _BackupSectionState extends State<BackupSection> {
                 ),
                 title: const Text('Back up now'),
                 subtitle: const Text(
-                  'Upload your collection to Google Drive. Courses go '
-                  'along whenever they changed.',
+                  'Upload your collection to Google Drive; pulling down '
+                  'on Home does it too. Courses go along whenever they '
+                  'changed.',
                 ),
                 enabled: !_busy,
                 onTap: _backup,

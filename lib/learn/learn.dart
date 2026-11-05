@@ -1,6 +1,9 @@
+import 'package:flutter/material.dart';
+
 import '../db/database.dart' show AppDatabase;
 import '../db/repository.dart';
 import '../db/sqlite_open.dart';
+import '../screens/settings_screen.dart';
 import 'agent/chat_controller.dart';
 import 'agent/chat_store.dart';
 import 'agent/example_writer.dart';
@@ -56,6 +59,7 @@ class LearnEnv {
     this.bookmarks,
     this.dictation,
     this.photos,
+    this.openSettings,
     VisionModels? vision,
   })  : settings = settings ?? LearnSettings.instance,
         _vision = vision ?? VisionModels();
@@ -73,6 +77,11 @@ class LearnEnv {
         transcriber: OpenRouterTranscriber(apiKey: settings.apiKey),
       ),
       photos: const ImagePickerPhotos(),
+      openSettings: (context) => Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => SettingsScreen(db: deck, showTutor: true),
+        ),
+      ),
     );
   }
 
@@ -93,6 +102,9 @@ class LearnEnv {
   /// Where an attached photo comes from; without it the composers show
   /// no paperclip.
   final PhotoPicker? photos;
+
+  /// Opens Settings at the tutor's key, for an error only it can fix.
+  final void Function(BuildContext context)? openSettings;
 
   final VisionModels _vision;
 

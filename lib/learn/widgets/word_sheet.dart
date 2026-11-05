@@ -8,6 +8,7 @@ import '../../theme/iuna_theme.dart';
 import '../../widgets/cta_button.dart';
 import '../../widgets/paper_sheet.dart';
 import '../../widgets/sense_row.dart';
+import '../../widgets/snack.dart';
 import '../../widgets/vocab_card.dart';
 import '../deck.dart';
 import '../words/segmenter.dart';
@@ -259,7 +260,15 @@ class _DeckActionState extends State<_DeckAction> {
 
   Future<void> _bookmark() async {
     setState(() => _busy = true);
-    _show(await widget.bookmarks.wishlist(widget.entry));
+    try {
+      _show(await widget.bookmarks.wishlist(widget.entry));
+    } catch (e) {
+      if (mounted) {
+        showErrorSnack(context, "Couldn't add it to your wishlist.", e);
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   @override

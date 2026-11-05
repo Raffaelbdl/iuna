@@ -190,27 +190,25 @@ class _RetentionPainter extends CustomPainter {
       old.bins != bins || old.scaler != scaler;
 }
 
-// ─── Pass rate by review kind (donut) ─────────────────────────────────
+// ─── New vs known cards (donut) ───────────────────────────────────────
 
-class _KindBreakdownDonut extends StatelessWidget {
-  const _KindBreakdownDonut({required this.byKind});
-  final Map<ReviewKind, ({int total, int correct})> byKind;
+typedef _PassCount = ({int total, int correct});
 
-  static const _palette = <ReviewKind, Color>{
-    ReviewKind.review: IunaPalette.chartMintDeep,
-    ReviewKind.learn: IunaPalette.chartHoney,
-    ReviewKind.relearn: IunaPalette.bowPink,
-  };
+class _StageDonut extends StatelessWidget {
+  const _StageDonut({required this.newCards, required this.knownCards});
+  final _PassCount newCards;
+  final _PassCount knownCards;
 
   @override
   Widget build(BuildContext context) {
-    final entries = ReviewKind.values
-        .map((k) => (k, byKind[k] ?? (total: 0, correct: 0)))
-        .toList();
-    final total = entries.fold<int>(0, (s, e) => s + e.$2.total);
+    final entries = <(String, Color, _PassCount)>[
+      ('new cards', IunaPalette.chartHoney, newCards),
+      ('known cards', IunaPalette.chartMintDeep, knownCards),
+    ];
+    final total = newCards.total + knownCards.total;
     if (total == 0) {
       return const _EmptyHint(
-        text: 'No reviews yet — pass-rate breakdown will appear here.',
+        text: 'No reviews yet — your pass rates will appear here.',
       );
     }
     return Row(
@@ -221,16 +219,15 @@ class _KindBreakdownDonut extends StatelessWidget {
           child: _ChartCanvas(
             height: 150,
             summary: '$total reviews. ${[
-              for (final e in entries)
-                if (e.$2.total > 0)
-                  '${_kindLabel(e.$1)}: ${e.$2.total}, '
-                      '${(e.$2.correct / e.$2.total * 100).round()}% passed',
+              for (final (label, _, c) in entries)
+                if (c.total > 0)
+                  '$label: ${c.total} reviews, '
+                      '${(c.correct / c.total * 100).round()}% right',
             ].join('. ')}.',
             painter: (scaler) => _DonutPainter(
               entries: [
-                for (final e in entries)
-                  if (e.$2.total > 0)
-                    (color: _palette[e.$1] ?? IunaPalette.chartMintDeep, value: e.$2.total),
+                for (final (_, color, c) in entries)
+                  if (c.total > 0) (color: color, value: c.total),
               ],
               centerLabel: _compact(total),
               centerSub: 'reviews',
@@ -244,14 +241,14 @@ class _KindBreakdownDonut extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              for (final e in entries)
+              for (final (label, color, c) in entries)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 6),
                   child: _KindRow(
-                    color: _palette[e.$1] ?? IunaPalette.chartMintDeep,
-                    label: _kindLabel(e.$1),
-                    total: e.$2.total,
-                    correct: e.$2.correct,
+                    color: color,
+                    label: label,
+                    total: c.total,
+                    correct: c.correct,
                   ),
                 ),
             ],
@@ -260,12 +257,6 @@ class _KindBreakdownDonut extends StatelessWidget {
       ],
     );
   }
-
-  static String _kindLabel(ReviewKind k) => switch (k) {
-    ReviewKind.review => 'known cards',
-    ReviewKind.learn => 'new cards',
-    ReviewKind.relearn => 'relearning',
-  };
 }
 
 class _KindRow extends StatelessWidget {
@@ -306,18 +297,15 @@ class _KindRow extends StatelessWidget {
                 ),
               ),
             ),
-            Text(
-              _compact(total),
-              style: IunaText.chip.copyWith(
-                color: IunaPalette.ink2,
-              ),
-            ),
           ],
         ),
         Padding(
           padding: const EdgeInsets.only(left: 16, top: 2),
           child: Text(
-            pct == null ? 'no data' : '$pct% pass',
+            pct == null
+                ? 'no reviews yet'
+                : '$pct% right · ${_compact(total)} '
+                      '${total == 1 ? 'review' : 'reviews'}',
             style: IunaText.caption.copyWith(
               fontWeight: FontWeight.w500,
               color: IunaPalette.ink3,

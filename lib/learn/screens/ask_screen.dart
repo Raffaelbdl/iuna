@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../../widgets/confirm_dialog.dart';
 import '../../widgets/iuna_page.dart';
 import '../agent/bookmark_tool.dart';
 import '../agent/chat_controller.dart';
 import '../agent/chat_store.dart';
 import '../agent/tutor_prompt.dart';
+import '../db/learn_database.dart' show MessageRole;
 import '../deck.dart';
 import '../learn.dart';
 import '../photo/photo.dart';
@@ -80,21 +82,52 @@ class _AskScreenState extends State<AskScreen> {
     }
   }
 
+  VoidCallback? get _openSettings => switch (widget.env.openSettings) {
+        final open? => () => open(context),
+        null => null,
+      };
+
   @override
   void dispose() {
     _chat.dispose();
     super.dispose();
   }
 
+  /// Nothing here is kept, so leaving a chat Kuma has answered asks
+  /// first.
+  bool get _worthKeeping =>
+      _chat.messages.any((m) => m.role == MessageRole.assistant);
+
+  Future<void> _confirmLeave() async {
+    final leave = await showConfirmDialog(
+      context,
+      title: 'Leave this chat?',
+      body: "It isn't saved, so Kuma-sensei's answers go with it.",
+      confirmLabel: 'Leave',
+    );
+    if (leave && mounted) Navigator.of(context).pop();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return IunaPage(
-      title: 'Ask Kuma-sensei',
-      body: ChatView(
-        controller: _chat,
-        hint: 'Ask a follow-up…',
-        picker: widget.env.photos,
-        bookmarks: widget.env.bookmarks,
+    return ListenableBuilder(
+      listenable: _chat,
+      builder: (context, child) => PopScope<Object?>(
+        canPop: !_worthKeeping,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) _confirmLeave();
+        },
+        child: child!,
+      ),
+      child: IunaPage(
+        title: 'Ask Kuma-sensei',
+        body: ChatView(
+          controller: _chat,
+          hint: 'Ask a follow-up…',
+          picker: widget.env.photos,
+          bookmarks: widget.env.bookmarks,
+          onOpenSettings: _openSettings,
+        ),
       ),
     );
   }

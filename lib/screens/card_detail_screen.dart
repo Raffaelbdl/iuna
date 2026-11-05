@@ -61,6 +61,7 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
   List<CardSenseRow> _senses = const [];
   List<ExampleRow> _examples = const [];
   bool _wished = false;
+  bool _wishBusy = false;
 
   late final LearnEnv _learn = widget.learn ?? LearnEnv.live(widget.db);
 
@@ -123,18 +124,24 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
   }
 
   Future<void> _onWishlistTap() async {
-    final next = await _repo.toggleWishlist(widget.cardId);
+    if (_wishBusy) return;
+    setState(() => _wishBusy = true);
+    final bool next;
+    try {
+      next = await _repo.toggleWishlist(widget.cardId);
+    } catch (e) {
+      if (mounted) showErrorSnack(context, "Couldn't update your wishlist.", e);
+      return;
+    } finally {
+      if (mounted) setState(() => _wishBusy = false);
+    }
     if (!mounted) return;
     setState(() => _wished = next);
-    final card = _card;
-    final owned = _userCard != null;
     _snack(
-      !next
-          ? 'Removed from your wishlist.'
-          : owned
-          ? 'Added ${card?.kanji ?? "card"} to your wishlist.'
-          : 'Added ${card?.kanji ?? "card"} to your wishlist — it shows '
-                'up in a pack soon.',
+      next
+          ? 'Added ${_card?.kanji ?? "card"} to your wishlist. It shows '
+                'up in a pack soon.'
+          : 'Removed from your wishlist.',
       seconds: 3,
     );
   }
@@ -271,8 +278,11 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
                 children: [
                   _TopBar(
                     onBack: () => Navigator.of(context).maybePop(),
-                    wished: _wished,
-                    onWishlistTap: card == null ? null : _onWishlistTap,
+                    // Only to take a card off: the hero adds one, and
+                    // an owned card can't be wished for.
+                    onUnwish: card == null || !_wished || _wishBusy
+                        ? null
+                        : _onWishlistTap,
                   ),
                   Expanded(
                     child: _loading
@@ -333,6 +343,7 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
             owned: _userCard != null,
             wished: _wished,
             onSpeak: _onSpeakerTap,
+            onWish: _wishBusy ? null : _onWishlistTap,
           ),
           const SizedBox(height: 14),
           _Section(
@@ -461,16 +472,11 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
 }
 
 class _TopBar extends StatelessWidget {
-  const _TopBar({
-    required this.onBack,
-    required this.wished,
-    required this.onWishlistTap,
-  });
+  const _TopBar({required this.onBack, required this.onUnwish});
   final VoidCallback onBack;
-  final bool wished;
 
-  /// Null while there is no card to wish for.
-  final VoidCallback? onWishlistTap;
+  /// Shows the filled bookmark while the card is on the wishlist.
+  final VoidCallback? onUnwish;
 
   @override
   Widget build(BuildContext context) {
@@ -487,16 +493,14 @@ class _TopBar extends StatelessWidget {
           letterSpacing: 0.6,
         ),
       ),
-      trailing: onWishlistTap == null
+      trailing: onUnwish == null
           ? null
           : IunaIconButton(
-              icon: wished
-                  ? Icons.bookmark_rounded
-                  : Icons.bookmark_outline_rounded,
-              tooltip: wished ? 'Remove from wishlist' : 'Add to wishlist',
-              selected: wished,
-              onTap: onWishlistTap,
-              tint: wished ? IunaPalette.honeyInk : null,
+              icon: Icons.bookmark_rounded,
+              tooltip: 'Remove from wishlist',
+              selected: true,
+              onTap: onUnwish,
+              tint: IunaPalette.honeyInk,
             ),
     );
   }
@@ -508,11 +512,13 @@ class _Hero extends StatelessWidget {
     required this.owned,
     required this.wished,
     required this.onSpeak,
+    required this.onWish,
   });
   final CardRow card;
   final bool owned;
   final bool wished;
   final VoidCallback onSpeak;
+  final VoidCallback? onWish;
 
   @override
   Widget build(BuildContext context) {
@@ -638,6 +644,7 @@ class _Hero extends StatelessWidget {
             Wrap(
               spacing: 6,
               runSpacing: 6,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 if (!owned)
                   CardStatusChip(
@@ -647,6 +654,13 @@ class _Hero extends StatelessWidget {
                   ),
                 if (card.jlptLevel != null)
                   MetaChip(label: 'JLPT N${card.jlptLevel}'),
+                if (!owned && !wished)
+                  IunaGhostButton(
+                    label: 'Add to wishlist',
+                    leadingIcon: Icons.bookmark_add_outlined,
+                    shrinkWrap: true,
+                    onTap: onWish,
+                  ),
               ],
             ),
           ],

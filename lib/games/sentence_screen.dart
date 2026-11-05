@@ -7,7 +7,7 @@ import '../db/database.dart';
 import '../db/jmdict_lookup.dart' show kJmdictFileName;
 import '../db/repository.dart';
 import '../db/sqlite_open.dart';
-import '../screens/settings_screen.dart';
+import '../screens/settings/dictionary_section.dart';
 import '../services/dict_download.dart';
 import '../services/tts.dart';
 import '../theme/iuna_theme.dart';
@@ -123,12 +123,15 @@ class _SentenceScreenState extends State<SentenceScreen> {
     await _advance();
   }
 
-  Future<void> _openSettings() async {
-    await Navigator.of(
+  Future<void> _offerDictionary() async {
+    final ready = await showDictionaryOffer(
       context,
-    ).push(MaterialPageRoute(builder: (_) => SettingsScreen(db: widget.db)));
-    if (!mounted) return;
-    await _start();
+      title: 'Download the dictionary',
+      body:
+          'Sentences are split into tiles with the offline dictionary, a '
+          'one-time download.',
+    );
+    if (ready && mounted) await _start();
   }
 
   void _save() => unawaited(_repo.setGameMemory(_memory.encode()));
@@ -233,8 +236,8 @@ class _SentenceScreenState extends State<SentenceScreen> {
       return IunaNotice(
         text:
             'Sentences are split into tiles with the offline dictionary. '
-            'Download it in Settings, then come back.',
-        action: (label: 'Open Settings', onTap: _openSettings),
+            'Download it once to play.',
+        action: (label: 'Get the dictionary', onTap: _offerDictionary),
       );
     }
     if (_summary) {

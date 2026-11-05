@@ -7,7 +7,6 @@ import '../../widgets/snack.dart';
 import '../../widgets/text_input_dialog.dart';
 import '../learn.dart';
 import '../learn_settings.dart';
-import '../llm/model_vision.dart';
 import '../llm/openrouter_client.dart';
 
 /// Settings → AI tutor: the OpenRouter key, whose presence is what shows
@@ -82,19 +81,22 @@ class _TutorSettingsSectionState extends State<TutorSettingsSection> {
     }
     if (result.text.isEmpty) return;
     setState(() => _busy = true);
-    final check = await checkOpenRouterKey(result.text);
+    final KeyCheck check;
+    try {
+      check = await checkOpenRouterKey(result.text);
+      if (check is! KeyRejected) await _settings.setApiKey(result.text);
+    } catch (e) {
+      if (mounted) showErrorSnack(context, "Couldn't save the key.", e);
+      return;
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
     if (!mounted) return;
     if (check is KeyRejected) {
-      setState(() => _busy = false);
       showSnack(context, 'OpenRouter rejected that key');
       return;
     }
-    await _settings.setApiKey(result.text);
-    if (!mounted) return;
-    setState(() {
-      _busy = false;
-      _key = result.text;
-    });
+    setState(() => _key = result.text);
     showSnack(context, check is KeyUnverified
         ? "Saved, but OpenRouter couldn't be reached to check it"
         : 'Key saved — Kuma-sensei is in the Learn tab');
@@ -104,8 +106,9 @@ class _TutorSettingsSectionState extends State<TutorSettingsSection> {
     final result = await showTextInputDialog(
       context,
       title: 'Tutor model',
-      message: 'Any OpenRouter model id that supports tool calling. '
-          'Default: $kDefaultLearnModel.',
+      message: 'The AI model Kuma-sensei runs on, named as OpenRouter '
+          'lists it. It has to be one that can use tools, as most recent '
+          'models can. Reset goes back to the default.',
       initial: _model,
       hint: kDefaultLearnModel,
       removeLabel: 'Reset',
@@ -146,10 +149,10 @@ class _TutorSettingsSectionState extends State<TutorSettingsSection> {
           subtitle: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(_model),
+              Text(_model == kDefaultLearnModel ? 'Default · $_model' : _model),
               const SizedBox(height: 2),
               Text(
-                'Photos go to $kPhotoFallbackModel when this one cannot read them.',
+                "Photos go to a model that can see when this one can't.",
                 style: IunaText.caption.copyWith(color: IunaPalette.ink3),
               ),
             ],

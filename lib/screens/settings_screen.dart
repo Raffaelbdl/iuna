@@ -14,9 +14,12 @@ import 'settings/dictionary_section.dart';
 import 'stats_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key, required this.db});
+  const SettingsScreen({super.key, required this.db, this.showTutor = false});
 
   final AppDatabase db;
+
+  /// Opens scrolled to the AI tutor, for a tutor error about the key.
+  final bool showTutor;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -69,7 +72,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _packFilter = packFilter;
       _loading = false;
     });
+    if (widget.showTutor) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final tutor = _tutorKey.currentContext;
+        if (tutor != null && tutor.mounted) {
+          Scrollable.ensureVisible(tutor, alignment: 0.1);
+        }
+      });
+    }
   }
+
+  final _tutorKey = GlobalKey();
 
   Future<void> _setBoostersPerDay(int value) async {
     setState(() => _boostersPerDay = value);
@@ -135,6 +148,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                       ),
                     ),
+                    _Stepper(
+                      icon: Icons.timer_outlined,
+                      title: 'Review time cap',
+                      subtitle:
+                          'Stats count at most this long per answer, so a '
+                          'card left open doesn\'t inflate your time spent.',
+                      value: _reviewTimeCap,
+                      min: kMinReviewTimeCapSeconds,
+                      max: kMaxReviewTimeCapSeconds,
+                      step: 5,
+                      unit: 's',
+                      lessTooltip: 'Shorter cap',
+                      moreTooltip: 'Longer cap',
+                      onChanged: _setReviewTimeCap,
+                    ),
                   ],
                 ),
                 const SizedBox(height: 16),
@@ -148,6 +176,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       value: _boostersPerDay,
                       min: kMinBoostersPerDay,
                       max: kMaxBoostersPerDay,
+                      lessTooltip: 'Fewer packs per day',
+                      moreTooltip: 'More packs per day',
                       onChanged: _setBoostersPerDay,
                     ),
                     SwitchListTile.adaptive(
@@ -170,25 +200,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         onChanged: _setPackFilter,
                       ),
                     _ResetHourTile(hour: _resetHour, onChanged: _setResetHour),
-                    _Stepper(
-                      icon: Icons.timer_outlined,
-                      title: 'Review time cap',
-                      subtitle:
-                          'Stats count at most this long per answer, so a '
-                          'card left open doesn\'t inflate your time spent.',
-                      value: _reviewTimeCap,
-                      min: kMinReviewTimeCapSeconds,
-                      max: kMaxReviewTimeCapSeconds,
-                      step: 5,
-                      unit: 's',
-                      onChanged: _setReviewTimeCap,
-                    ),
                   ],
                 ),
                 const SizedBox(height: 16),
                 BackupSection(repo: _repo),
                 const SizedBox(height: 16),
-                const TutorSettingsSection(),
+                TutorSettingsSection(key: _tutorKey),
                 CardPacksSection(repo: _repo, onInstalled: _load),
                 const SizedBox(height: 16),
                 const DictionarySection(),
@@ -265,6 +282,8 @@ class _Stepper extends StatelessWidget {
     required this.min,
     required this.max,
     required this.onChanged,
+    required this.lessTooltip,
+    required this.moreTooltip,
     this.step = 1,
     this.unit = '',
   });
@@ -278,6 +297,8 @@ class _Stepper extends StatelessWidget {
   final int step;
   final String unit;
   final ValueChanged<int> onChanged;
+  final String lessTooltip;
+  final String moreTooltip;
 
   @override
   Widget build(BuildContext context) {
@@ -295,7 +316,7 @@ class _Stepper extends StatelessWidget {
           Row(
             children: [
               IconButton(
-                tooltip: 'Less',
+                tooltip: lessTooltip,
                 icon: const Icon(Icons.remove_circle_outline_rounded),
                 color: IunaPalette.pawBrown,
                 onPressed: atMin ? null : () => onChanged(value - step),
@@ -312,7 +333,7 @@ class _Stepper extends StatelessWidget {
                 ),
               ),
               IconButton(
-                tooltip: 'More',
+                tooltip: moreTooltip,
                 icon: const Icon(Icons.add_circle_outline_rounded),
                 color: IunaPalette.pawBrown,
                 onPressed: atMax ? null : () => onChanged(value + step),

@@ -8,10 +8,53 @@ import '../../widgets/section_header.dart';
 import '../../widgets/snack.dart';
 import 'remote_install.dart';
 
+/// A sheet that offers the dictionary where a feature needs it: what
+/// it would do ([title], [body]) and the download. True once it is in.
+Future<bool> showDictionaryOffer(
+  BuildContext context, {
+  required String title,
+  required String body,
+}) async {
+  final ready = await showModalBottomSheet<bool>(
+    context: context,
+    isScrollControlled: true,
+    builder: (ctx) => SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+              child: Text(
+                title,
+                style: IunaText.title.copyWith(color: IunaPalette.ink),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 6, 20, 4),
+              child: Text(
+                body,
+                style: IunaText.body.copyWith(
+                  color: IunaPalette.ink2,
+                  height: 1.4,
+                ),
+              ),
+            ),
+            DictionarySection(onReady: () => Navigator.of(ctx).pop(true)),
+          ],
+        ),
+      ),
+    ),
+  );
+  return ready ?? false;
+}
+
 /// Settings → Dictionary: download, update or remove the JMdict sidecar
 /// that the wishlist lookup, word taps and sentence games read. Also
-/// offered from Collection's "+" before it is downloaded, where
-/// [onReady] closes the offer once it is in.
+/// inside [showDictionaryOffer], where [onReady] closes the offer once
+/// it is in.
 class DictionarySection extends StatefulWidget {
   const DictionarySection({super.key, this.onReady});
 
@@ -26,6 +69,7 @@ class _DictionarySectionState extends State<DictionarySection> {
   String? _version;
   int _bytes = 0;
   RemoteInstall? _install;
+  bool _checking = false;
 
   @override
   void initState() {
@@ -54,18 +98,48 @@ class _DictionarySectionState extends State<DictionarySection> {
 
   String get _sizeMb => (_bytes / 1024 / 1024).toStringAsFixed(1);
 
+  /// Asks the server for its version first, so an installed dictionary
+  /// that is current costs no download.
+  Future<void> _checkForUpdate() async {
+    if (_checking) return;
+    setState(() => _checking = true);
+    final String? remote;
+    try {
+      remote = await DictDownload.remoteVersion();
+    } catch (e) {
+      if (mounted) {
+        showErrorSnack(
+          context,
+          "Couldn't check for an update. Check your connection.",
+          e,
+        );
+      }
+      return;
+    } finally {
+      if (mounted) setState(() => _checking = false);
+    }
+    if (!mounted) return;
+    if (remote == _version) {
+      showSnack(context, 'Your dictionary is up to date.');
+      return;
+    }
+    await _startInstall();
+  }
+
   Future<void> _startInstall() async {
     final confirmed = await showConfirmDialog(
       context,
       title: _installed
-          ? 'Update Japanese dictionary?'
+          ? 'A new dictionary is out'
           : 'Download Japanese dictionary?',
-      body:
-          'About 17 MB to download, ~45 MB stored on your phone. Wi-Fi '
-          'recommended. It lets you look up any word to add to your '
-          'wishlist, tap words in the tutor for their reading, and play '
-          'the sentence games.',
-      confirmLabel: _installed ? 'Update' : 'Download',
+      body: _installed
+          ? 'About 17 MB to download, Wi-Fi recommended. It replaces the '
+                'one on your phone.'
+          : 'About 17 MB to download, ~45 MB stored on your phone. Wi-Fi '
+                'recommended. It lets you look up any word to add to your '
+                'wishlist, tap words in the tutor for their reading, and '
+                'play the sentence games.',
+      confirmLabel: 'Download',
     );
     if (!confirmed || !mounted) return;
     final install = DictDownload.install();
@@ -131,10 +205,10 @@ class _DictionarySectionState extends State<DictionarySection> {
     return ListTile(
       leading: const Icon(icon, color: IunaPalette.pawBrown),
       title: const Text('Dictionary installed'),
-      subtitle: Text('$_sizeMb MB · build ${_version ?? '?'}'),
+      subtitle: Text('$_sizeMb MB on your phone'),
       trailing: OutlinedButton(
-        onPressed: _startInstall,
-        child: const Text('Update'),
+        onPressed: _checking ? null : _checkForUpdate,
+        child: Text(_checking ? 'Checking…' : 'Update'),
       ),
     );
   }
@@ -142,7 +216,7 @@ class _DictionarySectionState extends State<DictionarySection> {
   @override
   Widget build(BuildContext context) {
     return IunaGroup(
-      'Dictionary (experimental)',
+      'Dictionary',
       children: [
         _tile(),
         if (_installed && _install == null)

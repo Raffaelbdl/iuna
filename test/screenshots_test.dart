@@ -1427,6 +1427,20 @@ void main() {
     );
   });
 
+  testWidgets('learn — hub with four tabs at large text (1.5×)', (tester) async {
+    await _withLearnSettings(apiKey: 'sk-or-v1-golden');
+    final (env, deckDb, learnDb) = await _learnEnv(FakeLlm([]));
+    addTearDown(deckDb.close);
+    addTearDown(learnDb.close);
+    await _seedLearnCourses(env.repo);
+    await _shoot(
+      tester,
+      'learn_hub_text_scale',
+      LearnScreen(db: deckDb, env: env, kumaSeed: 0),
+      textScale: 1.5,
+    );
+  });
+
   testWidgets('learn — course with chapters', (tester) async {
     final (env, deckDb, learnDb) = await _learnEnv(FakeLlm([]));
     addTearDown(deckDb.close);
@@ -1583,6 +1597,40 @@ void main() {
             tester.element(find.byType(MaterialApp)),
           ),
         );
+        await tester.pump();
+      },
+    );
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+  });
+
+  testWidgets('learn — words in a reply show they open', (tester) async {
+    final (env, deckDb, learnDb) = await _learnEnv(
+      FakeLlm([]),
+      words: fakeTutorWords(),
+      bookmarks: true,
+    );
+    addTearDown(deckDb.close);
+    addTearDown(learnDb.close);
+    final id = await _seedLearnCourses(env.repo);
+    final room = await env.repo.openSession(id, kRoomSessionKey);
+    await env.repo.addMessage(
+      room.id,
+      role: MessageRole.assistant,
+      content:
+          'Here is how a colleague would put it:\n\n'
+          '> 今日は会議があります。\n\n'
+          '*There is a meeting today.* Note the が after 会議: it brings in '
+          'something new to the conversation.',
+    );
+    await _shoot(
+      tester,
+      'learn_word_taps',
+      TutorChatScreen(env: env, courseId: id),
+      settle: const Duration(milliseconds: 500),
+      act: () async {
+        // Reads go one per frame, so the words land a frame after the bubble.
+        await tester.pump();
         await tester.pump();
       },
     );

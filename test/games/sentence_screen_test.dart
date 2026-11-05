@@ -99,14 +99,19 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('without the dictionary, a way to Settings', (tester) async {
+  testWidgets('without the dictionary, the download right there', (
+    tester,
+  ) async {
     useTempDocumentsDir('iuna_sentences_');
     final (db, _) = await sentenceDeck();
     addTearDown(db.close);
     await tester.pumpWidget(MaterialApp(home: SentenceScreen(db: db)));
     await _settle(tester);
     expect(find.textContaining('offline dictionary'), findsOneWidget);
-    expect(find.text('Open Settings'), findsOneWidget);
+    await tester.tap(find.text('Get the dictionary'));
+    await _settle(tester);
+    expect(find.text('Download the dictionary'), findsOneWidget);
+    expect(find.text('Download'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
 }

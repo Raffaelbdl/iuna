@@ -14,20 +14,25 @@ import '../widgets/notice.dart';
 import '../widgets/progress_dots.dart';
 import '../widgets/section_header.dart';
 import '../widgets/sense_row.dart';
+import '../widgets/snack.dart';
 import '../widgets/tappable.dart';
 import '../widgets/vocab_card.dart';
 import 'review_done_screen.dart';
+import 'today_flow.dart';
 
 /// Drag-to-grade review loop. Tap the kanji-only front to flip; the
 /// back lists numbered senses. Drag the card past 90px to commit a
 /// grade, or tap the Forgot / Got it pills.
 class ReviewScreen extends StatefulWidget {
-  const ReviewScreen({super.key, required this.db, this.random});
+  const ReviewScreen({super.key, required this.db, this.random, this.now});
 
   final AppDatabase db;
 
   /// Seeds the draw order; goldens pin it.
   final math.Random? random;
+
+  /// Pins the clock for the deck, the grades and the recap; tests pass it.
+  final DateTime? now;
 
   @override
   State<ReviewScreen> createState() => _ReviewScreenState();
@@ -87,7 +92,7 @@ class _ReviewScreenState extends State<ReviewScreen>
     final List<DailyDeckEntry> deck;
     final Map<int, List<CardSenseRow>> senses;
     try {
-      deck = await _repo.assembleDailyDeck();
+      deck = await _repo.assembleDailyDeck(now: widget.now);
       senses = await _repo.sensesForCards([for (final e in deck) e.card.id]);
     } catch (e, s) {
       logLoadError('Review', e, s);
@@ -186,6 +191,7 @@ class _ReviewScreenState extends State<ReviewScreen>
       cardId: entry.card.id,
       correct: correct,
       durationMs: durationMs,
+      now: widget.now,
     );
     if (!mounted) return;
 
@@ -214,13 +220,14 @@ class _ReviewScreenState extends State<ReviewScreen>
   /// of the recap leaves both.
   Future<void> _finish() async {
     final undo = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => ReviewDoneScreen(
+      todayRoute(
+        (_) => ReviewDoneScreen(
           db: widget.db,
           correct: _correctCount,
           total: _gradedCardIds.length,
           doneCardIds: List.of(_gradedCardIds),
           canUndo: true,
+          now: widget.now,
         ),
       ),
     );
@@ -236,19 +243,28 @@ class _ReviewScreenState extends State<ReviewScreen>
     setState(() => _undoing = true);
     HapticFeedback.selectionClick();
     var reflip = true;
-    switch (action) {
-      case _GradeUndo(:final snapshot):
-        await _repo.undoReview(snapshot);
-        if (snapshot.correct && _correctCount > 0) _correctCount -= 1;
-        if (_gradedCardIds.isNotEmpty &&
-            _gradedCardIds.last == snapshot.priorUserCard.cardId) {
-          _gradedCardIds.removeLast();
-        }
-      case _SuspendUndo(:final cardId):
-        await _repo.setSuspended(cardId, false);
-        // The user hadn't flipped this card when they suspended — come
-        // back with the front showing so the flow reads naturally.
-        reflip = false;
+    try {
+      switch (action) {
+        case _GradeUndo(:final snapshot):
+          await _repo.undoReview(snapshot);
+          if (snapshot.correct && _correctCount > 0) _correctCount -= 1;
+          if (_gradedCardIds.isNotEmpty &&
+              _gradedCardIds.last == snapshot.priorUserCard.cardId) {
+            _gradedCardIds.removeLast();
+          }
+        case _SuspendUndo(:final cardId):
+          await _repo.setSuspended(cardId, false);
+          // The user hadn't flipped this card when they suspended —
+          // come back with the front showing so the flow reads
+          // naturally.
+          reflip = false;
+      }
+    } catch (e) {
+      _undoStack.add(action);
+      if (!mounted) return;
+      setState(() => _undoing = false);
+      showErrorSnack(context, "Couldn't undo that card.", e);
+      return;
     }
     if (!mounted) return;
     setState(() {
@@ -386,7 +402,7 @@ class _ReviewScreenState extends State<ReviewScreen>
         if (_flipped)
           _AnswerRow(onForgot: () => _grade(false), onGotIt: () => _grade(true))
         else
-          _GhostHint(onTap: _flip),
+          _RevealButton(onTap: _flip),
         SizedBox(height: 12 + MediaQuery.paddingOf(context).bottom),
       ],
     );
@@ -802,6 +818,7 @@ class _AnswerBtn extends StatelessWidget {
     return Tappable(
       onTap: onTap,
       child: Container(
+        constraints: const BoxConstraints(minHeight: 48),
         padding: const EdgeInsets.symmetric(vertical: 14),
         decoration: BoxDecoration(
           gradient: LinearGradient(
@@ -809,7 +826,7 @@ class _AnswerBtn extends StatelessWidget {
             end: Alignment.bottomCenter,
             colors: gradient,
           ),
-          borderRadius: BorderRadius.circular(IunaRadii.md),
+          borderRadius: BorderRadius.circular(999),
           boxShadow: const [
             BoxShadow(
               color: Color.fromRGBO(74, 53, 32, 0.18),
@@ -837,34 +854,17 @@ class _AnswerBtn extends StatelessWidget {
   }
 }
 
-class _GhostHint extends StatelessWidget {
-  const _GhostHint({required this.onTap});
+class _RevealButton extends StatelessWidget {
+  const _RevealButton({required this.onTap});
   final VoidCallback onTap;
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Tappable(
+      child: IunaCtaButton(
+        label: 'Reveal',
+        leadingIcon: Icons.visibility_rounded,
         onTap: onTap,
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          decoration: ghostPillDecoration(),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.visibility_rounded, size: 16, color: IunaPalette.ink2),
-              SizedBox(width: 8),
-              Text(
-                'Reveal',
-                style: IunaText.bodySmall.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: IunaPalette.ink2,
-                ),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }

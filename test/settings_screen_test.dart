@@ -86,6 +86,8 @@ void main() {
 
     expect(await repo.getResetHour(), kDefaultResetHour);
 
+    await tester.ensureVisible(find.byType(DropdownButton<int>));
+    await tester.pumpAndSettle();
     await tester.tap(find.byType(DropdownButton<int>));
     await tester.pumpAndSettle();
     // intl's DateFormat.j() uses a NARROW NO-BREAK SPACE (U+202F)

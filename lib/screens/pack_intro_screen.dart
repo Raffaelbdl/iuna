@@ -13,6 +13,7 @@ import '../widgets/notice.dart';
 import '../widgets/tappable.dart';
 import 'booster_reveal_screen.dart';
 import 'review_screen.dart';
+import 'today_flow.dart';
 
 /// Splash before the booster reveal: floating Kuma-stamped pack with
 /// "N new cards await" copy. Tap the pack to play a flash + scale
@@ -94,12 +95,12 @@ class _PackIntroScreenState extends State<PackIntroScreen>
     if (!mounted) return;
     setState(() => _handedOff = true);
     final picked = await Navigator.of(context).push<List<int>>(
-      MaterialPageRoute(builder: (_) => BoosterRevealScreen(db: widget.db)),
+      todayRoute((_) => BoosterRevealScreen(db: widget.db)),
     );
     if (!mounted) return;
     if (picked != null) {
       await Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => ReviewScreen(db: widget.db)),
+        todayRoute((_) => ReviewScreen(db: widget.db)),
       );
     } else {
       Navigator.of(context).pop();

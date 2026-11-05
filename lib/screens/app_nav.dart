@@ -97,6 +97,16 @@ class _AppBottomNavState extends State<AppBottomNav> {
         navigator.popUntil((r) => r.isFirst);
         return;
       case IunaNavTab.today:
+        // Off a screen the Today flow opened (a card from the recap):
+        // back to that flow rather than a second one over it.
+        if (!widget.atTabRoot) {
+          var found = false;
+          navigator.popUntil((r) {
+            found = isTodayRoute(r);
+            return found || r.isFirst;
+          });
+          if (found) return;
+        }
         await openTodayFlow(context, db);
       case IunaNavTab.collection || IunaNavTab.learn:
         final route = MaterialPageRoute<void>(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/iuna_theme.dart';
+import '../../widgets/snack.dart';
 import '../db/learn_database.dart';
 import '../db/learn_repository.dart';
 
@@ -40,7 +41,16 @@ class _NewCourseSheetState extends State<_NewCourseSheet> {
   Future<void> _create() async {
     if (_title.text.trim().isEmpty || _saving) return;
     setState(() => _saving = true);
-    final course = await widget.repo.createCourse(title: _title.text, goal: _goal.text);
+    final CourseRow course;
+    try {
+      course = await widget.repo.createCourse(title: _title.text, goal: _goal.text);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _saving = false);
+        showErrorSnack(context, "Couldn't create the course.", e);
+      }
+      return;
+    }
     if (!mounted) return;
     Navigator.of(context).pop(course);
   }

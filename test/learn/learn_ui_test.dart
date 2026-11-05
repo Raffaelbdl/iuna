@@ -133,6 +133,10 @@ void main() {
 
     await tester.pageBack();
     await tester.pump();
+    expect(find.text('Leave this chat?'), findsOneWidget,
+        reason: 'an answered chat is not saved');
+    await tester.tap(find.text('Leave'));
+    await tester.pump();
     await tester.pump(const Duration(seconds: 1));
     expect(find.byType(AskScreen), findsNothing);
     expect(tester.widget<TextField>(find.byType(TextField)).controller!.text, isEmpty);
@@ -199,7 +203,7 @@ void main() {
     await settings.setApiKey('sk-or-v1-abc');
     await tester.pump();
     expect(find.text('Ask Kuma-sensei about 会議…'), findsOneWidget);
-    expect(find.byIcon(Icons.bookmark_outline_rounded), findsOneWidget);
+    expect(find.text('Add to wishlist'), findsOneWidget);
 
     await tester.enterText(find.byType(TextField), 'Keep this one for me');
     await tester.pump();
@@ -213,9 +217,7 @@ void main() {
     expect(messages.first['content'], contains('- Card: not in their collection'));
     expect(messages[1]['content'], 'Keep this one for me');
 
-    await tester.pageBack();
-    await tester.pump();
-    await tester.pump(const Duration(seconds: 1));
+    await _leaveAsk(tester);
     expect(find.byTooltip('Remove from wishlist'), findsOneWidget,
         reason: 'the card shows the bookmark the tutor made');
     expect(find.text('On your wishlist'), findsOneWidget);
@@ -394,9 +396,7 @@ void main() {
     final content = llm.requests.single.messages.last['content'] as List;
     expect(content.single['type'], 'image_url');
 
-    await tester.pageBack();
-    await tester.pump();
-    await tester.pump(const Duration(seconds: 1));
+    await _leaveAsk(tester);
     expect(find.text('Photo attached'), findsNothing);
 
     await tester.pumpWidget(const SizedBox());
@@ -464,7 +464,7 @@ void main() {
     await tester.ensureVisible(model);
     await tester.pumpAndSettle();
     expect(find.text('Not set. The Learn tab appears once a key is saved.'), findsOneWidget);
-    expect(find.text(kDefaultLearnModel), findsOneWidget);
+    expect(find.text('Default · $kDefaultLearnModel'), findsOneWidget);
 
     await tester.tap(model);
     await tester.pumpAndSettle();
@@ -481,7 +481,7 @@ void main() {
     await tester.tap(find.text('Reset'));
     await tester.pumpAndSettle();
     expect(await store.read('openrouter_model'), isNull);
-    expect(find.text(kDefaultLearnModel), findsOneWidget);
+    expect(find.text('Default · $kDefaultLearnModel'), findsOneWidget);
   });
 
   testWidgets('settings: removing the key asks first', (tester) async {
@@ -511,4 +511,13 @@ void main() {
     await tester.pumpAndSettle();
     expect(settings.available.value, isFalse);
   });
+}
+
+/// Backs out of an answered Ask chat, through its "Leave this chat?".
+Future<void> _leaveAsk(WidgetTester tester) async {
+  await tester.pageBack();
+  await tester.pump();
+  await tester.tap(find.text('Leave'));
+  await tester.pump();
+  await tester.pump(const Duration(seconds: 1));
 }

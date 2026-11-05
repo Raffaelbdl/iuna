@@ -163,11 +163,18 @@ class _NavBtn extends StatelessWidget {
                   ],
                 ),
               const SizedBox(height: 2),
-              Text(
-                label,
-                style: IunaText.chip.copyWith(
-                  color: active ? IunaPalette.ink : IunaPalette.ink3,
-                  height: 1,
+              // Shrinks rather than breaks a word when four tabs share
+              // the bar at large text.
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  softWrap: false,
+                  style: IunaText.chip.copyWith(
+                    color: active ? IunaPalette.ink : IunaPalette.ink3,
+                    height: 1,
+                  ),
                 ),
               ),
             ],
