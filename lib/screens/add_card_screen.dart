@@ -363,7 +363,7 @@ class _PreviewSheet extends StatelessWidget {
               children: [
                 if (hit.jlptLevel != null)
                   MetaChip(label: 'JLPT N${hit.jlptLevel}'),
-                _StatusChip(status: lookup.status),
+                CardStatusChip(status: lookup.status),
               ],
             ),
             const SizedBox(height: 16),
@@ -380,36 +380,6 @@ class _PreviewSheet extends StatelessWidget {
             const SizedBox(height: 20),
             _PreviewActions(status: lookup.status),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _StatusChip extends StatelessWidget {
-  const _StatusChip({required this.status});
-  final CardLookupStatus status;
-
-  @override
-  Widget build(BuildContext context) {
-    final (label, color) = switch (status) {
-      CardLookupStatus.notFound => ('New card', IunaPalette.pawBrown),
-      CardLookupStatus.available => ('Available', IunaPalette.pawBrown),
-      CardLookupStatus.wishlisted => ('On wishlist', IunaPalette.ink2),
-      CardLookupStatus.owned => ('In collection', IunaPalette.ink2),
-    };
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          color: color,
         ),
       ),
     );

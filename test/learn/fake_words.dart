@@ -1,7 +1,9 @@
+import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:iuna/core/deck_rules.dart';
 import 'package:iuna/db/jmdict_lookup.dart';
+import 'package:iuna/learn/widgets/tutor_markdown.dart';
 import 'package:iuna/learn/words/segmenter.dart';
 import 'package:iuna/learn/words/tutor_words.dart';
 
@@ -76,25 +78,48 @@ final kTestWords = [
 ];
 
 /// What the sidecar's `byForms` would return over [kTestWords].
-WordLexicon fakeLexicon([List<JmdictHit>? words]) =>
+WordLexicon fakeLexicon() =>
     (forms) => [
-      for (final w in words ?? kTestWords)
+      for (final w in kTestWords)
         if (forms.contains(w.kanji) || forms.contains(w.kana)) w,
     ];
 
 TutorWords fakeTutorWords() => TutorWords(lexicon: () async => fakeLexicon());
 
+/// The middle of the first [word] on screen, in plain or selectable
+/// text.
+Offset wordCenter(WidgetTester tester, String word) {
+  for (final r in tester.allRenderObjects) {
+    final (String? text, boxes) = switch (r) {
+      RenderParagraph() => (r.text.toPlainText(), r.getBoxesForSelection),
+      RenderEditable() => (r.plainText, r.getBoxesForSelection),
+      _ => (null, null),
+    };
+    final start = text?.indexOf(word) ?? -1;
+    if (boxes == null || start < 0) continue;
+    final box = boxes(TextSelection(baseOffset: start, extentOffset: start + word.length));
+    return (r as RenderBox).localToGlobal(box.first.toRect().center);
+  }
+  throw StateError('$word is not on screen');
+}
+
 /// Taps the middle of the first [word] in plain or selectable text.
-Future<void> tapWord(WidgetTester tester, String word) async {
-  final plain = find.textRange.ofSubstring(word);
-  if (plain.evaluate().isNotEmpty) return tester.tapOnText(plain);
-  final editable = tester.allRenderObjects.whereType<RenderEditable>().firstWhere(
-    (r) => r.plainText.contains(word),
+Future<void> tapWord(WidgetTester tester, String word) => tester.tapAt(wordCenter(tester, word));
+
+/// Where the pressed word is marked, in global coordinates.
+List<Rect> litRects(WidgetTester tester) {
+  final paint = tester.widget<CustomPaint>(
+    find.byWidgetPredicate((w) => w is CustomPaint && w.foregroundPainter is WordHighlight),
   );
-  final start = editable.plainText.indexOf(word);
-  final box = editable
-      .getBoxesForSelection(TextSelection(baseOffset: start, extentOffset: start + word.length))
-      .first
-      .toRect();
-  await tester.tapAt(editable.localToGlobal(box.center));
+  final host = tester.renderObject<RenderBox>(find.byWidget(paint));
+  return [
+    for (final r in (paint.foregroundPainter! as WordHighlight).lit.value)
+      r.shift(host.localToGlobal(Offset.zero)),
+  ];
+}
+
+/// Whether [word] is the one marked as pressed.
+bool isLit(WidgetTester tester, String word) {
+  final center = wordCenter(tester, word);
+  return litRects(tester).any((r) => r.contains(center));
 }

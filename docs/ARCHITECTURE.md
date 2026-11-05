@@ -257,9 +257,16 @@ parentheses) instead of `readings_tap.md`, and nothing is tappable.
   1; particles and the copula less; rare, archaic or kana-for-kanji
   matches more; set phrases ending in a particle much more, so 今日は is
   今日・は and not こんにちは.
-- `TutorMarkdown` turns each word into a markdown link and opens
-  `WordSheet` on tap. Lookups are off while a reply streams and on quiz
-  cards, which test exactly what a lookup would give away.
+- `TutorMarkdown` renders each word as a span with its own tap
+  recognizer and opens `WordSheet` on tap. A pressed word is marked by a
+  painter over the text, so the markdown never re-parses mid-press.
+  Lookups are off while a reply streams and on quiz cards, which test
+  exactly what a lookup would give away.
+- `WordSheet` shows the word's deck status (Add card's chip) and, for a
+  word not owned or wished for, a Bookmark button. It wishlists through
+  `WordBookmarks` (`deck.dart`), the same port as the tutor's
+  `bookmark_words`, so it never makes a card owned. The deck comes in as
+  `LearnEnv.bookmarks`, passed down by each screen.
 
 ### Photos and dictation
 

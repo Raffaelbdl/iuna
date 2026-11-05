@@ -1,6 +1,6 @@
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:iuna/learn/agent/bookmark_tool.dart';
+import 'package:iuna/learn/deck.dart';
 import 'package:iuna/learn/db/learn_database.dart';
 import 'package:iuna/learn/db/learn_repository.dart';
 import 'package:iuna/learn/learn.dart';

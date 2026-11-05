@@ -3,30 +3,10 @@ import 'dart:convert';
 import 'package:flutter/material.dart' show Icons;
 
 import '../../core/japanese_text.dart';
+import '../deck.dart';
 import 'tools.dart';
 
 const int kMaxBookmarkWords = 20;
-
-/// What bookmarking one word did.
-enum BookmarkOutcome {
-  bookmarked('bookmarked'),
-  alreadyBookmarked('already bookmarked'),
-  owned('already in their collection — left alone'),
-  notFound('not found — check the written form and the reading'),
-  noDictionary('not in the built-in deck, and the full dictionary is not '
-      'downloaded (Settings → Dictionary)');
-
-  const BookmarkOutcome(this.wire);
-
-  /// How the tool result reports it to the model.
-  final String wire;
-}
-
-/// The learner's card deck, as far as the tutor may touch it.
-abstract interface class WordBookmarks {
-  /// Bookmarks `(word, reading)` unless the learner already owns it.
-  Future<BookmarkOutcome> bookmark(String word, String reading);
-}
 
 /// `会議（かいぎ）`: how the tutor writes a word in chat, so it may pass
 /// one that way too.

@@ -1,23 +1,45 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
+import '../../db/jmdict_lookup.dart';
+import '../../db/repository.dart';
 import '../../services/tts.dart';
 import '../../theme/iuna_theme.dart';
 import '../../widgets/paper_sheet.dart';
 import '../../widgets/sense_row.dart';
 import '../../widgets/vocab_card.dart';
+import '../deck.dart';
 import '../words/segmenter.dart';
 
 /// A tapped word from the tutor's message: its reading over it, its
-/// meanings, and the other headwords the same text could be.
-Future<void> showWordSheet(BuildContext context, String surface, TextWord word) =>
-    showPaperSheet<void>(context, (_) => WordSheet(surface: surface, word: word));
+/// meanings, and the other headwords the same text could be. With
+/// [bookmarks], a word not yet collected can be wishlisted from it.
+Future<void> showWordSheet(
+  BuildContext context,
+  String surface,
+  TextWord word, {
+  WordBookmarks? bookmarks,
+}) {
+  HapticFeedback.selectionClick();
+  // Closing the sheet hands focus back to whatever held it, and a
+  // message box that kept focus behind a hidden keyboard would pop it
+  // open again and scroll the chat away from the word.
+  FocusManager.instance.primaryFocus?.unfocus();
+  return showPaperSheet<void>(
+    context,
+    (_) => WordSheet(surface: surface, word: word, bookmarks: bookmarks),
+  );
+}
 
 class WordSheet extends StatefulWidget {
-  const WordSheet({super.key, required this.surface, required this.word});
+  const WordSheet({super.key, required this.surface, required this.word, this.bookmarks});
 
   /// The text as the tutor wrote it.
   final String surface;
   final TextWord word;
+
+  /// Where a word not yet collected can be bookmarked.
+  final WordBookmarks? bookmarks;
 
   @override
   State<WordSheet> createState() => _WordSheetState();
@@ -88,6 +110,10 @@ class _WordSheetState extends State<WordSheet> {
                       ),
                   ],
                 ),
+              ],
+              if (widget.bookmarks case final bookmarks?) ...[
+                const SizedBox(height: 10),
+                _DeckAction(key: ValueKey((hit.kanji, hit.kana)), bookmarks: bookmarks, entry: hit),
               ],
               const SizedBox(height: 10),
               Flexible(
@@ -190,6 +216,58 @@ class _Other extends StatelessWidget {
           style: const TextStyle(fontSize: 13, height: 1.4),
         ),
       ),
+    );
+  }
+}
+
+/// Where the word stands in the learner's deck, as Add card shows it,
+/// and a Bookmark button while it isn't theirs or wished for yet.
+class _DeckAction extends StatefulWidget {
+  const _DeckAction({super.key, required this.bookmarks, required this.entry});
+
+  final WordBookmarks bookmarks;
+  final JmdictHit entry;
+
+  @override
+  State<_DeckAction> createState() => _DeckActionState();
+}
+
+class _DeckActionState extends State<_DeckAction> {
+  CardLookupStatus? _status;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.bookmarks.status(widget.entry.kanji, widget.entry.kana).then(_show);
+  }
+
+  void _show(CardLookupStatus status) {
+    if (mounted) setState(() => _status = status);
+  }
+
+  Future<void> _bookmark() async {
+    setState(() => _busy = true);
+    _show(await widget.bookmarks.wishlist(widget.entry));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final status = _status;
+    if (status == null) return const SizedBox(height: 40);
+    final open = status == CardLookupStatus.notFound || status == CardLookupStatus.available;
+    return Row(
+      children: [
+        CardStatusChip(status: status),
+        if (open) ...[
+          const SizedBox(width: 10),
+          FilledButton.tonalIcon(
+            onPressed: _busy ? null : _bookmark,
+            icon: const Icon(Icons.bookmark_add_outlined, size: 18),
+            label: const Text('Bookmark'),
+          ),
+        ],
+      ],
     );
   }
 }

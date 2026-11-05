@@ -91,6 +91,7 @@ class _AskScreenState extends State<AskScreen> {
           controller: _chat,
           hint: 'Ask a follow-up…',
           picker: widget.env.photos,
+          bookmarks: widget.env.bookmarks,
         ),
       ),
     );

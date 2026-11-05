@@ -9,6 +9,7 @@ import '../agent/tutor_prompt.dart';
 import '../agent/tutor_tools.dart';
 import '../db/learn_database.dart';
 import '../db/learn_repository.dart';
+import '../deck.dart';
 import '../learn.dart';
 import '../widgets/chat_view.dart';
 import '../widgets/tutor_markdown.dart';
@@ -152,6 +153,7 @@ class _TutorChatScreenState extends State<TutorChatScreen>
                 hint: 'Message Kuma-sensei…',
                 noteCaptions: _noteCaptions,
                 picker: widget.env.photos,
+                bookmarks: widget.env.bookmarks,
               )
             : TabBarView(
                 controller: _tabs,
@@ -161,6 +163,7 @@ class _TutorChatScreenState extends State<TutorChatScreen>
                     hint: 'Answer, ask, or say “next”…',
                     noteCaptions: _noteCaptions,
                     picker: widget.env.photos,
+                    bookmarks: widget.env.bookmarks,
                     onActivityTap: (tool) {
                       if (tool is CourseWriteTool) _tabs?.animateTo(1);
                     },
@@ -169,7 +172,7 @@ class _TutorChatScreenState extends State<TutorChatScreen>
                         ? const _PassedLessonHint()
                         : null,
                   ),
-                  _TheoryView(chapter: chapter),
+                  _TheoryView(chapter: chapter, bookmarks: widget.env.bookmarks),
                 ],
               );
     return Scaffold(
@@ -198,7 +201,10 @@ class _TutorChatScreenState extends State<TutorChatScreen>
                 tabs: const [Tab(text: 'Lesson'), Tab(text: 'Theory')],
               ),
       ),
-      body: DecoratedBox(decoration: iunaPageBackground(), child: body),
+      body: DecoratedBox(
+        decoration: iunaPageBackground(),
+        child: body,
+      ),
     );
   }
 }
@@ -225,8 +231,9 @@ class _PassedLessonHint extends StatelessWidget {
 }
 
 class _TheoryView extends StatelessWidget {
-  const _TheoryView({required this.chapter});
+  const _TheoryView({required this.chapter, this.bookmarks});
   final ChapterRow chapter;
+  final WordBookmarks? bookmarks;
 
   @override
   Widget build(BuildContext context) {
@@ -263,7 +270,7 @@ class _TheoryView extends StatelessWidget {
               ],
             ),
           ),
-        LearnPanel(child: TutorMarkdown(chapter.doc, fontSize: 15)),
+        LearnPanel(child: TutorMarkdown(chapter.doc, fontSize: 15, bookmarks: bookmarks)),
       ],
     );
   }

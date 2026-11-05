@@ -1,9 +1,13 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:markdown/markdown.dart' as md;
 
-import '../../theme/iuna_theme.dart';
 import '../../core/japanese_text.dart';
+import '../../theme/iuna_theme.dart';
+import '../deck.dart';
 import '../words/segmenter.dart';
 import '../words/tutor_words.dart';
 import 'word_sheet.dart';
@@ -20,6 +24,7 @@ class TutorMarkdown extends StatefulWidget {
     this.fontSize = 14,
     this.selectable = true,
     this.lookUp = true,
+    this.bookmarks,
   });
 
   final String data;
@@ -30,14 +35,26 @@ class TutorMarkdown extends StatefulWidget {
   /// answer away.
   final bool lookUp;
 
+  /// Where a looked-up word not yet collected can be wishlisted.
+  final WordBookmarks? bookmarks;
+
   @override
   State<TutorMarkdown> createState() => _TutorMarkdownState();
 }
 
-const _wordScheme = 'iuna-word:';
+/// The markdown tag a word becomes; its `id` attribute is `run/index`.
+const _wordTag = 'jw';
 
 class _TutorMarkdownState extends State<TutorMarkdown> {
   Map<String, List<TextWord>>? _words;
+
+  /// Where the pressed word, or the one whose sheet is open, is laid out.
+  /// Painted over the text rather than styled into it: restyling a span
+  /// re-parses the whole message, which costs a long chapter frames and
+  /// would tear the text's selection gestures down mid-press.
+  final _lit = ValueNotifier<List<Rect>>(const []);
+
+  final _recognizers = <String, TapGestureRecognizer>{};
 
   @override
   void initState() {
@@ -51,7 +68,23 @@ class _TutorMarkdownState extends State<TutorMarkdown> {
     if (old.data != widget.data || old.lookUp != widget.lookUp) _read();
   }
 
+  @override
+  void dispose() {
+    _disposeRecognizers();
+    _lit.dispose();
+    super.dispose();
+  }
+
+  void _disposeRecognizers() {
+    for (final r in _recognizers.values) {
+      r.dispose();
+    }
+    _recognizers.clear();
+  }
+
   void _read() {
+    _disposeRecognizers();
+    _lit.value = const [];
     _words = null;
     if (!widget.lookUp) return;
     final words = TutorWords.instance;
@@ -66,18 +99,64 @@ class _TutorMarkdownState extends State<TutorMarkdown> {
     });
   }
 
-  void _onTapLink(String text, String? href, String title) {
-    final words = _words;
-    if (words == null || href == null || !href.startsWith(_wordScheme)) return;
+  TapGestureRecognizer _recognizer(String id) => _recognizers.putIfAbsent(id, () {
+    final r = TapGestureRecognizer();
+    return r
+      ..onTapDown = ((d) => _lit.value = _boxesOf(r, d.globalPosition))
+      ..onTapCancel = (() => _lit.value = const [])
+      ..onTap = (() => _open(id));
+  });
+
+  /// The boxes of the span [recognizer] drives at [global], in this
+  /// widget's coordinates: that occurrence only, however often the word
+  /// repeats.
+  List<Rect> _boxesOf(GestureRecognizer recognizer, Offset global) {
+    final host = context.findRenderObject();
+    if (host is! RenderBox) return const [];
+    final hits = BoxHitTestResult();
+    host.hitTest(hits, position: host.globalToLocal(global));
+    for (final entry in hits.path) {
+      final (box, text, at, boxes) = switch (entry.target) {
+        final RenderParagraph p => (
+          p,
+          p.text,
+          p.getPositionForOffset(p.globalToLocal(global)).offset,
+          p.getBoxesForSelection,
+        ),
+        final RenderEditable e when e.text != null => (
+          e,
+          e.text!,
+          e.getPositionForPoint(global).offset,
+          e.getBoxesForSelection,
+        ),
+        _ => (null, null, null, null),
+      };
+      if (box == null) continue;
+      final range = _spanAt(text!, recognizer, at!);
+      if (range == null) return const [];
+      final toHost = box.getTransformTo(host);
+      return [for (final b in boxes!(range)) MatrixUtils.transformRect(toHost, b.toRect())];
+    }
+    return const [];
+  }
+
+  Future<void> _open(String id) async {
     // A run is kana and kanji only: it never holds the slash.
-    final [run, at] = href.substring(_wordScheme.length).split('/');
-    showWordSheet(context, text, words[run]![int.parse(at)]);
+    final [run, at] = id.split('/');
+    final word = _words![run]![int.parse(at)];
+    await showWordSheet(
+      context,
+      run.substring(word.start, word.end),
+      word,
+      bookmarks: widget.bookmarks,
+    );
+    if (mounted) _lit.value = const [];
   }
 
   @override
   Widget build(BuildContext context) {
     final words = _words;
-    return MarkdownBody(
+    final body = MarkdownBody(
       // The body parses only when its data or style changes; words
       // arriving for the same text need a fresh parse.
       key: ValueKey(words),
@@ -85,14 +164,58 @@ class _TutorMarkdownState extends State<TutorMarkdown> {
       selectable: widget.selectable,
       styleSheet: tutorMarkdownStyle(context, widget.fontSize),
       inlineSyntaxes: words == null ? null : [_WordSyntax(words)],
-      onTapLink: _onTapLink,
+      builders: words == null ? const {} : {_wordTag: _WordBuilder(this)},
+      onTapLink: (text, href, title) {},
     );
+    if (words == null) return body;
+    // Over the text, not under it: a quote's or a table's own background
+    // would hide anything painted beneath the body.
+    return CustomPaint(foregroundPainter: WordHighlight(_lit), child: body);
   }
 }
 
-/// Turns each word of a Japanese run into a link whose target names it.
-/// Links are already tappable inside selectable text, and the tutor's
-/// own links lead nowhere.
+/// The text range of the span [recognizer] drives that covers offset [at].
+TextSelection? _spanAt(InlineSpan root, GestureRecognizer recognizer, int at) {
+  var offset = 0;
+  TextSelection? found;
+  root.visitChildren((span) {
+    final length = span is TextSpan ? span.text?.length ?? 0 : 1;
+    if (span is TextSpan &&
+        span.recognizer == recognizer &&
+        at >= offset &&
+        at <= offset + length) {
+      found = TextSelection(baseOffset: offset, extentOffset: offset + length);
+      return false;
+    }
+    offset += length;
+    return true;
+  });
+  return found;
+}
+
+/// Marks a pressed word like a link: a soft fill and a bar beneath.
+@visibleForTesting
+class WordHighlight extends CustomPainter {
+  WordHighlight(this.lit) : super(repaint: lit);
+
+  final ValueListenable<List<Rect>> lit;
+
+  static final _fill = Paint()..color = IunaPalette.bellGold.withValues(alpha: 0.3);
+  static final _bar = Paint()..color = IunaPalette.ctaBottom;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    for (final r in lit.value) {
+      canvas.drawRRect(RRect.fromRectAndRadius(r, const Radius.circular(3)), _fill);
+      canvas.drawRect(Rect.fromLTRB(r.left, r.bottom - 2, r.right, r.bottom), _bar);
+    }
+  }
+
+  @override
+  bool shouldRepaint(WordHighlight old) => old.lit != lit;
+}
+
+/// Wraps each word of a Japanese run in a [_wordTag] element naming it.
 class _WordSyntax extends md.InlineSyntax {
   _WordSyntax(this.words) : super(japaneseRun.pattern);
 
@@ -107,13 +230,37 @@ class _WordSyntax extends md.InlineSyntax {
       final w = list[i];
       if (w.start > at) parser.addNode(md.Text(run.substring(at, w.start)));
       parser.addNode(
-        md.Element('a', [md.Text(run.substring(w.start, w.end))])
-          ..attributes['href'] = '$_wordScheme$run/$i',
+        md.Element(_wordTag, [md.Text(run.substring(w.start, w.end))])
+          ..attributes['id'] = '$run/$i',
       );
       at = w.end;
     }
     if (at < run.length) parser.addNode(md.Text(run.substring(at)));
     return true;
+  }
+}
+
+/// A word as a tappable span of the paragraph around it.
+class _WordBuilder extends MarkdownElementBuilder {
+  _WordBuilder(this.state);
+
+  final _TutorMarkdownState state;
+
+  @override
+  Widget? visitElementAfterWithContext(
+    BuildContext context,
+    md.Element element,
+    TextStyle? preferredStyle,
+    TextStyle? parentStyle,
+  ) {
+    return Text.rich(
+      TextSpan(
+        text: element.textContent,
+        style: parentStyle,
+        mouseCursor: SystemMouseCursors.click,
+        recognizer: state._recognizer(element.attributes['id']!),
+      ),
+    );
   }
 }
 
@@ -131,9 +278,7 @@ MarkdownStyleSheet _buildStyle(ThemeData theme, double size) {
   const rule = Color.fromRGBO(74, 53, 32, 0.12);
   return MarkdownStyleSheet.fromTheme(theme).copyWith(
     p: base,
-    // Every Japanese word is a link (see [_WordSyntax]); underlining
-    // them all would bury the text.
-    a: base,
+    a: base.copyWith(decoration: TextDecoration.underline),
     strong: base.copyWith(fontWeight: FontWeight.w700),
     em: base.copyWith(fontStyle: FontStyle.italic),
     del: base.copyWith(decoration: TextDecoration.lineThrough),

@@ -14,6 +14,7 @@ import 'package:iuna/learn/agent/tools.dart';
 import 'package:iuna/learn/agent/tutor_tools.dart';
 import 'package:iuna/learn/db/learn_database.dart';
 import 'package:iuna/learn/db/learn_repository.dart';
+import 'package:iuna/learn/deck.dart';
 import 'package:iuna/learn/deck_bookmarks.dart';
 import 'package:path/path.dart' as p;
 
@@ -98,6 +99,30 @@ void main() {
     test('without the dictionary, a word the deck lacks says so', () async {
       expect(await bookmarks.bookmark('早合点', 'はやがてん'), BookmarkOutcome.noDictionary);
       expect(await deck.select(deck.cards).get(), isEmpty);
+    });
+
+    test('status reads where a word stands; wishlist brings an entry in', () async {
+      await own(await card('行く', 'いく'));
+      final meeting = await card('会議', 'かいぎ');
+      expect(await bookmarks.status('行く', 'いく'), CardLookupStatus.owned);
+      expect(await bookmarks.status('会議', 'かいぎ'), CardLookupStatus.available);
+      expect(await bookmarks.status('早合点', 'はやがてん'), CardLookupStatus.notFound);
+
+      JmdictHit entry(String kanji, String kana) => JmdictHit(
+        kanji: kanji,
+        kana: kana,
+        senses: const [JmdictSense(pos: 'n', gloss: 'g', def: '')],
+        rarity: Rarity.common,
+      );
+      expect(await bookmarks.wishlist(entry('会議', 'かいぎ')), CardLookupStatus.wishlisted);
+      expect(await bookmarks.wishlist(entry('早合点', 'はやがてん')), CardLookupStatus.wishlisted,
+          reason: 'a word the deck lacks comes in from the entry, no sidecar needed');
+      expect(await bookmarks.wishlist(entry('行く', 'いく')), CardLookupStatus.owned);
+      final added = await (deck.select(deck.cards)..where((c) => c.kanji.equals('早合点')))
+          .getSingle();
+      expect(await repo.wishedCardIds(), unorderedEquals([meeting, added.id]));
+      expect(await deck.select(deck.userCards).get(), hasLength(1),
+          reason: 'only the one owned before; wishlisting never owns');
     });
   });
 

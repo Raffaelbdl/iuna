@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../db/database.dart';
+import '../db/repository.dart';
 import '../theme/iuna_theme.dart';
 
 /// Vocab card frame from the redesign — rounded 22px, rarity-tinted
@@ -282,6 +283,37 @@ class MetaChip extends StatelessWidget {
       child: Text(
         label,
         style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: IunaPalette.ink2),
+      ),
+    );
+  }
+}
+
+/// Where a headword stands in the learner's deck.
+class CardStatusChip extends StatelessWidget {
+  const CardStatusChip({super.key, required this.status});
+  final CardLookupStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final (label, color) = switch (status) {
+      CardLookupStatus.notFound => ('New card', IunaPalette.pawBrown),
+      CardLookupStatus.available => ('Available', IunaPalette.pawBrown),
+      CardLookupStatus.wishlisted => ('On wishlist', IunaPalette.ink2),
+      CardLookupStatus.owned => ('In collection', IunaPalette.ink2),
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: color,
+        ),
       ),
     );
   }

@@ -18,9 +18,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:iuna/db/database.dart';
+import 'package:iuna/db/repository.dart';
 import 'package:iuna/learn/agent/tutor_prompt.dart';
 import 'package:iuna/learn/db/learn_database.dart';
 import 'package:iuna/learn/db/learn_repository.dart';
+import 'package:iuna/learn/deck_bookmarks.dart';
 import 'package:iuna/learn/learn.dart';
 import 'package:iuna/learn/learn_settings.dart';
 import 'package:iuna/learn/llm/llm.dart';
@@ -500,6 +502,7 @@ Future<(LearnEnv, AppDatabase, LearnDatabase)> _learnEnv(
   FakeRecorder? recorder,
   FakeTranscriber? stt,
   TutorWords? words,
+  bool bookmarks = false,
 }) async {
   // No dictionary unless the scene brings one, so no shot depends on
   // what is installed.
@@ -517,6 +520,7 @@ Future<(LearnEnv, AppDatabase, LearnDatabase)> _learnEnv(
       repo: repo,
       llm: llm,
       settings: LearnSettings(MemorySecretStore()),
+      bookmarks: bookmarks ? DeckBookmarks(IunaRepository(deckDb)) : null,
       dictation: Dictation(
         recorder: recorder == null ? FakeRecorder.new : () => recorder,
         transcriber: stt ?? FakeTranscriber([]),
@@ -1147,7 +1151,11 @@ void main() {
   });
 
   testWidgets('learn — tapping a word for its reading', (tester) async {
-    final (env, deckDb, learnDb) = await _learnEnv(FakeLlm([]), words: fakeTutorWords());
+    final (env, deckDb, learnDb) = await _learnEnv(
+      FakeLlm([]),
+      words: fakeTutorWords(),
+      bookmarks: true,
+    );
     addTearDown(deckDb.close);
     addTearDown(learnDb.close);
     final id = await _seedLearnCourses(env.repo);

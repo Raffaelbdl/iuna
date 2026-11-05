@@ -6,6 +6,7 @@ import '../agent/chat_models.dart';
 import '../agent/choices.dart';
 import '../agent/tools.dart';
 import '../db/learn_database.dart';
+import '../deck.dart';
 import '../photo/photo.dart';
 import '../photo/photo_picker.dart';
 import '../voice/dictation.dart';
@@ -27,6 +28,7 @@ class ChatView extends StatefulWidget {
     this.noteCaptions = const {},
     this.hint = 'Message Kuma-sensei…',
     this.picker,
+    this.bookmarks,
   });
 
   final ChatController controller;
@@ -43,6 +45,9 @@ class ChatView extends StatefulWidget {
 
   /// Photo attachments, when the app can pick one.
   final PhotoPicker? picker;
+
+  /// Where a word tapped in a reply can be wishlisted.
+  final WordBookmarks? bookmarks;
 
   @override
   State<ChatView> createState() => _ChatViewState();
@@ -172,6 +177,7 @@ class _ChatViewState extends State<ChatView> {
               fromLearner: false,
               reply: _replies[i],
               onChoose: i == live ? c.send : null,
+              bookmarks: widget.bookmarks,
             ));
           }
           for (final call in m.toolCalls) {
@@ -277,6 +283,7 @@ class _Bubble extends StatelessWidget {
     this.reply,
     this.onChoose,
     this.photos = const [],
+    this.bookmarks,
   });
 
   final String text;
@@ -291,6 +298,8 @@ class _Bubble extends StatelessWidget {
 
   /// Set on the question a tap can still answer.
   final ValueChanged<String>? onChoose;
+
+  final WordBookmarks? bookmarks;
 
   @override
   Widget build(BuildContext context) {
@@ -314,7 +323,8 @@ class _Bubble extends StatelessWidget {
 
   Widget _tutorBody() {
     // Half-written text is neither selected nor looked up.
-    Widget markdown(String text) => TutorMarkdown(text, selectable: !streaming, lookUp: !streaming);
+    Widget markdown(String text) =>
+        TutorMarkdown(text, selectable: !streaming, lookUp: !streaming, bookmarks: bookmarks);
     final choices = ChatChoices.parse(text);
     if (choices == null) return markdown(text);
     return Column(
