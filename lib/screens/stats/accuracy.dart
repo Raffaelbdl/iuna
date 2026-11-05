@@ -403,7 +403,7 @@ class _DonutPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _DonutPainter old) =>
-      old.entries != entries ||
+      !listEquals(old.entries, entries) ||
       old.centerLabel != centerLabel ||
       old.centerSub != centerSub ||
       old.scaler != scaler;

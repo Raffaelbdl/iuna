@@ -37,24 +37,22 @@ class LearnScreen extends StatefulWidget {
   State<LearnScreen> createState() => _LearnScreenState();
 }
 
-class _LearnScreenState extends State<LearnScreen> {
+class _LearnScreenState extends State<LearnScreen> with LoadGate {
   late final LearnEnv _env = widget.env ?? LearnEnv.live(widget.db);
   List<CourseSummary> _courses = const [];
-  bool _loading = true;
-  bool _failed = false;
   StreamSubscription<int>? _changes;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    load();
     _changes = _env.repo.changes.listen((_) => _loadIfShown());
   }
 
   /// Under a course the tutor writes at every step; [_openCourse]
   /// reloads once it pops instead.
   void _loadIfShown() {
-    if (mounted && (ModalRoute.isCurrentOf(context) ?? true)) _load();
+    if (mounted && (ModalRoute.isCurrentOf(context) ?? true)) load();
   }
 
   @override
@@ -63,39 +61,18 @@ class _LearnScreenState extends State<LearnScreen> {
     super.dispose();
   }
 
-  Future<void> _load() async {
-    try {
-      final courses = await _env.repo.courseSummaries();
-      if (!mounted) return;
-      setState(() {
-        _courses = courses;
-        _loading = false;
-        _failed = false;
-      });
-    } catch (e, s) {
-      logLoadError('Learn', e, s);
-      if (mounted) {
-        setState(() {
-          _loading = false;
-          _failed = true;
-        });
-      }
-    }
-  }
-
-  void _retry() {
-    setState(() {
-      _loading = true;
-      _failed = false;
-    });
-    _load();
+  @override
+  Future<void> load() async {
+    final courses = await guardLoad('Learn', _env.repo.courseSummaries);
+    if (courses == null || !mounted) return;
+    showLoaded(() => _courses = courses);
   }
 
   Future<void> _openCourse(int id, {bool openRoom = false}) async {
     await Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => CourseScreen(env: _env, courseId: id, openRoomOnStart: openRoom),
     ));
-    if (mounted) await _load();
+    if (mounted) await load();
   }
 
   Future<void> _resumeAsk() async {
@@ -122,16 +99,16 @@ class _LearnScreenState extends State<LearnScreen> {
             const Positioned.fill(child: HexBg(seed: 9)),
             SafeArea(
               bottom: false,
-              child: _loading
+              child: loading
                   ? const Center(child: CircularProgressIndicator())
                   : Column(
                       children: [
                         const IunaTabHeader('Learn'),
                         Expanded(
-                          child: _failed
+                          child: failed
                               ? Padding(
                                   padding: const EdgeInsets.only(bottom: AskBar.inset),
-                                  child: LoadErrorNotice(onRetry: _retry),
+                                  child: LoadErrorNotice(onRetry: retry),
                                 )
                               : _courseList(),
                         ),
@@ -177,7 +154,6 @@ class _LearnScreenState extends State<LearnScreen> {
             onPressed: _newCourse,
             icon: const Icon(Icons.add_rounded, size: 18),
             label: const Text('New course'),
-            style: TextButton.styleFrom(foregroundColor: IunaPalette.ink2),
           ),
         ),
         if (_courses.isEmpty)

@@ -121,11 +121,6 @@ class _TutorChatScreenState extends State<TutorChatScreen>
     await chat.open();
   }
 
-  VoidCallback? get _openSettings => switch (widget.env.openSettings) {
-        final open? => () => open(context),
-        null => null,
-      };
-
   Future<void> _reload() async {
     final course = await _repo.course(widget.courseId);
     final key = widget.chapterKey;
@@ -172,7 +167,7 @@ class _TutorChatScreenState extends State<TutorChatScreen>
                 noteCaptions: _noteCaptions,
                 picker: widget.env.photos,
                 bookmarks: widget.env.bookmarks,
-                onOpenSettings: _openSettings,
+                onOpenSettings: widget.env.openSettings,
               )
             : TabBarView(
                 controller: _tabs,
@@ -183,13 +178,16 @@ class _TutorChatScreenState extends State<TutorChatScreen>
                     noteCaptions: _noteCaptions,
                     picker: widget.env.photos,
                     bookmarks: widget.env.bookmarks,
-                    onOpenSettings: _openSettings,
+                    onOpenSettings: widget.env.openSettings,
                     onActivityTap: (tool) {
                       if (tool is CourseWriteTool) _tabs?.animateTo(1);
                     },
                     // A passed chapter's lesson opens silent (no kickoff).
                     empty: chapter.status == ChapterStatus.passed
-                        ? const _PassedLessonHint()
+                        ? const _Hint(
+                            'This chapter is passed. Ask Kuma-sensei anything about it, or '
+                            'say “quiz me” for a revision check.',
+                          )
                         : null,
                   ),
                   _TheoryView(chapter: chapter, bookmarks: widget.env.bookmarks),
@@ -224,8 +222,10 @@ class _TutorChatScreenState extends State<TutorChatScreen>
 
 const _noteCaptions = {kWrapUpKind: 'You wrapped up the session'};
 
-class _PassedLessonHint extends StatelessWidget {
-  const _PassedLessonHint();
+class _Hint extends StatelessWidget {
+  const _Hint(this.text);
+
+  final String text;
 
   @override
   Widget build(BuildContext context) {
@@ -233,8 +233,7 @@ class _PassedLessonHint extends StatelessWidget {
       child: Padding(
         padding: EdgeInsets.all(32),
         child: Text(
-          'This chapter is passed. Ask Kuma-sensei anything about it, or '
-          'say “quiz me” for a revision check.',
+          text,
           textAlign: TextAlign.center,
           style: IunaText.bodySmall.copyWith(height: 1.45, color: IunaPalette.ink3),
         ),
@@ -252,16 +251,9 @@ class _TheoryView extends StatelessWidget {
   Widget build(BuildContext context) {
     final passed = chapter.status == ChapterStatus.passed;
     if (chapter.doc.trim().isEmpty) {
-      return Center(
-        child: Padding(
-          padding: EdgeInsets.all(32),
-          child: Text(
-            'Kuma-sensei writes the theory here as the lesson goes. It is yours '
-            'to revise from, and it freezes once you pass the chapter.',
-            textAlign: TextAlign.center,
-            style: IunaText.bodySmall.copyWith(height: 1.45, color: IunaPalette.ink3),
-          ),
-        ),
+      return const _Hint(
+        'Kuma-sensei writes the theory here as the lesson goes. It is yours '
+        'to revise from, and it freezes once you pass the chapter.',
       );
     }
     return ListView(

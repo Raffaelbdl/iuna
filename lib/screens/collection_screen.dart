@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../core/japanese_text.dart';
 import '../db/database.dart';
@@ -36,7 +37,8 @@ class CollectionScreen extends StatefulWidget {
   State<CollectionScreen> createState() => _CollectionScreenState();
 }
 
-class _CollectionScreenState extends State<CollectionScreen> {
+class _CollectionScreenState extends State<CollectionScreen>
+    with LoadGate {
   late final IunaRepository _repo = IunaRepository(widget.db);
   late final TextEditingController _queryCtrl = TextEditingController();
 
@@ -47,11 +49,12 @@ class _CollectionScreenState extends State<CollectionScreen> {
   bool _suspendedOnly = false;
   bool _shuffled = false;
 
-  bool _loading = true;
-  bool _failed = false;
   CollectionStats? _stats;
   int _wishCount = 0;
   List<CollectionEntry> _entries = const [];
+
+  /// [_entries] in the query's order, which turning shuffle off restores.
+  List<CollectionEntry> _inOrder = const [];
   bool _dictInstalled = false;
 
   Timer? _debounce;
@@ -81,16 +84,17 @@ class _CollectionScreenState extends State<CollectionScreen> {
     suspendedOnly: _suspendedOnly,
   );
 
-  Future<List<CollectionEntry>> _queryOrdered() async {
-    final entries = await _queryEntries();
-    return _shuffled ? (List.of(entries)..shuffle()) : entries;
+  /// Call inside setState.
+  void _setEntries(List<CollectionEntry> inOrder) {
+    _inOrder = inOrder;
+    _entries = _shuffled ? (List.of(inOrder)..shuffle()) : inOrder;
   }
 
   Future<void> _reloadEntries() async {
     final gen = ++_entriesGen;
-    final entries = await _queryOrdered();
+    final entries = await _queryEntries();
     if (!mounted || gen != _entriesGen) return;
-    setState(() => _entries = entries);
+    setState(() => _setEntries(entries));
   }
 
   Future<void> _probeDict() async {
@@ -100,32 +104,29 @@ class _CollectionScreenState extends State<CollectionScreen> {
     }
   }
 
+  @override
+  Future<void> load() => _refresh();
+
+  /// A refresh that fails keeps what is on screen.
   Future<void> _refresh() async {
     final gen = ++_entriesGen;
     unawaited(_probeDict());
-    try {
-      final (stats, wishCount, entries) = await (
+    final loaded = await guardLoad(
+      'Collection',
+      () => (
         _repo.collectionStats(),
         _repo.wishedCount(),
-        _queryOrdered(),
-      ).wait;
-      if (!mounted) return;
-      setState(() {
-        _stats = stats;
-        _wishCount = wishCount;
-        if (gen == _entriesGen) _entries = entries;
-        _loading = false;
-        _failed = false;
-      });
-    } catch (e, s) {
-      logLoadError('Collection', e, s);
-      if (mounted && _stats == null) {
-        setState(() {
-          _loading = false;
-          _failed = true;
-        });
-      }
-    }
+        _queryEntries(),
+      ).wait,
+      keepShown: true,
+    );
+    if (loaded == null || !mounted) return;
+    final (stats, wishCount, entries) = loaded;
+    showLoaded(() {
+      _stats = stats;
+      _wishCount = wishCount;
+      if (gen == _entriesGen) _setEntries(entries);
+    });
   }
 
   /// The "+" in the header.
@@ -137,7 +138,6 @@ class _CollectionScreenState extends State<CollectionScreen> {
       dictInstalled: _dictInstalled,
     );
     if (!mounted) return;
-    await _probeDict();
     await _refresh();
   }
 
@@ -188,10 +188,10 @@ class _CollectionScreenState extends State<CollectionScreen> {
   }
 
   /// Shuffled until tapped again, which restores the usual order.
-  Future<void> _toggleShuffle() async {
-    setState(() => _shuffled = !_shuffled);
-    await _reloadEntries();
-  }
+  void _toggleShuffle() => setState(() {
+    _shuffled = !_shuffled;
+    _setEntries(_inOrder);
+  });
 
   bool get _filtered =>
       _selected.isNotEmpty ||
@@ -235,19 +235,7 @@ class _CollectionScreenState extends State<CollectionScreen> {
             const Positioned.fill(child: HexBg(seed: 5, calmTop: 0.4)),
             SafeArea(
               bottom: false,
-              child: _loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _failed
-                  ? LoadErrorNotice(
-                      onRetry: () {
-                        setState(() {
-                          _loading = true;
-                          _failed = false;
-                        });
-                        _refresh();
-                      },
-                    )
-                  : _buildBody(),
+              child: gated(_buildBody),
             ),
             const Positioned(
               left: 0,
@@ -472,7 +460,7 @@ class _Chip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final rarity = this.rarity;
-    Color bg;
+    Color? bg;
     Color fg;
     Color border = IunaPalette.hairline;
     double borderWidth = 0.5;
@@ -485,7 +473,6 @@ class _Chip extends StatelessWidget {
       border = rarityInk(rarity);
       borderWidth = 1.5;
     } else if (active) {
-      bg = IunaPalette.honey;
       fg = IunaPalette.heroInk;
       border = IunaPalette.honeyInk.withValues(alpha: 0.2);
     } else if (rarity != null) {
@@ -519,7 +506,7 @@ class _Chip extends StatelessWidget {
                     colors: [IunaPalette.heroTop, IunaPalette.honey],
                   )
                 : null,
-            color: honey ? null : bg,
+            color: bg,
             borderRadius: BorderRadius.circular(999),
             border: Border.all(color: border, width: borderWidth),
           ),
@@ -670,15 +657,7 @@ String _percent(double pct) {
   return '${(pct * 100).floor()}%';
 }
 
-String _thousands(int n) {
-  final s = n.toString();
-  final out = StringBuffer();
-  for (var i = 0; i < s.length; i++) {
-    if (i > 0 && (s.length - i) % 3 == 0) out.write(',');
-    out.write(s[i]);
-  }
-  return out.toString();
-}
+final _thousands = NumberFormat.decimalPattern('en').format;
 
 class _RaritySegment extends StatelessWidget {
   const _RaritySegment({

@@ -39,14 +39,12 @@ class ReviewScreen extends StatefulWidget {
 }
 
 class _ReviewScreenState extends State<ReviewScreen>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, LoadGate {
   late final IunaRepository _repo = IunaRepository(
     widget.db,
     random: widget.random,
   );
 
-  bool _loading = true;
-  bool _failed = false;
   List<DailyDeckEntry> _deck = const [];
   int _index = 0;
   int _correctCount = 0;
@@ -85,31 +83,23 @@ class _ReviewScreenState extends State<ReviewScreen>
   @override
   void initState() {
     super.initState();
-    _bootstrap();
+    load();
   }
 
-  Future<void> _bootstrap() async {
-    final List<DailyDeckEntry> deck;
-    final Map<int, List<CardSenseRow>> senses;
-    try {
-      deck = await _repo.assembleDailyDeck(now: widget.now);
-      senses = await _repo.sensesForCards([for (final e in deck) e.card.id]);
-    } catch (e, s) {
-      logLoadError('Review', e, s);
-      if (mounted) {
-        setState(() {
-          _loading = false;
-          _failed = true;
-        });
-      }
-      return;
-    }
-    if (!mounted) return;
-    setState(() {
+  @override
+  Future<void> load() async {
+    final loaded = await guardLoad('Review', () async {
+      final deck = await _repo.assembleDailyDeck(now: widget.now);
+      return (
+        deck,
+        await _repo.sensesForCards([for (final e in deck) e.card.id]),
+      );
+    });
+    if (loaded == null || !mounted) return;
+    final (deck, senses) = loaded;
+    showLoaded(() {
       _deck = deck;
       _senses = senses;
-      _loading = false;
-      _failed = false;
     });
     if (deck.isNotEmpty) _showCurrent();
   }
@@ -307,7 +297,7 @@ class _ReviewScreenState extends State<ReviewScreen>
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
+    if (loading) {
       return Scaffold(
         backgroundColor: IunaPalette.bg,
         body: DecoratedBox(
@@ -321,7 +311,7 @@ class _ReviewScreenState extends State<ReviewScreen>
         ),
       );
     }
-    if (_failed || _deck.isEmpty) {
+    if (failed || _deck.isEmpty) {
       return Scaffold(
         backgroundColor: IunaPalette.bg,
         body: DecoratedBox(
@@ -332,21 +322,15 @@ class _ReviewScreenState extends State<ReviewScreen>
               SafeArea(
                 child: Column(
                   children: [
-                    _TopBar(
-                      label: _failed ? '' : '0 / 0',
+                    TodayTopBar(
+                      label: failed ? '' : '0 / 0',
+                      detail: 'Review',
+                      closeTooltip: 'End review',
                       onClose: () => Navigator.of(context).maybePop(),
                     ),
                     Expanded(
-                      child: _failed
-                          ? LoadErrorNotice(
-                              onRetry: () {
-                                setState(() {
-                                  _loading = true;
-                                  _failed = false;
-                                });
-                                _bootstrap();
-                              },
-                            )
+                      child: failed
+                          ? LoadErrorNotice(onRetry: retry)
                           : const _NoCards(),
                     ),
                   ],
@@ -377,8 +361,10 @@ class _ReviewScreenState extends State<ReviewScreen>
     final entry = _deck[_index];
     return Column(
       children: [
-        _TopBar(
+        TodayTopBar(
           label: '${_index + 1} / $total',
+          detail: 'Review',
+          closeTooltip: 'End review',
           onClose: () => Navigator.of(context).maybePop(),
           onUndo: _undoStack.isNotEmpty && _index > 0 && !_undoing
               ? _undoLast
@@ -456,37 +442,6 @@ class _ReviewScreenState extends State<ReviewScreen>
           ),
         );
       },
-    );
-  }
-}
-
-class _TopBar extends StatelessWidget {
-  const _TopBar({required this.label, required this.onClose, this.onUndo});
-  final String label;
-  final VoidCallback onClose;
-
-  /// When non-null, an undo arrow on the right rolls back the last
-  /// grade. Absent at the start of the session and right after an undo,
-  /// so it only shows when there's something to roll back. Close sits
-  /// on the left, where every other screen keeps its way out.
-  final VoidCallback? onUndo;
-
-  @override
-  Widget build(BuildContext context) {
-    return IunaTopBar(
-      leading: IunaIconButton(
-        icon: Icons.close_rounded,
-        tooltip: 'End review',
-        onTap: onClose,
-      ),
-      title: TodayBarTitle(label, detail: 'Review'),
-      trailing: onUndo == null
-          ? null
-          : IunaIconButton(
-              icon: Icons.undo_rounded,
-              tooltip: 'Undo last card',
-              onTap: onUndo,
-            ),
     );
   }
 }

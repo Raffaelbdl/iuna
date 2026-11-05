@@ -19,7 +19,7 @@ class GamesScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return GamePage(
       title: 'Games',
-      leadingIcon: Icons.chevron_left_rounded,
+      back: true,
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         children: [

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../../theme/iuna_theme.dart';
 import '../../widgets/iuna_icon_button.dart';
 import '../../widgets/iuna_page.dart';
+import '../../widgets/notice.dart';
 import '../agent/bookmark_tool.dart';
 import '../agent/chat_controller.dart';
 import '../agent/chat_store.dart';
@@ -144,11 +144,6 @@ class _AskScreenState extends State<AskScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) => old.dispose());
   }
 
-  VoidCallback? get _openSettings => switch (widget.env.openSettings) {
-        final open? => () => open(context),
-        null => null,
-      };
-
   @override
   void dispose() {
     _chat.dispose();
@@ -174,19 +169,12 @@ class _AskScreenState extends State<AskScreen> {
             key: ObjectKey(_chat),
             controller: _chat,
             hint: empty ? 'Ask Kuma-sensei about Japanese…' : 'Ask a follow-up…',
-            empty: Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 32),
-                child: Text(
-                  'A fresh chat. Kuma-sensei answers questions about Japanese.',
-                  textAlign: TextAlign.center,
-                  style: IunaText.body.copyWith(height: 1.4, color: IunaPalette.ink3),
-                ),
-              ),
+            empty: const IunaNotice(
+              text: 'A fresh chat. Kuma-sensei answers questions about Japanese.',
             ),
             picker: widget.env.photos,
             bookmarks: widget.env.bookmarks,
-            onOpenSettings: _openSettings,
+            onOpenSettings: widget.env.openSettings,
           ),
         );
       },

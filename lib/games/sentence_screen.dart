@@ -52,12 +52,11 @@ class SentenceScreen extends StatefulWidget {
   State<SentenceScreen> createState() => _SentenceScreenState();
 }
 
-class _SentenceScreenState extends State<SentenceScreen> {
+class _SentenceScreenState extends State<SentenceScreen> with LoadGate {
   late final IunaRepository _repo = IunaRepository(widget.db);
   late final Random _random = Random(widget.seed);
 
   bool _noDictionary = false;
-  bool _failed = false;
   bool _exhausted = false;
   bool _summary = false;
 
@@ -74,7 +73,7 @@ class _SentenceScreenState extends State<SentenceScreen> {
   @override
   void initState() {
     super.initState();
-    _start();
+    load();
   }
 
   @override
@@ -88,29 +87,20 @@ class _SentenceScreenState extends State<SentenceScreen> {
     return isolateTiler((await documentsFile(kJmdictFileName)).path);
   }
 
-  Future<void> _start() async {
-    final SentenceTiler? tiler;
-    final List<DailyDeckEntry> cards;
-    final String? memory;
-    try {
-      (tiler, cards, memory) = await (
+  @override
+  Future<void> load() async {
+    final loaded = await guardLoad(
+      widget.game.title,
+      () => (
         widget.tiler == null ? _dictionaryTiler() : Future.value(widget.tiler),
         _repo.gameCards(),
         _repo.getGameMemory(),
-      ).wait;
-    } catch (e, s) {
-      logLoadError(widget.game.title, e, s);
-      if (mounted) setState(() => _failed = true);
-      return;
-    }
-    if (!mounted) return;
-    _failed = false;
-    if (tiler == null) {
-      setState(() => _noDictionary = true);
-      return;
-    }
-    // _advance draws it.
-    _noDictionary = false;
+      ).wait,
+    );
+    if (loaded == null || !mounted) return;
+    final (tiler, cards, memory) = loaded;
+    showLoaded(() => _noDictionary = tiler == null);
+    if (tiler == null) return;
     _memory = GameMemory.parse(memory)..startSession();
     _feed = SentenceFeed(
       repo: _repo,
@@ -131,7 +121,7 @@ class _SentenceScreenState extends State<SentenceScreen> {
           'Sentences are split into tiles with the offline dictionary, a '
           'one-time download.',
     );
-    if (ready && mounted) await _start();
+    if (ready && mounted) await load();
   }
 
   void _save() => unawaited(_repo.setGameMemory(_memory.encode()));
@@ -224,14 +214,7 @@ class _SentenceScreenState extends State<SentenceScreen> {
   }
 
   Widget _body(SentenceTask? task) {
-    if (_failed) {
-      return LoadErrorNotice(
-        onRetry: () {
-          setState(() => _failed = false);
-          _start();
-        },
-      );
-    }
+    if (failed) return LoadErrorNotice(onRetry: retry);
     if (_noDictionary) {
       return IunaNotice(
         text:

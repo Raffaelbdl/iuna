@@ -14,6 +14,7 @@ class IunaIconButton extends StatelessWidget {
     required this.onTap,
     this.tint,
     this.selected,
+    this.disc = false,
   });
 
   final IconData icon;
@@ -23,6 +24,9 @@ class IunaIconButton extends StatelessWidget {
 
   /// For a toggle (the wishlist bookmark): announced as its state.
   final bool? selected;
+
+  /// A smaller icon on a raised paper disc, for a button on a card face.
+  final bool disc;
 
   static const double size = 48;
 
@@ -38,10 +42,24 @@ class IunaIconButton extends StatelessWidget {
         message: tooltip,
         child: InkResponse(
           onTap: onTap,
-          radius: 22,
+          radius: disc ? 24 : 22,
           child: SizedBox.square(
             dimension: size,
-            child: Icon(icon, size: 22, color: tint ?? IunaPalette.ink2),
+            child: disc
+                ? Center(
+                    child: Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: IunaPalette.paper,
+                        shape: BoxShape.circle,
+                        boxShadow: panelShadow(),
+                      ),
+                      alignment: Alignment.center,
+                      child: Icon(icon, size: 16, color: tint ?? IunaPalette.ink2),
+                    ),
+                  )
+                : Icon(icon, size: 22, color: tint ?? IunaPalette.ink2),
           ),
         ),
       ),

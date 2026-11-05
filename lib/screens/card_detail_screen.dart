@@ -15,6 +15,7 @@ import '../widgets/example_line.dart';
 import '../widgets/hex_bg.dart';
 import '../widgets/iuna_bottom_nav.dart';
 import '../widgets/iuna_icon_button.dart';
+import '../widgets/iuna_page.dart';
 import '../widgets/notice.dart';
 import '../widgets/section_header.dart';
 import '../widgets/sense_row.dart';
@@ -51,17 +52,15 @@ class CardDetailScreen extends StatefulWidget {
   State<CardDetailScreen> createState() => _CardDetailScreenState();
 }
 
-class _CardDetailScreenState extends State<CardDetailScreen> {
+class _CardDetailScreenState extends State<CardDetailScreen>
+    with LoadGate, BusyGuard {
   late final IunaRepository _repo = IunaRepository(widget.db);
 
-  bool _loading = true;
-  bool _failed = false;
   CardRow? _card;
   UserCardRow? _userCard;
   List<CardSenseRow> _senses = const [];
   List<ExampleRow> _examples = const [];
   bool _wished = false;
-  bool _wishBusy = false;
 
   late final LearnEnv _learn = widget.learn ?? LearnEnv.live(widget.db);
 
@@ -78,36 +77,29 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
     _load();
   }
 
+  @override
+  Future<void> load() => _load();
+
+  /// A reload that fails keeps the card on screen.
   Future<void> _load() async {
-    final (CollectionEntry?, List<CardSenseRow>, List<ExampleRow>, bool)
-    loaded;
-    try {
-      loaded = await (
+    final loaded = await guardLoad(
+      'Card detail',
+      () => (
         _repo.cardWithState(widget.cardId),
         _repo.sensesForCard(widget.cardId),
         _repo.examplesForCard(widget.cardId),
         _repo.isWished(widget.cardId),
-      ).wait;
-    } catch (e, s) {
-      logLoadError('Card detail', e, s);
-      if (mounted && _card == null) {
-        setState(() {
-          _loading = false;
-          _failed = true;
-        });
-      }
-      return;
-    }
+      ).wait,
+      keepShown: true,
+    );
+    if (loaded == null || !mounted) return;
     final (entry, senses, examples, wished) = loaded;
-    if (!mounted) return;
-    setState(() {
-      _failed = false;
+    showLoaded(() {
       _card = entry?.card;
       _userCard = entry?.userCard;
       _senses = senses;
       _examples = examples;
       _wished = wished;
-      _loading = false;
     });
   }
 
@@ -124,18 +116,12 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
   }
 
   Future<void> _onWishlistTap() async {
-    if (_wishBusy) return;
-    setState(() => _wishBusy = true);
-    final bool next;
-    try {
-      next = await _repo.toggleWishlist(widget.cardId);
-    } catch (e) {
-      if (mounted) showErrorSnack(context, "Couldn't update your wishlist.", e);
-      return;
-    } finally {
-      if (mounted) setState(() => _wishBusy = false);
-    }
-    if (!mounted) return;
+    if (busy) return;
+    final next = await whileBusy(
+      "Couldn't update your wishlist.",
+      () => _repo.toggleWishlist(widget.cardId),
+    );
+    if (next == null || !mounted) return;
     setState(() => _wished = next);
     _snack(
       next
@@ -277,34 +263,23 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
               child: Column(
                 children: [
                   _TopBar(
-                    onBack: () => Navigator.of(context).maybePop(),
                     // Only to take a card off: the hero adds one, and
                     // an owned card can't be wished for.
-                    onUnwish: card == null || !_wished || _wishBusy
+                    onUnwish: card == null || !_wished || busy
                         ? null
                         : _onWishlistTap,
                   ),
                   Expanded(
-                    child: _loading
-                        ? const Center(child: CircularProgressIndicator())
-                        : _failed
-                        ? LoadErrorNotice(
-                            onRetry: () {
-                              setState(() {
-                                _loading = true;
-                                _failed = false;
-                              });
-                              _load();
-                            },
-                          )
-                        : card == null
-                        ? const Center(
-                            child: Text(
-                              'This card is no longer in Iuna.',
-                              style: TextStyle(color: IunaPalette.ink3),
-                            ),
-                          )
-                        : _buildBody(card, tutor: tutor),
+                    child: gated(
+                      () => card == null
+                          ? const Center(
+                              child: Text(
+                                'This card is no longer in Iuna.',
+                                style: TextStyle(color: IunaPalette.ink3),
+                              ),
+                            )
+                          : _buildBody(card, tutor: tutor),
+                    ),
                   ),
                 ],
               ),
@@ -343,7 +318,7 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
             owned: _userCard != null,
             wished: _wished,
             onSpeak: _onSpeakerTap,
-            onWish: _wishBusy ? null : _onWishlistTap,
+            onWish: busy ? null : _onWishlistTap,
           ),
           const SizedBox(height: 14),
           _Section(
@@ -441,8 +416,10 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
                   ),
                   _Kv(
                     label: 'Next review',
-                    value: _capitalized(
-                      whenWords(user.nextDue, widget.now ?? DateTime.now()),
+                    value: whenWords(
+                      user.nextDue,
+                      widget.now ?? DateTime.now(),
+                      capitalized: true,
                     ),
                   ),
                   _Kv(label: 'Collected', value: dayWords(user.obtainedAt)),
@@ -466,14 +443,10 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
     if (minutes < 60 * 24) return plural((minutes / 60).round(), 'hour');
     return plural((minutes / (60 * 24)).round(), 'day');
   }
-
-  static String _capitalized(String s) =>
-      s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
 }
 
 class _TopBar extends StatelessWidget {
-  const _TopBar({required this.onBack, required this.onUnwish});
-  final VoidCallback onBack;
+  const _TopBar({required this.onUnwish});
 
   /// Shows the filled bookmark while the card is on the wishlist.
   final VoidCallback? onUnwish;
@@ -481,11 +454,7 @@ class _TopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return IunaTopBar(
-      leading: IunaIconButton(
-        icon: Icons.chevron_left_rounded,
-        tooltip: 'Back',
-        onTap: onBack,
-      ),
+      leading: const IunaBackButton(),
       title: Text(
         'Card detail',
         style: IunaText.subtitle.copyWith(
@@ -595,37 +564,11 @@ class _Hero extends StatelessWidget {
                       size: RarityChipSize.header,
                       named: true,
                     ),
-                    Semantics(
-                      button: true,
-                      label: 'Play pronunciation',
-                      excludeSemantics: true,
-                      child: Tooltip(
-                        message: 'Play pronunciation',
-                        child: InkResponse(
-                          onTap: onSpeak,
-                          radius: 24,
-                          child: SizedBox.square(
-                            dimension: 48,
-                            child: Center(
-                              child: Container(
-                                width: 36,
-                                height: 36,
-                                decoration: BoxDecoration(
-                                  color: IunaPalette.paper,
-                                  shape: BoxShape.circle,
-                                  boxShadow: panelShadow(),
-                                ),
-                                alignment: Alignment.center,
-                                child: const Icon(
-                                  Icons.volume_up_rounded,
-                                  size: 16,
-                                  color: IunaPalette.ink2,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
+                    IunaIconButton(
+                      icon: Icons.volume_up_rounded,
+                      tooltip: 'Play pronunciation',
+                      onTap: onSpeak,
+                      disc: true,
                     ),
                   ],
                 ),
@@ -797,7 +740,6 @@ class _SuspendRow extends StatelessWidget {
               child: Switch.adaptive(
                 value: suspended,
                 onChanged: (_) => onTap(),
-                activeTrackColor: IunaPalette.bellGold,
               ),
             ),
           ],
@@ -816,7 +758,6 @@ class _PanelAction extends StatelessWidget {
   Widget build(BuildContext context) => TextButton(
         onPressed: onPressed,
         style: TextButton.styleFrom(
-          foregroundColor: IunaPalette.ink2,
           minimumSize: const Size(48, 48),
           padding: const EdgeInsets.symmetric(horizontal: 10),
         ),

@@ -4,7 +4,7 @@ import '../theme/iuna_theme.dart';
 
 /// How an [OptionTile] shows that it is picked, beyond its fill.
 enum OptionMark {
-  /// None: a tap acts at once (a chat answer, a settings choice).
+  /// None: a tap acts at once (a chat answer).
   none,
 
   /// A radio dot: one of several, chosen before submitting.
@@ -14,8 +14,8 @@ enum OptionMark {
   checkbox,
 }
 
-/// One answer row: the chat's question options, the quiz card's options
-/// and opt-out, and the choice dialogs in Settings.
+/// One answer row: the chat's question options, and the quiz card's
+/// options and opt-out.
 class OptionTile extends StatelessWidget {
   const OptionTile({
     super.key,
@@ -26,7 +26,6 @@ class OptionTile extends StatelessWidget {
     this.quiet = false,
     this.faded = false,
     this.tag,
-    this.subtitle,
   });
 
   final String label;
@@ -42,7 +41,6 @@ class OptionTile extends StatelessWidget {
 
   /// A short note on the right, e.g. "Your answer".
   final String? tag;
-  final String? subtitle;
 
   @override
   Widget build(BuildContext context) {
@@ -52,13 +50,12 @@ class OptionTile extends StatelessWidget {
           ? const BorderSide(color: IunaPalette.ctaBottom, width: 1.5)
           : quiet
           ? BorderSide.none
-          : const BorderSide(color: Color.fromRGBO(74, 53, 32, 0.12)),
+          : const BorderSide(color: IunaPalette.outline),
     );
     final ink = faded || (quiet && !selected)
         ? IunaPalette.ink3
         : IunaPalette.ink;
     final tag = this.tag;
-    final subtitle = this.subtitle;
     return MergeSemantics(
       child: Semantics(
         button: mark == OptionMark.none,
@@ -90,29 +87,15 @@ class OptionTile extends StatelessWidget {
                       const SizedBox(width: 12),
                     ],
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            label,
-                            style: IunaText.body.copyWith(
-                              height: 1.35,
-                              fontWeight: selected
-                                  ? FontWeight.w700
-                                  : FontWeight.w500,
-                              color: ink,
-                            ),
-                          ),
-                          if (subtitle != null)
-                            Text(
-                              subtitle,
-                              style: IunaText.caption.copyWith(
-                                height: 1.35,
-                                color: IunaPalette.ink3,
-                              ),
-                            ),
-                        ],
+                      child: Text(
+                        label,
+                        style: IunaText.body.copyWith(
+                          height: 1.35,
+                          fontWeight: selected
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                          color: ink,
+                        ),
                       ),
                     ),
                     if (tag != null) ...[

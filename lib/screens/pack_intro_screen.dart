@@ -31,7 +31,7 @@ class PackIntroScreen extends StatefulWidget {
 }
 
 class _PackIntroScreenState extends State<PackIntroScreen>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, LoadGate {
   late final IunaRepository _repo = IunaRepository(widget.db);
 
   /// 4s gentle float idle.
@@ -49,28 +49,20 @@ class _PackIntroScreenState extends State<PackIntroScreen>
   /// Null until the preview has loaded, so the first frames don't
   /// claim the pack is already open.
   int? _newCount;
-  bool _failed = false;
   int get _packs => ((_newCount ?? 0) / kDefaultPackSize).ceil();
 
   @override
   void initState() {
     super.initState();
-    _loadCount();
+    load();
   }
 
-  Future<void> _loadCount() async {
-    try {
-      // Preview only: the booster screen does the claiming.
-      final preview = await _repo.boosterPreview();
-      if (!mounted) return;
-      setState(() {
-        _newCount = preview.newCards;
-        _failed = false;
-      });
-    } catch (e, s) {
-      logLoadError('Pack intro', e, s);
-      if (mounted) setState(() => _failed = true);
-    }
+  @override
+  Future<void> load() async {
+    // Preview only: the booster screen does the claiming.
+    final preview = await guardLoad('Pack intro', _repo.boosterPreview);
+    if (preview == null || !mounted) return;
+    showLoaded(() => _newCount = preview.newCards);
   }
 
   @override
@@ -126,16 +118,9 @@ class _PackIntroScreenState extends State<PackIntroScreen>
                 child: Column(
                   children: [
                     _TopBar(onClose: () => Navigator.of(context).pop()),
-                    if (_failed)
-                      Expanded(
-                        child: LoadErrorNotice(
-                          onRetry: () {
-                            setState(() => _failed = false);
-                            _loadCount();
-                          },
-                        ),
-                      )
-                    else if (_newCount == null)
+                    if (failed)
+                      Expanded(child: LoadErrorNotice(onRetry: retry))
+                    else if (loading)
                       const Expanded(
                         child: Center(child: CircularProgressIndicator()),
                       )
@@ -157,10 +142,8 @@ class _PackIntroScreenState extends State<PackIntroScreen>
                                   _packs > 1
                                       ? "TODAY'S PACKS"
                                       : "TODAY'S PACK",
-                                  style: IunaText.caption.copyWith(
-                                    fontWeight: FontWeight.w500,
+                                  style: IunaText.kicker.copyWith(
                                     color: IunaPalette.ink3,
-                                    letterSpacing: 4,
                                   ),
                                 ),
                                 const SizedBox(height: 10),

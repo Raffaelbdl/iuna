@@ -18,11 +18,16 @@ import 'today_flow.dart';
 /// other screen it replaces that screen, so bouncing between tabs never
 /// stacks them up.
 /// What Today holds for [db]: the new cards of an unopened pack plus
-/// the reviews due. One per database, shared by every nav on it.
-final _todayCounts = Expando<ValueNotifier<int>>();
+/// the reviews due, null until first counted. One per database, shared
+/// by every nav on it.
+final _todayCounts = Expando<ValueNotifier<int?>>();
 
-ValueNotifier<int> _todayCount(AppDatabase db) =>
-    _todayCounts[db] ??= ValueNotifier(0);
+ValueNotifier<int?> _todayCount(AppDatabase db) =>
+    _todayCounts[db] ??= ValueNotifier(null);
+
+/// Sets the Today badge from counts a screen already fetched.
+void publishTodayCount(AppDatabase db, int count) =>
+    _todayCount(db).value = count;
 
 /// Recounts the Today badge, after anything that opens a pack or
 /// reviews a card.
@@ -33,7 +38,7 @@ Future<void> refreshTodayCount(AppDatabase db) async {
       repo.boosterPreview(),
       repo.dueCountToday(),
     ).wait;
-    _todayCount(db).value = preview.newCards + due;
+    publishTodayCount(db, preview.newCards + due);
   } catch (e) {
     // A badge is not worth an error; it keeps its last count.
     debugPrint('Today badge failed to count: $e');
@@ -70,19 +75,20 @@ class _AppBottomNavState extends State<AppBottomNav> {
   @override
   void initState() {
     super.initState();
-    refreshTodayCount(db);
+    // A remount (the ask bar's keyboard, a reparent) keeps the count.
+    if (_todayCount(db).value == null) refreshTodayCount(db);
   }
 
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<bool>(
       valueListenable: LearnSettings.instance.available,
-      builder: (context, showLearn, _) => ValueListenableBuilder<int>(
+      builder: (context, showLearn, _) => ValueListenableBuilder<int?>(
         valueListenable: _todayCount(db),
         builder: (context, todayCount, _) => IunaBottomNav(
           active: active,
           showLearn: showLearn,
-          todayCount: todayCount,
+          todayCount: todayCount ?? 0,
           onTap: (tab) => _go(context, tab),
         ),
       ),
@@ -120,7 +126,11 @@ class _AppBottomNavState extends State<AppBottomNav> {
         }
         await navigator.push(route);
     }
-    await refreshTodayCount(db);
-    await widget.onReturn?.call();
+    // Home's refresh publishes the count itself.
+    final onReturn = widget.onReturn;
+    await [
+      if (active != IunaNavTab.home || onReturn == null) refreshTodayCount(db),
+      if (onReturn != null) onReturn(),
+    ].wait;
   }
 }

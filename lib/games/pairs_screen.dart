@@ -43,12 +43,10 @@ class PairsScreen extends StatefulWidget {
 
 enum _TileLook { idle, selected, matched, wrong }
 
-class _PairsScreenState extends State<PairsScreen> {
+class _PairsScreenState extends State<PairsScreen> with LoadGate {
   late final IunaRepository _repo = IunaRepository(widget.db);
   late final Random _random = Random(widget.seed);
 
-  bool _loading = true;
-  bool _failed = false;
   List<DailyDeckEntry> _cards = const [];
   Map<int, DailyDeckEntry> _byId = const {};
   GameMemory _memory = GameMemory();
@@ -68,7 +66,7 @@ class _PairsScreenState extends State<PairsScreen> {
   @override
   void initState() {
     super.initState();
-    _load();
+    load();
   }
 
   @override
@@ -77,48 +75,25 @@ class _PairsScreenState extends State<PairsScreen> {
     super.dispose();
   }
 
-  Future<void> _load() async {
-    final List<DailyDeckEntry> cards;
-    final String? memory;
-    try {
-      (cards, memory) = await (
-        _repo.gameCards(),
-        _repo.getGameMemory(),
-      ).wait;
-    } catch (e, s) {
-      logLoadError('Pairs', e, s);
-      if (mounted) {
-        setState(() {
-          _loading = false;
-          _failed = true;
-        });
-      }
-      return;
-    }
-    if (!mounted) return;
+  @override
+  Future<void> load() async {
+    final loaded = await guardLoad(
+      'Pairs',
+      () => (_repo.gameCards(), _repo.getGameMemory()).wait,
+    );
+    if (loaded == null || !mounted) return;
+    final (cards, memory) = loaded;
     _cards = cards;
     _byId = {for (final c in cards) c.card.id: c};
     _memory = GameMemory.parse(memory)..startSession();
-    setState(() {
-      _loading = false;
-      _failed = false;
-      _deal();
-    });
-  }
-
-  void _retry() {
-    setState(() {
-      _loading = true;
-      _failed = false;
-    });
-    _load();
+    showLoaded(_deal);
   }
 
   Future<void> _openToday() async {
     await openTodayFlow(context, widget.db);
     if (!mounted) return;
-    setState(() => _loading = true);
-    await _load();
+    setState(() => loading = true);
+    await load();
   }
 
   /// Deals the next round in this round's mode, or in the next mode
@@ -200,10 +175,10 @@ class _PairsScreenState extends State<PairsScreen> {
     return GamePage(
       title: 'Pairs',
       onSkip: round == null || round.finished ? null : _skip,
-      body: _loading
+      body: loading
           ? const Center(child: CircularProgressIndicator())
-          : _failed
-          ? LoadErrorNotice(onRetry: _retry)
+          : failed
+          ? LoadErrorNotice(onRetry: retry)
           : round == null
           ? IunaNotice(
               text:

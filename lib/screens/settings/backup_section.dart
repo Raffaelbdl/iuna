@@ -32,13 +32,12 @@ class BackupSection extends StatefulWidget {
   State<BackupSection> createState() => _BackupSectionState();
 }
 
-class _BackupSectionState extends State<BackupSection> {
+class _BackupSectionState extends State<BackupSection> with BusyGuard {
   IunaRepository get _repo => widget.repo;
 
   GoogleSignInAccount? _account;
   DateTime? _lastBackup;
   DateTime? _lastLearnBackup;
-  bool _busy = false;
   StreamSubscription<GoogleSignInAccount?>? _accountSub;
 
   @override
@@ -126,34 +125,31 @@ class _BackupSectionState extends State<BackupSection> {
 
   /// Writes a copy of the collection where the learner picks, for a
   /// restore without Google Drive.
-  Future<void> _saveToFile() async {
-    setState(() => _busy = true);
-    final dir = await Directory.systemTemp.createTemp('iuna_backup_');
-    try {
-      final copy = File('${dir.path}/iuna.sqlite');
-      await vacuumInto(_repo.db, copy);
-      final bytes = await copy.readAsBytes();
-      final day = DateFormat('yyyy-MM-dd').format(DateTime.now());
-      final path = await FilePicker.platform.saveFile(
-        dialogTitle: 'Save a backup file',
-        fileName: 'iuna-backup-$day.sqlite',
-        bytes: bytes,
-      );
-      // On a phone the picker writes the bytes; a desktop one only
-      // names the file.
-      if (path != null && !Platform.isAndroid && !Platform.isIOS) {
-        await File(path).writeAsBytes(bytes, flush: true);
-      }
-      if (path != null && mounted) {
-        showSnack(context, 'Backup saved. Restore it here any time.');
-      }
-    } catch (e) {
-      if (mounted) showErrorSnack(context, "Couldn't save the backup.", e);
-    } finally {
-      unawaited(dir.delete(recursive: true));
-      if (mounted) setState(() => _busy = false);
-    }
-  }
+  Future<void> _saveToFile() =>
+      whileBusy("Couldn't save the backup.", () async {
+        final dir = await Directory.systemTemp.createTemp('iuna_backup_');
+        try {
+          final copy = File('${dir.path}/iuna.sqlite');
+          await vacuumInto(_repo.db, copy);
+          final bytes = await copy.readAsBytes();
+          final day = DateFormat('yyyy-MM-dd').format(DateTime.now());
+          final path = await FilePicker.platform.saveFile(
+            dialogTitle: 'Save a backup file',
+            fileName: 'iuna-backup-$day.sqlite',
+            bytes: bytes,
+          );
+          // On a phone the picker writes the bytes; a desktop one only
+          // names the file.
+          if (path != null && !Platform.isAndroid && !Platform.isIOS) {
+            await File(path).writeAsBytes(bytes, flush: true);
+          }
+          if (path != null && mounted) {
+            showSnack(context, 'Backup saved. Restore it here any time.');
+          }
+        } finally {
+          unawaited(dir.delete(recursive: true));
+        }
+      });
 
   /// The restore lands on the next launch. Android can close the app
   /// from here; elsewhere the learner closes it.
@@ -193,12 +189,12 @@ class _BackupSectionState extends State<BackupSection> {
   }
 
   Future<void> _signIn() async {
-    setState(() => _busy = true);
+    setState(() => busy = true);
     final AuthResult result;
     try {
       result = await DriveAuth.instance.signIn();
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) setState(() => busy = false);
     }
     if (!mounted) return;
     switch (result) {
@@ -220,65 +216,39 @@ class _BackupSectionState extends State<BackupSection> {
     }
   }
 
-  Future<void> _signOut() async {
-    setState(() => _busy = true);
-    try {
-      await DriveAuth.instance.signOut();
-    } catch (e) {
-      if (mounted) showErrorSnack(context, "Couldn't sign out.", e);
-      return;
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
+  Future<void> _signOut() => whileBusy("Couldn't sign out.", () async {
+    await DriveAuth.instance.signOut();
     if (mounted) showSnack(context, 'Signed out of Google Drive');
-  }
+  });
 
-  Future<void> _backup() async {
-    setState(() => _busy = true);
-    try {
-      final courses = await Learn.instance.snapshots();
-      final result = await DriveSync(_repo).backupAll(alongside: courses);
-      final libraryStamp = await _repo.getLastDriveBackup();
-      final learnStamp = await courses?.lastDriveBackup();
-      if (!mounted) return;
-      setState(() {
-        _lastBackup = libraryStamp;
-        _lastLearnBackup = learnStamp;
+  Future<void> _backup() =>
+      whileBusy("Couldn't back up. Try again later.", () async {
+        final courses = await Learn.instance.snapshots();
+        final result = await DriveSync(_repo).backupAll(alongside: courses);
+        final (libraryStamp, learnStamp) = await (
+          _repo.getLastDriveBackup(),
+          courses?.lastDriveBackup() ?? Future<DateTime?>.value(),
+        ).wait;
+        if (!mounted) return;
+        setState(() {
+          _lastBackup = libraryStamp;
+          _lastLearnBackup = learnStamp;
+        });
+        final message = backupMessage(result, alongside: courses);
+        if (message != null) showSnack(context, message);
       });
-      final message = backupMessage(result, alongside: courses);
-      if (message != null) showSnack(context, message);
-    } catch (e) {
-      if (mounted) {
-        showErrorSnack(context, "Couldn't back up. Try again later.", e);
-      }
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
 
   Future<void> _restore(
     DriveArtifact artifact, {
     required String what,
     required Future<bool> Function() confirm,
   }) async {
-    setState(() => _busy = true);
     final sync = DriveSync(_repo);
-    final List<DriveSnapshot> snapshots;
-    try {
-      snapshots = await sync.listSnapshots(artifact: artifact);
-    } catch (e) {
-      if (mounted) {
-        showErrorSnack(
-          context,
-          "Couldn't reach Google Drive. Check your connection.",
-          e,
-        );
-      }
-      return;
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-    if (!mounted) return;
+    final snapshots = await whileBusy(
+      "Couldn't reach Google Drive. Check your connection.",
+      () => sync.listSnapshots(artifact: artifact),
+    );
+    if (snapshots == null || !mounted) return;
 
     if (snapshots.isEmpty) {
       showSnack(context, 'No backups on Drive yet');
@@ -291,23 +261,11 @@ class _BackupSectionState extends State<BackupSection> {
     final confirmed = await confirm();
     if (!confirmed || !mounted) return;
 
-    setState(() => _busy = true);
-    final DriveRestoreResult result;
-    try {
-      result = await sync.restoreFromSnapshot(picked, artifact: artifact);
-    } catch (e) {
-      if (mounted) {
-        showErrorSnack(
-          context,
-          "Couldn't download that backup. Try again later.",
-          e,
-        );
-      }
-      return;
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-    if (!mounted) return;
+    final result = await whileBusy(
+      "Couldn't download that backup. Try again later.",
+      () => sync.restoreFromSnapshot(picked, artifact: artifact),
+    );
+    if (result == null || !mounted) return;
 
     switch (result) {
       case DriveRestoreStaged():
@@ -337,7 +295,12 @@ class _BackupSectionState extends State<BackupSection> {
                   Icons.cloud_outlined,
                   color: IunaPalette.pawBrown,
                 ),
-                title: Text(_humanDate(s.modifiedTime) ?? s.name),
+                title: Text(
+                  switch (s.modifiedTime) {
+                    final t? => stampWords(t.toLocal()),
+                    null => s.name,
+                  },
+                ),
                 subtitle: Text(_humanSize(s.size)),
                 onTap: () => Navigator.of(ctx).pop(s),
               ),
@@ -347,9 +310,6 @@ class _BackupSectionState extends State<BackupSection> {
     );
   }
 
-  static String? _humanDate(DateTime? ts) =>
-      ts == null ? null : stampWords(ts.toLocal());
-
   static String _humanSize(int? bytes) {
     if (bytes == null) return 'unknown size';
     if (bytes < 1024) return '$bytes B';
@@ -358,8 +318,6 @@ class _BackupSectionState extends State<BackupSection> {
     }
     return '${(bytes / 1024 / 1024).toStringAsFixed(1)} MB';
   }
-
-  static String _stamp(DateTime ts) => stampWords(ts);
 
   Widget get _spinner => const SizedBox(
     width: 20,
@@ -388,7 +346,7 @@ class _BackupSectionState extends State<BackupSection> {
                 'wherever you choose. Courses are not included.',
               ),
               trailing: chevron,
-              enabled: !_busy,
+              enabled: !busy,
               onTap: _saveToFile,
             ),
             ListTile(
@@ -402,7 +360,7 @@ class _BackupSectionState extends State<BackupSection> {
                 'Takes effect after restart.',
               ),
               trailing: chevron,
-              enabled: !_busy,
+              enabled: !busy,
               onTap: _restoreFromFile,
             ),
           ],
@@ -422,7 +380,7 @@ class _BackupSectionState extends State<BackupSection> {
                   'Keep a copy of your collection in your own Google '
                   'Drive, made whenever you ask.',
                 ),
-                control: _busy
+                control: busy
                     ? _spinner
                     : FilledButton(
                         onPressed: _signIn,
@@ -439,9 +397,9 @@ class _BackupSectionState extends State<BackupSection> {
                 subtitle: Text(
                   _lastBackup == null
                       ? 'No backup yet'
-                      : 'Last backed up: ${_stamp(_lastBackup!)}',
+                      : 'Last backed up: ${stampWords(_lastBackup!)}',
                 ),
-                control: _busy
+                control: busy
                     ? _spinner
                     : OutlinedButton(
                         onPressed: _signOut,
@@ -459,7 +417,7 @@ class _BackupSectionState extends State<BackupSection> {
                   'on Home does it too. Courses go along whenever they '
                   'changed.',
                 ),
-                enabled: !_busy,
+                enabled: !busy,
                 onTap: _backup,
               ),
               ListTile(
@@ -472,7 +430,7 @@ class _BackupSectionState extends State<BackupSection> {
                   'Pick a backup to restore. Takes effect after restart.',
                 ),
                 trailing: chevron,
-                enabled: !_busy,
+                enabled: !busy,
                 onTap: () => _restore(
                   DriveArtifact.library,
                   what: 'collection',
@@ -488,10 +446,11 @@ class _BackupSectionState extends State<BackupSection> {
                 subtitle: Text(
                   _lastLearnBackup == null
                       ? 'Courses are backed up separately from your cards.'
-                      : 'Courses last backed up: ${_stamp(_lastLearnBackup!)}',
+                      : 'Courses last backed up: '
+                            '${stampWords(_lastLearnBackup!)}',
                 ),
                 trailing: chevron,
-                enabled: !_busy,
+                enabled: !busy,
                 onTap: () => _restore(
                   kCoursesArtifact,
                   what: 'courses',

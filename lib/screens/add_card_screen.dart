@@ -118,9 +118,11 @@ class _AddCardScreenState extends State<AddCardScreen> {
       });
       List<CollectionEntry> matches;
       try {
-        matches = _byWholeWord(
-          await _repo.ownedCards(query: q, includeUnowned: true),
-          q,
+        matches = await _repo.ownedCards(
+          query: q,
+          includeUnowned: true,
+          wholeWordFirst: true,
+          limit: 50,
         );
       } catch (e) {
         if (mounted) showErrorSnack(context, "Couldn't search your cards.", e);
@@ -128,7 +130,7 @@ class _AddCardScreenState extends State<AddCardScreen> {
       }
       if (!mounted || _query.trim() != q) return;
       setState(() {
-        _byMeaning = matches.take(50).toList();
+        _byMeaning = matches;
         _searching = false;
       });
       return;
@@ -147,15 +149,6 @@ class _AddCardScreenState extends State<AddCardScreen> {
       _byMeaning = const [];
       _searching = false;
     });
-  }
-
-  /// "cat" as a word before "category" or "educate".
-  static List<CollectionEntry> _byWholeWord(List<CollectionEntry> entries, String q) {
-    final word = RegExp('\\b${RegExp.escape(q)}\\b', caseSensitive: false);
-    return [
-      ...entries.where((e) => word.hasMatch(e.card.meaning)),
-      ...entries.where((e) => !word.hasMatch(e.card.meaning)),
-    ];
   }
 
   Future<void> _openCard(int cardId) async {
@@ -274,8 +267,8 @@ class _AddCardScreenState extends State<AddCardScreen> {
                   ),
                 ),
               )
-            : _DeckTile(
-                entry: _byMeaning[i - 1],
+            : _WordTile.card(
+                _byMeaning[i - 1],
                 onTap: () => _openCard(_byMeaning[i - 1].card.id),
               ),
       );
@@ -290,8 +283,8 @@ class _AddCardScreenState extends State<AddCardScreen> {
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
       itemCount: _results.length,
       separatorBuilder: (_, _) => const SizedBox(height: 8),
-      itemBuilder: (_, i) => _ResultTile(
-        hit: _results[i],
+      itemBuilder: (_, i) => _WordTile.hit(
+        _results[i],
         onTap: () => _previewAndAdd(_results[i]),
       ),
     );
@@ -325,15 +318,51 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-class _ResultTile extends StatelessWidget {
-  const _ResultTile({required this.hit, required this.onTap});
-  final JmdictHit hit;
+/// A word in the results: a dictionary entry, or a deck card found by
+/// its meaning (whose own screen offers the wishlist).
+class _WordTile extends StatelessWidget {
+  const _WordTile({
+    required this.kanji,
+    required this.kana,
+    required this.gloss,
+    required this.rarity,
+    required this.onTap,
+    this.below,
+  });
+
+  _WordTile.hit(JmdictHit hit, {required VoidCallback onTap})
+    : this(
+        kanji: hit.kanji,
+        kana: hit.kana,
+        gloss: hit.senses.isEmpty ? '' : hit.senses.first.gloss,
+        rarity: hit.rarity,
+        onTap: onTap,
+      );
+
+  _WordTile.card(CollectionEntry entry, {required VoidCallback onTap})
+    : this(
+        kanji: entry.card.kanji,
+        kana: entry.card.kana,
+        gloss: entry.card.meaning,
+        rarity: entry.card.rarity,
+        onTap: onTap,
+        below: entry.isOwned
+            ? const CardStatusChip(status: CardLookupStatus.owned)
+            : null,
+      );
+
+  final String kanji;
+  final String kana;
+  final String gloss;
+  final Rarity rarity;
   final VoidCallback onTap;
+
+  /// Under the gloss: an owned card's status.
+  final Widget? below;
 
   @override
   Widget build(BuildContext context) {
-    final headline = hit.senses.isEmpty ? '' : hit.senses.first.gloss;
-    final showKana = hit.kanji != hit.kana;
+    final below = this.below;
     return Material(
       color: const Color(0xB3FFFDF6),
       borderRadius: BorderRadius.circular(IunaRadii.md),
@@ -354,7 +383,7 @@ class _ResultTile extends StatelessWidget {
                       children: [
                         Flexible(
                           child: Text(
-                            hit.kanji,
+                            kanji,
                             style: const TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.w700,
@@ -363,11 +392,11 @@ class _ResultTile extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        if (showKana) ...[
+                        if (kanji != kana) ...[
                           const SizedBox(width: 8),
                           Flexible(
                             child: Text(
-                              hit.kana,
+                              kana,
                               style: IunaText.bodySmall.copyWith(
                                 color: IunaPalette.ink2,
                               ),
@@ -377,10 +406,10 @@ class _ResultTile extends StatelessWidget {
                         ],
                       ],
                     ),
-                    if (headline.isNotEmpty) ...[
+                    if (gloss.isNotEmpty) ...[
                       const SizedBox(height: 2),
                       Text(
-                        headline,
+                        gloss,
                         style: IunaText.bodySmall.copyWith(
                           color: IunaPalette.ink2,
                         ),
@@ -388,89 +417,15 @@ class _ResultTile extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ],
-                  ],
-                ),
-              ),
-              const SizedBox(width: 12),
-              RarityChip(rarity: hit.rarity, size: RarityChipSize.compact),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// A deck card found by its meaning; its own screen offers the wishlist.
-class _DeckTile extends StatelessWidget {
-  const _DeckTile({required this.entry, required this.onTap});
-  final CollectionEntry entry;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final card = entry.card;
-    return Material(
-      color: const Color(0xB3FFFDF6),
-      borderRadius: BorderRadius.circular(IunaRadii.md),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(IunaRadii.md),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.baseline,
-                      textBaseline: TextBaseline.alphabetic,
-                      children: [
-                        Flexible(
-                          child: Text(
-                            card.kanji,
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w700,
-                              color: IunaPalette.ink,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        if (card.kanji != card.kana) ...[
-                          const SizedBox(width: 8),
-                          Flexible(
-                            child: Text(
-                              card.kana,
-                              style: IunaText.bodySmall.copyWith(
-                                color: IunaPalette.ink2,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      card.meaning,
-                      style: IunaText.bodySmall.copyWith(
-                        color: IunaPalette.ink2,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (entry.isOwned) ...[
+                    if (below != null) ...[
                       const SizedBox(height: 4),
-                      const CardStatusChip(status: CardLookupStatus.owned),
+                      below,
                     ],
                   ],
                 ),
               ),
               const SizedBox(width: 12),
-              RarityChip(rarity: card.rarity, size: RarityChipSize.compact),
+              RarityChip(rarity: rarity, size: RarityChipSize.compact),
             ],
           ),
         ),

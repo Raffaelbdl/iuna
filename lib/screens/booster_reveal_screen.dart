@@ -40,14 +40,12 @@ class BoosterRevealScreen extends StatefulWidget {
 }
 
 class _BoosterRevealScreenState extends State<BoosterRevealScreen>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, LoadGate {
   late final IunaRepository _repo = IunaRepository(
     widget.db,
     random: widget.random,
   );
 
-  bool _loading = true;
-  bool _failed = false;
   List<CardRow> _cards = const [];
 
   /// Card indices where a new pack starts. Used to fire the inline
@@ -99,19 +97,16 @@ class _BoosterRevealScreenState extends State<BoosterRevealScreen>
   @override
   void initState() {
     super.initState();
-    _bootstrap();
+    load();
   }
 
-  Future<void> _bootstrap() async {
-    final List<BoosterClaim> claims;
-    try {
-      claims = await _repo.claimAllAvailableBoosters();
-    } catch (e, s) {
-      logLoadError('Booster reveal', e, s);
-      if (mounted) setState(() => _failed = true);
-      return;
-    }
-    if (!mounted) return;
+  @override
+  Future<void> load() async {
+    final claims = await guardLoad(
+      'Booster reveal',
+      _repo.claimAllAvailableBoosters,
+    );
+    if (claims == null || !mounted) return;
     final cards = <CardRow>[];
     for (var i = 0; i < claims.length; i++) {
       if (claims[i].cards.isEmpty) continue;
@@ -125,10 +120,9 @@ class _BoosterRevealScreenState extends State<BoosterRevealScreen>
       Navigator.of(context).pop(<int>[]);
       return;
     }
-    setState(() {
+    showLoaded(() {
       _cards = cards;
       _totalPacks = _packStarts.length;
-      _loading = false;
     });
     // Mark the first card seen + fire a haptic for the high tiers.
     final first = cards[0];
@@ -145,7 +139,7 @@ class _BoosterRevealScreenState extends State<BoosterRevealScreen>
   }
 
   Future<void> _advance() async {
-    if (_loading || _tearing || _finalizing || _swapping) return;
+    if (loading || _tearing || _finalizing || _swapping) return;
     if (_index >= _cards.length - 1) {
       await _finalizeAndPop();
       return;
@@ -194,7 +188,7 @@ class _BoosterRevealScreenState extends State<BoosterRevealScreen>
   /// [_advance] so the user moves past the suspended slot rather than
   /// being stuck on a blank.
   Future<void> _suspendCurrent() async {
-    if (_loading || _tearing || _finalizing || _swapping) return;
+    if (loading || _tearing || _finalizing || _swapping) return;
     final slot = _index;
     final card = _cards[slot];
     HapticFeedback.selectionClick();
@@ -287,7 +281,7 @@ class _BoosterRevealScreenState extends State<BoosterRevealScreen>
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
-        if (_loading || _failed) {
+        if (loading || failed) {
           Navigator.of(context).pop();
         } else {
           _finalizeAndPop(toReview: false);
@@ -301,16 +295,7 @@ class _BoosterRevealScreenState extends State<BoosterRevealScreen>
             children: [
               const Positioned.fill(child: HexBg(seed: 41)),
               SafeArea(
-                child: _failed
-                    ? LoadErrorNotice(
-                        onRetry: () {
-                          setState(() => _failed = false);
-                          _bootstrap();
-                        },
-                      )
-                    : _loading
-                    ? const Center(child: CircularProgressIndicator())
-                    : _buildBody(),
+                child: gated(_buildBody),
               ),
             ],
           ),
@@ -515,7 +500,7 @@ class _RevealActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (MediaQuery.textScalerOf(context).scale(10) > 12) {
+    if (context.textScaledPast(IunaTextScale.stack)) {
       return Column(
         mainAxisSize: MainAxisSize.min,
         children: [next, const SizedBox(height: 18), swap],
@@ -601,15 +586,13 @@ class _TopBar extends StatelessWidget {
     );
     // Large text gives the skip its own row rather than shrinking it
     // or crowding the counter.
-    final ownRow = MediaQuery.textScalerOf(context).scale(10) > 12;
-    final bar = IunaTopBar(
+    final ownRow = context.textScaledPast(IunaTextScale.stack);
+    final bar = TodayTopBar(
+      label: label,
+      detail: pack,
       // The cards are already collected; their review waits on Home.
-      leading: IunaIconButton(
-        icon: Icons.close_rounded,
-        tooltip: 'Review later',
-        onTap: onLeave,
-      ),
-      title: TodayBarTitle(label, detail: pack),
+      closeTooltip: 'Review later',
+      onClose: onLeave,
       trailing: ownRow ? null : skip,
     );
     if (!ownRow) return bar;

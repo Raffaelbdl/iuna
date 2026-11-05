@@ -38,3 +38,22 @@ void showErrorSnack(
   debugPrint('$message ($error)');
   showSnack(context, message, action: action);
 }
+
+/// One job at a time behind [busy], with an error snack in place of the
+/// raw exception when it throws.
+mixin BusyGuard<T extends StatefulWidget> on State<T> {
+  bool busy = false;
+
+  /// [job]'s result, or null once it threw and [failMessage] showed.
+  Future<R?> whileBusy<R>(String failMessage, Future<R> Function() job) async {
+    setState(() => busy = true);
+    try {
+      return await job();
+    } catch (e) {
+      if (mounted) showErrorSnack(context, failMessage, e);
+      return null;
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+}

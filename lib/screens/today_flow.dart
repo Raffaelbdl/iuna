@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../db/database.dart';
 import '../db/repository.dart';
 import '../theme/iuna_theme.dart';
+import '../widgets/iuna_icon_button.dart';
 import '../widgets/section_header.dart';
 import 'pack_intro_screen.dart';
 import 'review_done_screen.dart';
@@ -51,6 +52,50 @@ class TodayBarTitle extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// A Today-flow top bar: a close button on the left, where every screen
+/// keeps its way out, the [TodayBarTitle], and an undo arrow (or
+/// [trailing]) on the right.
+class TodayTopBar extends StatelessWidget {
+  const TodayTopBar({
+    super.key,
+    required this.label,
+    required this.closeTooltip,
+    required this.onClose,
+    this.detail,
+    this.onUndo,
+    this.trailing,
+  });
+
+  final String label;
+  final String? detail;
+  final String closeTooltip;
+  final VoidCallback onClose;
+
+  /// Takes back the last card; null with nothing to take back, so the
+  /// arrow only shows when there is.
+  final VoidCallback? onUndo;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return IunaTopBar(
+      leading: IunaIconButton(
+        icon: Icons.close_rounded,
+        tooltip: closeTooltip,
+        onTap: onClose,
+      ),
+      title: TodayBarTitle(label, detail: detail),
+      trailing: onUndo == null
+          ? trailing
+          : IunaIconButton(
+              icon: Icons.undo_rounded,
+              tooltip: 'Undo last card',
+              onTap: onUndo,
+            ),
     );
   }
 }

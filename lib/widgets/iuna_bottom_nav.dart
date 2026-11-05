@@ -105,6 +105,16 @@ class IunaBottomNav extends StatelessWidget {
     );
   }
 
+  /// The last [_labelScaler] answer: the nav rebuilds on every screen
+  /// and badge change, and its inputs hardly ever do.
+  static ({
+    double width,
+    double factor,
+    int count,
+    TextStyle style,
+    TextScaler scaler,
+  })? _lastScaler;
+
   /// One text size for every label: the largest at which the longest
   /// still fits its tab, so "Collection" doesn't shrink alone.
   static TextScaler _labelScaler(
@@ -114,7 +124,16 @@ class IunaBottomNav extends StatelessWidget {
   ) {
     final style = DefaultTextStyle.of(context).style.merge(_NavBtn.labelStyle);
     final size = style.fontSize!;
-    var factor = MediaQuery.textScalerOf(context).scale(size) / size;
+    final base = MediaQuery.textScalerOf(context).scale(size) / size;
+    final last = _lastScaler;
+    if (last != null &&
+        last.width == width &&
+        last.factor == base &&
+        last.count == labels.length &&
+        last.style == style) {
+      return last.scaler;
+    }
+    var factor = base;
     for (final label in labels) {
       final painter = TextPainter(
         text: TextSpan(text: label, style: style),
@@ -125,7 +144,15 @@ class IunaBottomNav extends StatelessWidget {
       if (painter.width > width) factor *= width / painter.width;
       painter.dispose();
     }
-    return TextScaler.linear(factor);
+    final scaler = TextScaler.linear(factor);
+    _lastScaler = (
+      width: width,
+      factor: base,
+      count: labels.length,
+      style: style,
+      scaler: scaler,
+    );
+    return scaler;
   }
 }
 

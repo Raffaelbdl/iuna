@@ -65,17 +65,15 @@ class IunaPalette {
   static const chartHoney = Color(0xFFF0C168);
   static const chartHoneyDeep = Color(0xFFD49A3A);
   static const chartBlue = Color(0xFFBCD3DF);
-  static const chartBlueDeep = Color(0xFF7FAABE);
   static const chartLilac = Color(0xFFC4B2E0);
   static const chartLilacDeep = Color(0xFF9A7EC5);
   static const chartLearning = Color(0xFFDFE8D8);
-  static const chartLearningInk = Color(0xFF4F6E4B);
   static const chartMatureInk = Color(0xFF4A6F82);
-  static const chartGrid = Color.fromRGBO(74, 53, 32, 0.08);
+  static const chartGrid = divider;
   static const chartGridStrong = Color.fromRGBO(74, 53, 32, 0.14);
-  static const chipBg = Color.fromRGBO(74, 53, 32, 0.06);
+  static const chipBg = hairline;
   static const heatmap0 = Color.fromRGBO(74, 53, 32, 0.05);
-  static const heatmap1 = Color(0xFFDFE8D8);
+  static const heatmap1 = chartLearning;
   static const heatmap2 = Color(0xFFBDD9C4);
   static const heatmap3 = Color(0xFF92C4A8);
   static const heatmap4 = Color(0xFF5FA982);
@@ -128,6 +126,14 @@ abstract final class IunaText {
     letterSpacing: -0.3,
   );
 
+  /// [display] lighter and set tight, under a [kicker] or a greeting.
+  static const banner = TextStyle(
+    fontSize: 28,
+    fontWeight: FontWeight.w600,
+    letterSpacing: -0.3,
+    height: 1.1,
+  );
+
   /// Hero titles, tab titles and big numbers.
   static const headline = TextStyle(
     fontSize: 22,
@@ -163,8 +169,35 @@ abstract final class IunaText {
   static const eyebrow = TextStyle(
     fontSize: 12,
     fontWeight: FontWeight.w700,
-    letterSpacing: 1.1,
+    letterSpacing: 1.2,
   );
+
+  /// The widely spaced caption over a [banner], such as TODAY'S PACK.
+  static const kicker = TextStyle(
+    fontSize: 12,
+    fontWeight: FontWeight.w500,
+    letterSpacing: 4,
+  );
+}
+
+/// Text-size thresholds for a layout that changes with large text, as
+/// the size 10 px of text scales to.
+abstract final class IunaTextScale {
+  /// Past 120%: the reveal's actions stack and its skip gets a row.
+  static const stack = 12.0;
+
+  /// Past 130%: a settings control moves under its subtitle.
+  static const controlBelow = 13.0;
+}
+
+extension IunaTextScaleOf on BuildContext {
+  /// Whether text scales past [threshold], one of [IunaTextScale].
+  bool textScaledPast(double threshold) =>
+      MediaQuery.textScalerOf(this).scale(10) > threshold;
+
+  /// How far text has grown past 100%: 0 there, 1 from 200%.
+  double get textGrowth =>
+      (MediaQuery.textScalerOf(this).scale(100) / 100 - 1).clamp(0.0, 1.0);
 }
 
 /// Standard panel shadow (light, top-highlighted).
@@ -206,7 +239,7 @@ BoxDecoration ghostPillDecoration({
 }) => BoxDecoration(
   color: color,
   borderRadius: BorderRadius.circular(999),
-  border: Border.all(color: const Color.fromRGBO(74, 53, 32, 0.12), width: 0.5),
+  border: Border.all(color: IunaPalette.outline, width: 0.5),
   boxShadow: boxShadow,
 );
 
@@ -229,7 +262,7 @@ BoxDecoration paperPanelDecoration({
   borderRadius: borderRadius ?? BorderRadius.circular(IunaRadii.lg),
   border:
       border ??
-      Border.all(color: const Color.fromRGBO(74, 53, 32, 0.06), width: 0.5),
+      Border.all(color: IunaPalette.hairline, width: 0.5),
   boxShadow: panelShadow(),
 );
 
@@ -333,50 +366,34 @@ ThemeData buildIunaTheme() {
         surface: IunaPalette.bg,
       );
 
-  // Every style below derives from the platform typography so it keeps
-  // its font family and fallbacks; a bare TextStyle on a theme slot
-  // (AppBar title, button label) would lose them. Sizes follow
-  // [IunaText].
+  // Every style below merges an [IunaText] token into the platform
+  // typography so it keeps its font family and fallbacks; a bare
+  // TextStyle on a theme slot (AppBar title, button label) would lose
+  // them.
   final t = base.textTheme;
   final textTheme = t
       .copyWith(
-        headlineSmall: t.headlineSmall?.copyWith(
-          fontSize: 22,
-          fontWeight: FontWeight.w600,
-          letterSpacing: -0.3,
-        ),
-        titleLarge: t.titleLarge?.copyWith(
-          fontSize: 18,
-          fontWeight: FontWeight.w700,
-        ),
-        titleMedium: t.titleMedium?.copyWith(
-          fontSize: 16,
-          fontWeight: FontWeight.w600,
-        ),
-        titleSmall: t.titleSmall?.copyWith(
-          fontSize: 14,
-          fontWeight: FontWeight.w700,
-        ),
-        bodyLarge: t.bodyLarge?.copyWith(fontSize: 16, height: 1.35),
-        bodyMedium: t.bodyMedium?.copyWith(fontSize: 14, height: 1.35),
-        bodySmall: t.bodySmall?.copyWith(fontSize: 12, height: 1.4),
-        labelLarge: t.labelLarge?.copyWith(
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
-        ),
-        labelMedium: t.labelMedium?.copyWith(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-        ),
-        labelSmall: t.labelSmall?.copyWith(
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-        ),
+        headlineSmall: t.headlineSmall
+            ?.merge(IunaText.headline)
+            .copyWith(fontWeight: FontWeight.w600, letterSpacing: -0.3),
+        titleLarge: t.titleLarge?.merge(IunaText.title),
+        titleMedium: t.titleMedium?.merge(IunaText.subtitle),
+        titleSmall: t.titleSmall
+            ?.merge(IunaText.body)
+            .copyWith(fontWeight: FontWeight.w700),
+        bodyLarge: t.bodyLarge?.merge(IunaText.bodyLarge).copyWith(height: 1.35),
+        bodyMedium: t.bodyMedium?.merge(IunaText.body).copyWith(height: 1.35),
+        bodySmall: t.bodySmall?.merge(IunaText.caption).copyWith(height: 1.4),
+        labelLarge: t.labelLarge?.merge(IunaText.label),
+        labelMedium: t.labelMedium?.merge(IunaText.chip),
+        labelSmall: t.labelSmall
+            ?.merge(IunaText.caption)
+            .copyWith(fontWeight: FontWeight.w700),
       )
       .apply(bodyColor: IunaPalette.ink, displayColor: IunaPalette.ink);
   final buttonLabel = textTheme.labelLarge!;
   const pill = StadiumBorder();
-  final hairline = BorderSide(
+  final outlineSide = BorderSide(
     color: IunaPalette.ink.withValues(alpha: 0.18),
     width: 1,
   );
@@ -412,7 +429,7 @@ ThemeData buildIunaTheme() {
       style: FilledButton.styleFrom(
         backgroundColor: IunaPalette.ctaMid,
         foregroundColor: kCtaInk,
-        disabledBackgroundColor: IunaPalette.ink.withValues(alpha: 0.08),
+        disabledBackgroundColor: IunaPalette.divider,
         disabledForegroundColor: IunaPalette.ink3,
         padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
         textStyle: buttonLabel,
@@ -436,7 +453,7 @@ ThemeData buildIunaTheme() {
       style: OutlinedButton.styleFrom(
         foregroundColor: IunaPalette.ink2,
         backgroundColor: IunaPalette.paper,
-        side: hairline,
+        side: outlineSide,
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
         textStyle: textTheme.labelLarge,
         shape: pill,
@@ -468,7 +485,7 @@ ThemeData buildIunaTheme() {
       unselectedLabelStyle: textTheme.labelLarge,
       indicatorColor: IunaPalette.ctaBottom,
       indicatorSize: TabBarIndicatorSize.label,
-      dividerColor: IunaPalette.ink.withValues(alpha: 0.08),
+      dividerColor: IunaPalette.divider,
     ),
     popupMenuTheme: PopupMenuThemeData(
       color: IunaPalette.paper,

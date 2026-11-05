@@ -54,7 +54,7 @@ class IunaControlTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final below = MediaQuery.textScalerOf(context).scale(10) > 13;
+    final below = context.textScaledPast(IunaTextScale.controlBelow);
     final subtitle = this.subtitle;
     return ListTile(
       leading: leading,
@@ -87,10 +87,7 @@ class IunaEyebrow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       label.toUpperCase(),
-      style: IunaText.eyebrow.copyWith(
-        letterSpacing: 1.2,
-        color: IunaPalette.ink3,
-      ),
+      style: IunaText.eyebrow.copyWith(color: IunaPalette.ink3),
     );
   }
 }

@@ -244,9 +244,8 @@ class _DeckAction extends StatefulWidget {
   State<_DeckAction> createState() => _DeckActionState();
 }
 
-class _DeckActionState extends State<_DeckAction> {
+class _DeckActionState extends State<_DeckAction> with BusyGuard {
   CardLookupStatus? _status;
-  bool _busy = false;
 
   @override
   void initState() {
@@ -259,16 +258,8 @@ class _DeckActionState extends State<_DeckAction> {
   }
 
   Future<void> _bookmark() async {
-    setState(() => _busy = true);
-    try {
-      _show(await widget.bookmarks.wishlist(widget.entry));
-    } catch (e) {
-      if (mounted) {
-        showErrorSnack(context, "Couldn't add it to your wishlist.", e);
-      }
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
+    final status = await whileBusy("Couldn't add it to your wishlist.", () => widget.bookmarks.wishlist(widget.entry));
+    if (status != null) _show(status);
   }
 
   @override
@@ -287,7 +278,7 @@ class _DeckActionState extends State<_DeckAction> {
             label: 'Add to wishlist',
             leadingIcon: Icons.bookmark_add_outlined,
             shrinkWrap: true,
-            onTap: _busy ? null : _bookmark,
+            onTap: busy ? null : _bookmark,
           ),
       ],
     );

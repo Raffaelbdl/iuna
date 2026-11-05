@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 
 import '../db/database.dart';
@@ -57,21 +58,15 @@ extension _RetWindowDays on _RetWindow {
   };
 }
 
-class _StatsScreenState extends State<StatsScreen> {
+class _StatsScreenState extends State<StatsScreen> with LoadGate {
   late final IunaRepository _repo = IunaRepository(widget.db);
 
-  bool _loading = true;
-  bool _failed = false;
   late bool _detailsOpen = widget.detailsOpen;
   _RetWindow _retWindow = _RetWindow.d90;
 
   ({int reviews, int learned}) _totals = (reviews: 0, learned: 0);
 
-  /// Null until at least one post-graduation review has happened; no
-  /// fallback to lifetime accuracy, because the learn-phase pass rate
-  /// isn't comparable to SM-2's 90% target.
-  ({int total, int correct})? _trueRet;
-  ({int total, int correct}) _knownRet = (total: 0, correct: 0);
+  ({int total, int correct}) _trueRet = (total: 0, correct: 0);
   ({int total, int correct}) _newRet = (total: 0, correct: 0);
   Map<Rarity, ({int total, int correct})> _byRarity = const {};
   Map<int, ({int owned, int total})> _byJlpt = const {};
@@ -94,76 +89,45 @@ class _StatsScreenState extends State<StatsScreen> {
   @override
   void initState() {
     super.initState();
-    _loadAll();
+    load();
   }
 
-  Future<void> _loadAll() async {
-    try {
-      await _loadCharts();
-    } catch (e, s) {
-      logLoadError('Stats', e, s);
-      if (mounted) {
-        setState(() {
-          _loading = false;
-          _failed = true;
-        });
-      }
-    }
-  }
-
-  Future<void> _openCard(int cardId) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => CardDetailScreen(
-          db: widget.db,
-          cardId: cardId,
-          from: IunaNavTab.home,
-        ),
-      ),
-    );
-    if (mounted) await _loadAll();
-  }
-
-  Future<void> _loadCharts() async {
+  @override
+  Future<void> load() async {
     // Launch in parallel; record `.wait` caps at 9 elements, so split.
-    final fBreakdown = _repo.reviewBreakdown();
-    final fByJlpt = _repo.jlptProgress();
-    final fHeatmap = _repo.dailyActivity(days: 364, now: widget.now);
-    final fRetention = _repo.retentionCurve(
-      windowDays: _retWindow.days,
-      now: widget.now,
-    );
-    final fMaturity = _repo.maturityHistogram();
-    final fForecast = _repo.dueForecast(days: 14, now: widget.now);
-    final fTimeSpent = _repo.timeSpentSeries(days: 30, now: widget.now);
-    final fHours = _repo.hourOfDayHistogram();
-    final fStreak = _repo.streakStats(now: widget.now);
-    final fLeeches = _repo.leeches(limit: 6);
-    final fByPack = _repo.packProgress();
-
-    final r1 = await (
-      fBreakdown,
-      fByJlpt,
-      fHeatmap,
-      fRetention,
-      fMaturity,
-    ).wait;
-    final r2 = await (
-      fForecast,
-      fTimeSpent,
-      fHours,
-      fStreak,
-      fLeeches,
-      fByPack,
-    ).wait;
-    if (!mounted) return;
-    setState(() {
+    final loaded = await guardLoad('Stats', () async {
+      final fBreakdown = _repo.reviewBreakdown();
+      final fByJlpt = _repo.jlptProgress();
+      final fHeatmap = _repo.dailyActivity(days: 364, now: widget.now);
+      final fRetention = _repo.retentionCurve(
+        windowDays: _retWindow.days,
+        now: widget.now,
+      );
+      final fMaturity = _repo.maturityHistogram();
+      final fForecast = _forecastQuery();
+      final fTimeSpent = _repo.timeSpentSeries(days: 30, now: widget.now);
+      final fHours = _repo.hourOfDayHistogram();
+      final fStreak = _repo.streakStats(now: widget.now);
+      final fLeeches = _leechesQuery();
+      final fByPack = _repo.packProgress();
+      return (
+        await (fBreakdown, fByJlpt, fHeatmap, fRetention, fMaturity).wait,
+        await (
+          fForecast,
+          fTimeSpent,
+          fHours,
+          fStreak,
+          fLeeches,
+          fByPack,
+        ).wait,
+      );
+    });
+    if (loaded == null || !mounted) return;
+    final (r1, r2) = loaded;
+    showLoaded(() {
       final breakdown = r1.$1;
       _totals = (reviews: breakdown.reviews, learned: breakdown.learned);
-      _trueRet = breakdown.trueRetention.total == 0
-          ? null
-          : breakdown.trueRetention;
-      _knownRet = breakdown.trueRetention;
+      _trueRet = breakdown.trueRetention;
       _newRet = breakdown.newRetention;
       _byRarity = breakdown.byRarity;
       _byJlpt = r1.$2;
@@ -177,8 +141,35 @@ class _StatsScreenState extends State<StatsScreen> {
       _streak = r2.$4;
       _leeches = r2.$5;
       _byPack = r2.$6;
-      _loading = false;
-      _failed = false;
+    });
+  }
+
+  Future<List<ForecastDay>> _forecastQuery() =>
+      _repo.dueForecast(days: 14, now: widget.now);
+
+  Future<List<LeechEntry>> _leechesQuery() => _repo.leeches(limit: 6);
+
+  /// A card's screen can suspend it or reset it, which only the leeches
+  /// and the forecast show.
+  Future<void> _openCard(int cardId) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CardDetailScreen(
+          db: widget.db,
+          cardId: cardId,
+          from: IunaNavTab.home,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    final loaded = await guardLoad(
+      'Stats',
+      () => (_forecastQuery(), _leechesQuery()).wait,
+    );
+    if (loaded == null || !mounted) return;
+    setState(() {
+      _forecast = loaded.$1;
+      _leeches = loaded.$2;
     });
   }
 
@@ -197,77 +188,72 @@ class _StatsScreenState extends State<StatsScreen> {
   Widget build(BuildContext context) {
     return IunaPage(
       title: 'Stats',
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _failed
-          ? LoadErrorNotice(
-              onRetry: () {
-                setState(() {
-                  _loading = true;
-                  _failed = false;
-                });
-                _loadAll();
-              },
-            )
-          : ListView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-              children: [
-                _Headline(
-                  reviews: _totals.reviews,
-                  trueRetention: _trueRet,
-                  learned: _totals.learned,
-                ),
-                const SizedBox(height: 14),
-                _StatCard(
-                  title: 'Activity',
-                  subtitle:
-                      'Reviews per day · right and wrong over the last 30 days.',
-                  child: _ActivityChart(days: _activity30),
-                ),
-                const SizedBox(height: 14),
-                _StatCard(
-                  title: 'Streak',
-                  subtitle: "Days in a row you've reviewed at least one card.",
-                  child: _StreakStrip(stats: _streak),
-                ),
-                const SizedBox(height: 14),
-                _StatCard(
-                  title: 'Next 14 days',
-                  subtitle: 'How many reviews are coming up each day.',
-                  child: _ForecastChart(days: _forecast),
-                ),
-                const SizedBox(height: 14),
-                _StatCard(
-                  title: 'Tricky cards',
-                  subtitle: _leeches.isEmpty
-                      ? "No tricky cards yet — they'll show up here once you miss the same word a few times."
-                      : 'Cards you keep missing. Tap one for a closer look.',
-                  child: _LeechList(entries: _leeches, onOpen: _openCard),
-                ),
-                const SizedBox(height: 14),
-                _StatCard(
-                  title: 'JLPT progress',
-                  subtitle: 'Cards collected per level. 完 marks a complete '
-                      'one.',
-                  child: _JlptProgress(byLevel: _byJlpt),
-                ),
-                if (_byPack.isNotEmpty) ...[
-                  const SizedBox(height: 14),
-                  _StatCard(
-                    title: 'Themed packs',
-                    subtitle: 'Cards collected per pack. 完 marks a '
-                        'complete one.',
-                    child: _PackProgress(byPack: _byPack),
-                  ),
-                ],
-                const SizedBox(height: 8),
-                _MoreToggle(
-                  open: _detailsOpen,
-                  onTap: () => setState(() => _detailsOpen = !_detailsOpen),
-                ),
-                if (_detailsOpen) ..._details(),
-              ],
-            ),
+      body: gated(_body),
+    );
+  }
+
+  Widget _body() {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+      children: [
+        _Headline(
+          reviews: _totals.reviews,
+          // None until a post-graduation review: no fallback to
+          // lifetime accuracy, because the learn-phase pass rate
+          // isn't comparable to SM-2's 90% target.
+          trueRetention: _trueRet.total == 0 ? null : _trueRet,
+          learned: _totals.learned,
+        ),
+        const SizedBox(height: 14),
+        _StatCard(
+          title: 'Activity',
+          subtitle:
+              'Reviews per day · right and wrong over the last 30 days.',
+          child: _ActivityChart(days: _activity30),
+        ),
+        const SizedBox(height: 14),
+        _StatCard(
+          title: 'Streak',
+          subtitle: "Days in a row you've reviewed at least one card.",
+          child: _StreakStrip(stats: _streak),
+        ),
+        const SizedBox(height: 14),
+        _StatCard(
+          title: 'Next 14 days',
+          subtitle: 'How many reviews are coming up each day.',
+          child: _ForecastChart(days: _forecast),
+        ),
+        const SizedBox(height: 14),
+        _StatCard(
+          title: 'Tricky cards',
+          subtitle: _leeches.isEmpty
+              ? "No tricky cards yet — they'll show up here once you miss the same word a few times."
+              : 'Cards you keep missing. Tap one for a closer look.',
+          child: _LeechList(entries: _leeches, onOpen: _openCard),
+        ),
+        const SizedBox(height: 14),
+        _StatCard(
+          title: 'JLPT progress',
+          subtitle: 'Cards collected per level. 完 marks a complete '
+              'one.',
+          child: _JlptProgress(byLevel: _byJlpt),
+        ),
+        if (_byPack.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          _StatCard(
+            title: 'Themed packs',
+            subtitle: 'Cards collected per pack. 完 marks a '
+                'complete one.',
+            child: _PackProgress(byPack: _byPack),
+          ),
+        ],
+        const SizedBox(height: 8),
+        _MoreToggle(
+          open: _detailsOpen,
+          onTap: () => setState(() => _detailsOpen = !_detailsOpen),
+        ),
+        if (_detailsOpen) ..._details(),
+      ],
     );
   }
 
@@ -306,7 +292,7 @@ class _StatsScreenState extends State<StatsScreen> {
           'How often you get each right. Known cards, a day or more since '
           'their last review, show how well you remember; new ones are '
           'still settling.',
-      child: _StageDonut(newCards: _newRet, knownCards: _knownRet),
+      child: _StageDonut(newCards: _newRet, knownCards: _trueRet),
     ),
     const SizedBox(height: 14),
     _StatCard(
@@ -353,7 +339,7 @@ class _MoreToggle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Tappable(
       onTap: onTap,
-      selected: open,
+      expanded: open,
       child: Container(
         constraints: const BoxConstraints(minHeight: 48),
         padding: const EdgeInsets.symmetric(horizontal: 4),

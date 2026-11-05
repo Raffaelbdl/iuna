@@ -8,11 +8,11 @@ import '../theme/iuna_theme.dart';
 import '../widgets/cta_button.dart';
 import '../widgets/hex_bg.dart';
 import '../widgets/iuna_bottom_nav.dart';
-import '../widgets/iuna_icon_button.dart';
+import '../widgets/mini_card_scroller.dart';
+import '../widgets/notice.dart';
 import '../widgets/section_header.dart';
-import '../widgets/tappable.dart';
 import '../widgets/time_words.dart';
-import '../widgets/vocab_card.dart';
+import 'app_nav.dart';
 import 'card_detail_screen.dart';
 import 'collection_screen.dart';
 import 'review_screen.dart';
@@ -85,30 +85,32 @@ class _ReviewDoneScreenState extends State<ReviewDoneScreen>
   Future<void> _load() async {
     final now = widget.now;
     try {
-      final (streak, today, cards, upcoming, booster, dueAgain, filter) =
-          await (
-            _repo.recordStreak(now: now),
-            _repo.todayStats(now: now),
-            _repo.cardsByIds(widget.doneCardIds),
-            _repo.upcoming(now: now),
-            _repo.boosterPreview(now: now),
-            _repo.dueCountToday(now: now),
-            _repo.drawFilterName(),
-          ).wait;
+      final (streak, today, cards, upcoming, booster, dueAgain) = await (
+        _repo.recordStreak(now: now),
+        _repo.todayStats(now: now),
+        _repo.cardsByIds(widget.doneCardIds),
+        _repo.upcoming(now: now),
+        _repo.boosterPreview(now: now),
+        _repo.dueCountToday(now: now),
+      ).wait;
+      final poolEmpty = booster.packs > 0 && booster.newCards == 0;
+      final filter = poolEmpty ? await _repo.drawFilterName() : null;
       if (!mounted) return;
+      // The nav on a card opened from here shows it without a recount.
+      publishTodayCount(widget.db, booster.newCards + dueAgain);
       setState(() {
         _streak = streak;
         _todayCorrect = today.correct;
         _todayTotal = today.total;
         _doneCards = cards.take(5).toList();
         _upcoming = upcoming;
-        _poolEmpty = booster.packs > 0 && booster.newCards == 0;
+        _poolEmpty = poolEmpty;
         _dueAgain = dueAgain;
         _drawFilter = filter;
       });
     } catch (e, s) {
       // The recap still stands on the session's own numbers.
-      debugPrint('Recap failed to load: $e\n$s');
+      logLoadError('Recap', e, s);
     }
   }
 
@@ -219,8 +221,9 @@ class _ReviewDoneScreenState extends State<ReviewDoneScreen>
               SafeArea(
                 child: Column(
                   children: [
-                    _TopBar(
+                    TodayTopBar(
                       label: hasSession ? 'Session done' : 'Recap',
+                      closeTooltip: 'Close',
                       onClose: _leave,
                       onUndo: widget.canUndo
                           ? () => Navigator.of(context).pop(true)
@@ -235,20 +238,16 @@ class _ReviewDoneScreenState extends State<ReviewDoneScreen>
                           Text(
                             tier.kicker,
                             textAlign: TextAlign.center,
-                            style: IunaText.caption.copyWith(
-                              fontWeight: FontWeight.w500,
+                            style: IunaText.kicker.copyWith(
                               color: IunaPalette.ink3,
-                              letterSpacing: 4,
                             ),
                           ),
                           const SizedBox(height: 6),
                           Text(
                             tier.headline,
                             textAlign: TextAlign.center,
-                            style: IunaText.display.copyWith(
-                              fontWeight: FontWeight.w600,
+                            style: IunaText.banner.copyWith(
                               color: IunaPalette.ink,
-                              height: 1.1,
                             ),
                           ),
                           const SizedBox(height: 8),
@@ -265,10 +264,8 @@ class _ReviewDoneScreenState extends State<ReviewDoneScreen>
                             hasSession: hasSession,
                             sessionCorrect: widget.correct,
                             sessionTotal: widget.total,
-                            sessionPct: sessionPct,
                             todayCorrect: todayCorrect,
                             todayTotal: todayTotal,
-                            todayPct: todayPct,
                             streak: _streak,
                           ),
                           if (_upcoming case final upcoming?) ...[
@@ -288,7 +285,8 @@ class _ReviewDoneScreenState extends State<ReviewDoneScreen>
                               padding: EdgeInsets.only(left: 4, bottom: 10),
                               child: IunaEyebrow('Reviewed this session'),
                             ),
-                            _DoneScroller(
+                            MiniCardScroller(
+                              compact: true,
                               cards: _doneCards,
                               onTap: (id) async {
                                 await Navigator.of(context).push(
@@ -396,35 +394,6 @@ class _TierCopy {
   final String note;
 }
 
-class _TopBar extends StatelessWidget {
-  const _TopBar({required this.label, required this.onClose, this.onUndo});
-  final String label;
-  final VoidCallback onClose;
-
-  /// Takes back the session's last card; null with nothing to take back.
-  final VoidCallback? onUndo;
-
-  @override
-  Widget build(BuildContext context) {
-    // Close on the left and undo on the right, as in the review.
-    return IunaTopBar(
-      leading: IunaIconButton(
-        icon: Icons.close_rounded,
-        tooltip: 'Close',
-        onTap: onClose,
-      ),
-      title: TodayBarTitle(label),
-      trailing: onUndo == null
-          ? null
-          : IunaIconButton(
-              icon: Icons.undo_rounded,
-              tooltip: 'Undo last card',
-              onTap: onUndo,
-            ),
-    );
-  }
-}
-
 /// When the next pack and the next review come, so a finished day
 /// doesn't end on a guess.
 class _ComingUp extends StatelessWidget {
@@ -460,7 +429,7 @@ class _ComingUp extends StatelessWidget {
             icon: Icons.card_giftcard_rounded,
             label: 'Next pack',
             value: !poolEmpty
-                ? _capitalized(whenWords(nextDay, now))
+                ? whenWords(nextDay, now, capitalized: true)
                 : drawFilter != null
                 ? 'Every $drawFilter card is collected'
                 : 'Every card is collected',
@@ -478,15 +447,12 @@ class _ComingUp extends StatelessWidget {
             _ComingRow(
               icon: Icons.schedule_rounded,
               label: 'Next review',
-              value: _capitalized(whenWords(nextReview, now)),
+              value: whenWords(nextReview, now, capitalized: true),
             ),
         ],
       ),
     );
   }
-
-  static String _capitalized(String s) =>
-      s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
 }
 
 class _ComingRow extends StatelessWidget {
@@ -606,20 +572,16 @@ class _StatsPanel extends StatelessWidget {
     required this.hasSession,
     required this.sessionCorrect,
     required this.sessionTotal,
-    required this.sessionPct,
     required this.todayCorrect,
     required this.todayTotal,
-    required this.todayPct,
     required this.streak,
   });
 
   final bool hasSession;
   final int sessionCorrect;
   final int sessionTotal;
-  final int sessionPct;
   final int todayCorrect;
   final int todayTotal;
-  final int todayPct;
   final int streak;
 
   static const _divider = BorderSide(color: Color.fromRGBO(74, 53, 32, 0.1));
@@ -627,10 +589,10 @@ class _StatsPanel extends StatelessWidget {
   TableRow _tallyRow(
     String label,
     int correct,
-    int total,
-    int pct, {
+    int total, {
     bool first = false,
   }) {
+    final pct = total == 0 ? 0 : ((correct / total) * 100).round();
     final pad = EdgeInsets.only(top: first ? 0 : 10, bottom: 10);
     return TableRow(
       decoration: const BoxDecoration(border: Border(bottom: _divider)),
@@ -641,10 +603,7 @@ class _StatsPanel extends StatelessWidget {
             label,
             maxLines: 1,
             softWrap: false,
-            style: IunaText.eyebrow.copyWith(
-              color: IunaPalette.ink3,
-              letterSpacing: 1.2,
-            ),
+            style: IunaText.eyebrow.copyWith(color: IunaPalette.ink3),
           ),
         ),
         Padding(
@@ -711,7 +670,6 @@ class _StatsPanel extends StatelessWidget {
                   'SESSION',
                   sessionCorrect,
                   sessionTotal,
-                  sessionPct,
                   first: true,
                 ),
               // The day's first session would repeat itself as Today.
@@ -720,7 +678,6 @@ class _StatsPanel extends StatelessWidget {
                   'TODAY',
                   todayCorrect,
                   todayTotal,
-                  todayPct,
                   first: !hasSession,
                 ),
             ],
@@ -748,99 +705,11 @@ class _StatsPanel extends StatelessWidget {
                 style: IunaText.eyebrow.copyWith(
                   fontWeight: FontWeight.w600,
                   color: IunaPalette.ink3,
-                  letterSpacing: 1.2,
                 ),
               ),
             ],
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _DoneScroller extends StatelessWidget {
-  const _DoneScroller({required this.cards, required this.onTap});
-  final List<CardRow> cards;
-  final ValueChanged<int> onTap;
-  @override
-  Widget build(BuildContext context) {
-    // A horizontal list needs a fixed height, so it grows with the text
-    // size instead of reading it from the cards, as on Home.
-    final textGrowth =
-        (MediaQuery.textScalerOf(context).scale(100) / 100 - 1).clamp(0.0, 1.0);
-    final cardHeight = 140 + 64 * textGrowth;
-    return SizedBox(
-      height: cardHeight + 10,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: cards.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 10),
-        itemBuilder: (_, i) {
-          final c = cards[i];
-          return Tappable(
-            onTap: () => onTap(c.id),
-            child: SizedBox(
-              width: 110,
-              height: cardHeight,
-              child: VocabCard(
-                rarity: c.rarity,
-                padding: const EdgeInsets.all(10),
-                elevation: 0.6,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: RarityChip(
-                          rarity: c.rarity,
-                          size: RarityChipSize.compact,
-                        ),
-                      ),
-                    ),
-                    const Spacer(),
-                    FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(
-                        c.kanji,
-                        textAlign: TextAlign.center,
-                        maxLines: 1,
-                        style: const TextStyle(
-                          fontSize: 26,
-                          fontWeight: FontWeight.w700,
-                          color: IunaPalette.ink,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      c.kana,
-                      textAlign: TextAlign.center,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: IunaText.caption.copyWith(
-                        color: IunaPalette.ink3,
-                      ),
-                    ),
-                    const Spacer(),
-                    Text(
-                      c.meaning,
-                      textAlign: TextAlign.center,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: IunaText.caption.copyWith(
-                        fontWeight: FontWeight.w500,
-                        color: IunaPalette.ink3,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        },
       ),
     );
   }

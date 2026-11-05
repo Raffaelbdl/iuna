@@ -13,8 +13,14 @@ String clockWords(DateTime t) =>
     t.minute == 0 ? hourWords(t.hour) : DateFormat('h:mm a').format(t);
 
 /// When [t] is, seen from [now]: "now", "today at 3:10 PM", "tomorrow
-/// at midnight", "Thu at 9 AM", then "Apr 30" past a week.
-String whenWords(DateTime t, DateTime now) {
+/// at midnight", "Thu at 9 AM", then "Apr 30" past a week. [capitalized]
+/// for a value standing on its own ("Today at 3:10 PM").
+String whenWords(DateTime t, DateTime now, {bool capitalized = false}) {
+  final words = _whenWords(t, now);
+  return capitalized ? words[0].toUpperCase() + words.substring(1) : words;
+}
+
+String _whenWords(DateTime t, DateTime now) {
   if (!t.isAfter(now)) return 'now';
   // Calendar days in UTC, so a DST change can't make a day 23 hours.
   final days = DateTime.utc(

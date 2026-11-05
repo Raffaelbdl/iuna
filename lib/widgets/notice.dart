@@ -70,3 +70,57 @@ class LoadErrorNotice extends StatelessWidget {
 void logLoadError(String where, Object error, StackTrace stack) {
   debugPrint('$where failed to load: $error\n$stack');
 }
+
+/// A screen whose data comes from one async [load]: a spinner, then the
+/// content, or [LoadErrorNotice] if the fetch threw.
+mixin LoadGate<T extends StatefulWidget> on State<T> {
+  bool loading = true;
+  bool failed = false;
+
+  /// Fetches through [guardLoad] and shows the result with [showLoaded].
+  Future<void> load();
+
+  /// [fetch]'s result, or null once it has thrown: logged under [where]
+  /// and the retry notice shown. With [keepShown], a throw while content
+  /// is on screen leaves that content up.
+  Future<R?> guardLoad<R extends Object>(
+    String where,
+    Future<R> Function() fetch, {
+    bool keepShown = false,
+  }) async {
+    try {
+      return await fetch();
+    } catch (e, s) {
+      logLoadError(where, e, s);
+      if (mounted && !(keepShown && !loading && !failed)) {
+        setState(() {
+          loading = false;
+          failed = true;
+        });
+      }
+      return null;
+    }
+  }
+
+  /// Applies [update] and leaves the spinner or the retry notice.
+  void showLoaded([VoidCallback? update]) => setState(() {
+    update?.call();
+    loading = false;
+    failed = false;
+  });
+
+  void retry() {
+    setState(() {
+      loading = true;
+      failed = false;
+    });
+    load();
+  }
+
+  /// The spinner, the retry notice, or [content].
+  Widget gated(Widget Function() content) => loading
+      ? const Center(child: CircularProgressIndicator())
+      : failed
+      ? LoadErrorNotice(onRetry: retry)
+      : content();
+}

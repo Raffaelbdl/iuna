@@ -51,7 +51,7 @@ class ChatView extends StatefulWidget {
   final WordBookmarks? bookmarks;
 
   /// Offered beside Retry when the key or the credits failed.
-  final VoidCallback? onOpenSettings;
+  final void Function(BuildContext context)? onOpenSettings;
 
   @override
   State<ChatView> createState() => _ChatViewState();
@@ -125,7 +125,6 @@ class _ChatViewState extends State<ChatView> {
                     // The same answer as "I don't know" on every question.
                     onPressed: () => c.answerQuiz(quiz.spec.skipAll()),
                     style: TextButton.styleFrom(
-                      foregroundColor: IunaPalette.ink2,
                       minimumSize: const Size(48, 48),
                     ),
                     child: const Text('Skip this check'),
@@ -251,7 +250,10 @@ class _ChatViewState extends State<ChatView> {
       out.add(_ErrorNote(
         text: error,
         onRetry: c.retry,
-        onOpenSettings: c.errorInSettings ? widget.onOpenSettings : null,
+        onOpenSettings: switch (widget.onOpenSettings) {
+          final open? when c.errorInSettings => () => open(context),
+          _ => null,
+        },
       ));
     }
     return out;
@@ -379,7 +381,7 @@ class _ToolChip extends StatelessWidget {
     final color = failed ? IunaPalette.raritySsrInk : IunaPalette.ink2;
     final onTap = this.onTap;
     final chip = Material(
-      color: failed ? const Color(0x1FF3A7B5) : const Color.fromRGBO(74, 53, 32, 0.05),
+      color: failed ? const Color(0x1FF3A7B5) : IunaPalette.heatmap0,
       shape: const StadiumBorder(),
       child: InkWell(
         customBorder: const StadiumBorder(),

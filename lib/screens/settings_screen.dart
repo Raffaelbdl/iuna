@@ -189,7 +189,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         'cards still show up.',
                       ),
                       value: _jlptOnly,
-                      activeTrackColor: IunaPalette.bellGold,
                       onChanged: _setJlptOnly,
                     ),
                     if (_packs.isNotEmpty)
@@ -451,7 +450,7 @@ class _DropdownBox extends StatelessWidget {
       decoration: BoxDecoration(
         color: IunaPalette.paper2,
         borderRadius: BorderRadius.circular(IunaRadii.sm),
-        border: Border.all(color: IunaPalette.ink.withValues(alpha: 0.12)),
+        border: Border.all(color: IunaPalette.outline),
       ),
       child: DropdownButtonHideUnderline(child: child),
     );

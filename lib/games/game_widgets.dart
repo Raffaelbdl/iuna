@@ -7,12 +7,13 @@ import '../widgets/cta_button.dart';
 import '../widgets/hex_bg.dart';
 import '../widgets/iuna_bottom_nav.dart';
 import '../widgets/iuna_icon_button.dart';
+import '../widgets/iuna_page.dart';
 import '../widgets/section_header.dart';
 import '../widgets/tappable.dart';
 import 'pairs.dart' show shortGloss;
 
-/// A games page: the background, a top bar with [leadingIcon] (it
-/// pops) and, while something can be skipped, [onSkip], and [body]
+/// A games page: the background, a top bar with a close (or [back])
+/// button and, while something can be skipped, [onSkip], and [body]
 /// under it.
 class GamePage extends StatelessWidget {
   const GamePage({
@@ -21,13 +22,13 @@ class GamePage extends StatelessWidget {
     required this.body,
     this.onSkip,
     this.skipLabel = 'Skip round',
-    this.leadingIcon = Icons.close_rounded,
+    this.back = false,
   });
 
   final String title;
 
-  /// Close for a game, back for the list of games.
-  final IconData leadingIcon;
+  /// Back for the list of games, where a game has Close.
+  final bool back;
   final Widget body;
   final VoidCallback? onSkip;
   final String skipLabel;
@@ -45,13 +46,13 @@ class GamePage extends StatelessWidget {
               child: Column(
                 children: [
                   IunaTopBar(
-                    leading: IunaIconButton(
-                      icon: leadingIcon,
-                      tooltip: leadingIcon == Icons.close_rounded
-                          ? 'Close game'
-                          : 'Back',
-                      onTap: () => Navigator.of(context).pop(),
-                    ),
+                    leading: back
+                        ? const IunaBackButton()
+                        : IunaIconButton(
+                            icon: Icons.close_rounded,
+                            tooltip: 'Close game',
+                            onTap: () => Navigator.of(context).pop(),
+                          ),
                     title: Text(
                       title,
                       style: IunaText.subtitle.copyWith(
@@ -108,21 +109,13 @@ class GameSummary extends StatelessWidget {
         Text(
           kicker,
           textAlign: TextAlign.center,
-          style: IunaText.caption.copyWith(
-            fontWeight: FontWeight.w500,
-            color: IunaPalette.ink3,
-            letterSpacing: 4,
-          ),
+          style: IunaText.kicker.copyWith(color: IunaPalette.ink3),
         ),
         const SizedBox(height: 6),
         Text(
           headline,
           textAlign: TextAlign.center,
-          style: IunaText.display.copyWith(
-            fontWeight: FontWeight.w600,
-            color: IunaPalette.ink,
-            height: 1.1,
-          ),
+          style: IunaText.banner.copyWith(color: IunaPalette.ink),
         ),
         const SizedBox(height: 22),
         Container(

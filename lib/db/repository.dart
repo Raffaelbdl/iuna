@@ -529,16 +529,17 @@ class IunaRepository with MetaTimestamps {
   /// for wishlisted, `false` for not). An owned card can only come
   /// off: packs never draw it, so wishing for it would promise nothing.
   Future<bool> toggleWishlist(int cardId, {DateTime? now}) async {
-    final wished = await isWished(cardId);
+    final (wished, owned) = await (
+      isWished(cardId),
+      (db.select(db.userCards)..where((u) => u.cardId.equals(cardId)))
+          .getSingleOrNull(),
+    ).wait;
     if (wished) {
       await (db.delete(db.wishlist)
             ..where((w) => w.cardId.equals(cardId)))
           .go();
       return false;
     }
-    final owned = await (db.select(db.userCards)
-          ..where((u) => u.cardId.equals(cardId)))
-        .getSingleOrNull();
     if (owned != null) return false;
     await db.into(db.wishlist).insert(
           WishlistCompanion.insert(
@@ -1137,13 +1138,17 @@ class IunaRepository with MetaTimestamps {
   /// so owned ones are left out. Filters stack: free-text
   /// [query] (kanji / kana / meaning, case-insensitive) AND a
   /// [rarities] set. Ordered by rarity desc then kanji asc so rarer
-  /// cards surface first.
+  /// cards surface first; with [wholeWordFirst], cards whose meaning
+  /// has [query] as a whole word ("cat", not "category") lead. At most
+  /// [limit] cards when given.
   Future<List<CollectionEntry>> ownedCards({
     String query = '',
     Set<Rarity> rarities = const {},
     bool includeUnowned = false,
     bool wishedOnly = false,
     bool suspendedOnly = false,
+    bool wholeWordFirst = false,
+    int? limit,
   }) async {
     // Wishlist mode wants the unowned wishlisted cards. Suspended
     // mode forces an inner join so we never widen to unowned
@@ -1181,9 +1186,17 @@ class IunaRepository with MetaTimestamps {
     }
 
     select.orderBy([
+      if (wholeWordFirst && trimmed.isNotEmpty)
+        OrderingTerm.desc(
+          db.cards.meaning.regexp(
+            '\\b${RegExp.escape(trimmed)}\\b',
+            caseSensitive: false,
+          ),
+        ),
       OrderingTerm.desc(db.cards.rarity),
       OrderingTerm.asc(db.cards.kanji),
     ]);
+    if (limit != null) select.limit(limit);
 
     final rows = await select.get();
     return rows

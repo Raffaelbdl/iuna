@@ -18,13 +18,12 @@ class TutorSettingsSection extends StatefulWidget {
   State<TutorSettingsSection> createState() => _TutorSettingsSectionState();
 }
 
-class _TutorSettingsSectionState extends State<TutorSettingsSection> {
+class _TutorSettingsSectionState extends State<TutorSettingsSection> with BusyGuard {
   LearnSettings get _settings => LearnSettings.instance;
 
   String? _key;
   String _model = kDefaultLearnModel;
   double _spent = 0;
-  bool _busy = false;
 
   @override
   void initState() {
@@ -80,18 +79,12 @@ class _TutorSettingsSectionState extends State<TutorSettingsSection> {
       return;
     }
     if (result.text.isEmpty) return;
-    setState(() => _busy = true);
-    final KeyCheck check;
-    try {
-      check = await checkOpenRouterKey(result.text);
+    final check = await whileBusy("Couldn't save the key.", () async {
+      final check = await checkOpenRouterKey(result.text);
       if (check is! KeyRejected) await _settings.setApiKey(result.text);
-    } catch (e) {
-      if (mounted) showErrorSnack(context, "Couldn't save the key.", e);
-      return;
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-    if (!mounted) return;
+      return check;
+    });
+    if (check == null || !mounted) return;
     if (check is KeyRejected) {
       showSnack(context, 'OpenRouter rejected that key');
       return;
@@ -133,7 +126,7 @@ class _TutorSettingsSectionState extends State<TutorSettingsSection> {
                 ? 'Not set. The Learn tab appears once a key is saved.'
                 : 'In the Android Keystore · ${LearnSettings.mask(_key!)}',
           ),
-          control: _busy
+          control: busy
               ? const SizedBox(
                   width: 20,
                   height: 20,

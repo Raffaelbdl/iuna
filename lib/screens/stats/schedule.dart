@@ -55,8 +55,7 @@ class _MaturityChart extends StatelessWidget {
           summary:
               'Cards by time until their next review: '
               '${[for (final b in bins) '${b.label}: ${b.count}'].join(', ')}.',
-          painter: (scaler) =>
-              _MaturityPainter(bins: bins, stages: stages, scaler: scaler),
+          painter: (scaler) => _MaturityPainter(bins: bins, scaler: scaler),
         ),
       ],
     );
@@ -64,13 +63,8 @@ class _MaturityChart extends StatelessWidget {
 }
 
 class _MaturityPainter extends CustomPainter {
-  _MaturityPainter({
-    required this.bins,
-    required this.stages,
-    required this.scaler,
-  });
+  _MaturityPainter({required this.bins, required this.scaler});
   final List<MaturityBin> bins;
-  final List<MemoryStage> stages;
   final TextScaler scaler;
 
   static Color _color(MemoryStage stage) => switch (stage) {
@@ -97,7 +91,7 @@ class _MaturityPainter extends CustomPainter {
     for (var i = 0; i < bins.length; i++) {
       final b = bins[i];
       final left = i * slot + (slot - bw) / 2;
-      final stage = stages[i];
+      final stage = MemoryStage.ofInterval(b.minMinutes);
       final h = (b.count / maxV) * chartH;
       final top = padT + chartH - h;
       if (b.count > 0) {
@@ -128,7 +122,7 @@ class _MaturityPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _MaturityPainter old) =>
-      old.bins != bins || old.stages != stages || old.scaler != scaler;
+      old.bins != bins || old.scaler != scaler;
 }
 
 // ─── Forecast (next 14 days) with summary ─────────────────────────────

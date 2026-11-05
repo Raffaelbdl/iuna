@@ -35,18 +35,16 @@ class CourseScreen extends StatefulWidget {
   State<CourseScreen> createState() => _CourseScreenState();
 }
 
-class _CourseScreenState extends State<CourseScreen> {
+class _CourseScreenState extends State<CourseScreen> with LoadGate {
   CourseRow? _course;
   List<ChapterRow> _chapters = const [];
-  bool _loading = true;
-  bool _failed = false;
   bool _leaving = false;
   StreamSubscription<int>? _changes;
 
   @override
   void initState() {
     super.initState();
-    _load().then((_) {
+    load().then((_) {
       if (widget.openRoomOnStart && mounted && _course != null) _openRoom();
     });
     _changes = widget.env.repo.changes
@@ -57,7 +55,7 @@ class _CourseScreenState extends State<CourseScreen> {
   /// Under a lesson the tutor writes at every step; [_open] reloads once
   /// it pops instead.
   void _loadIfShown() {
-    if (mounted && !_leaving && (ModalRoute.isCurrentOf(context) ?? true)) _load();
+    if (mounted && !_leaving && (ModalRoute.isCurrentOf(context) ?? true)) load();
   }
 
   @override
@@ -66,31 +64,23 @@ class _CourseScreenState extends State<CourseScreen> {
     super.dispose();
   }
 
-  Future<void> _load() async {
+  @override
+  Future<void> load() async {
     final repo = widget.env.repo;
-    try {
+    final loaded = await guardLoad('Course', () async {
       final course = await repo.course(widget.courseId);
-      final chapters = course == null ? const <ChapterRow>[] : await repo.chapters(widget.courseId);
-      if (!mounted) return;
-      if (course == null) {
-        _gone();
-        return;
-      }
-      setState(() {
-        _course = course;
-        _chapters = chapters;
-        _loading = false;
-        _failed = false;
-      });
-    } catch (e, s) {
-      logLoadError('Course', e, s);
-      if (mounted) {
-        setState(() {
-          _loading = false;
-          _failed = true;
-        });
-      }
+      return (course, course == null ? const <ChapterRow>[] : await repo.chapters(widget.courseId));
+    });
+    if (loaded == null || !mounted) return;
+    final (course, chapters) = loaded;
+    if (course == null) {
+      _gone();
+      return;
     }
+    showLoaded(() {
+      _course = course;
+      _chapters = chapters;
+    });
   }
 
   /// The course went away under us (a Drive restore, say).
@@ -101,14 +91,6 @@ class _CourseScreenState extends State<CourseScreen> {
     Navigator.of(context).pop();
   }
 
-  void _retry() {
-    setState(() {
-      _loading = true;
-      _failed = false;
-    });
-    _load();
-  }
-
   Future<void> _open(String? chapterKey) async {
     await Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => TutorChatScreen(
@@ -117,7 +99,7 @@ class _CourseScreenState extends State<CourseScreen> {
         chapterKey: chapterKey,
       ),
     ));
-    if (mounted) await _load();
+    if (mounted) await load();
   }
 
   void _openRoom() => _open(null);
@@ -241,10 +223,10 @@ class _CourseScreenState extends State<CourseScreen> {
                 PopupMenuItem(value: 'delete', child: Text('Delete course')),
               ],
             ),
-      body: _loading
+      body: loading
           ? const Center(child: CircularProgressIndicator())
-          : _failed || course == null
-          ? LoadErrorNotice(onRetry: _retry)
+          : failed || course == null
+          ? LoadErrorNotice(onRetry: retry)
           : ListView(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
               children: [

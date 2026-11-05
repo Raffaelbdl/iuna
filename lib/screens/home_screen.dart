@@ -15,13 +15,13 @@ import '../widgets/booster_pack.dart';
 import '../widgets/hex_bg.dart';
 import '../widgets/iuna_bottom_nav.dart';
 import '../widgets/iuna_icon_button.dart';
+import '../widgets/mini_card_scroller.dart';
 import '../widgets/notice.dart';
 import '../widgets/section_header.dart';
 import '../widgets/snack.dart';
 import '../widgets/tab_header.dart';
 import '../widgets/tappable.dart';
 import '../widgets/time_words.dart';
-import '../widgets/vocab_card.dart';
 import 'add_card_screen.dart';
 import 'card_detail_screen.dart';
 import 'app_nav.dart';
@@ -43,14 +43,9 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with LoadGate {
   late final IunaRepository _repo = IunaRepository(widget.db);
 
-  bool _loading = true;
-
-  /// The first load failed: nothing to show but a retry. A later
-  /// refresh that fails keeps what is on screen.
-  bool _failed = false;
   ({int packs, int newCards}) _booster = (packs: 0, newCards: 0);
   int _dueCount = 0;
   int _streak = 0;
@@ -58,7 +53,7 @@ class _HomeScreenState extends State<HomeScreen> {
   int _wishCount = 0;
   int _resetHour = 0;
   String? _drawFilter;
-  List<RecentLearned> _recent = const [];
+  List<CardRow> _recent = const [];
 
   /// Whether a Google account is signed in for Drive backup. The home
   /// screen only exposes pull-to-refresh in that state — signed-out
@@ -89,66 +84,47 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  /// Reloads in place; only the first load shows the spinner, so a
-  /// return from another screen doesn't swap the whole tree out.
-  Future<void> _refresh() async {
-    unawaited(refreshTodayCount(widget.db));
-    try {
-      final (
-        preview,
-        due,
-        streak,
-        stats,
-        wishCount,
-        recent,
-        resetHour,
-        drawFilter,
-      ) = await (
-        _repo.boosterPreview(),
-        _repo.dueCountToday(),
-        _repo.recordStreak(),
-        _repo.collectionStats(),
-        _repo.wishedCount(),
-        _repo.recentlyObtained(limit: 10),
-        _repo.getResetHour(),
-        _repo.drawFilterName(),
-      ).wait;
-      if (!mounted) return;
-      _drawFilter = drawFilter;
-      _show(preview, due, streak, stats, wishCount, recent, resetHour);
-    } catch (e, s) {
-      logLoadError('Home', e, s);
-      if (mounted && _loading) {
-        setState(() {
-          _loading = false;
-          _failed = true;
-        });
-      }
-    }
-  }
+  @override
+  Future<void> load() => _refresh();
 
-  void _show(
-    ({int packs, int newCards}) preview,
-    int due,
-    int streak,
-    CollectionStats stats,
-    int wishCount,
-    List<CollectionEntry> recent,
-    int resetHour,
-  ) {
-    setState(() {
-      _loading = false;
-      _failed = false;
+  /// Reloads in place; only the first load shows the spinner, so a
+  /// return from another screen doesn't swap the whole tree out. A
+  /// refresh that fails keeps what is on screen.
+  Future<void> _refresh() async {
+    final loaded = await guardLoad(
+      'Home',
+      () async {
+        final r = await (
+          _repo.boosterPreview(),
+          _repo.dueCountToday(),
+          _repo.recordStreak(),
+          _repo.collectionStats(),
+          _repo.wishedCount(),
+          _repo.recentlyObtained(limit: 10),
+          _repo.getResetHour(),
+        ).wait;
+        final preview = r.$1;
+        // Only named once the draw has run dry.
+        final drawFilter = preview.packs > 0 && preview.newCards == 0
+            ? await _repo.drawFilterName()
+            : null;
+        return (r, drawFilter);
+      },
+      keepShown: true,
+    );
+    if (loaded == null || !mounted) return;
+    final (counts, drawFilter) = loaded;
+    final (preview, due, streak, stats, wishCount, recent, resetHour) = counts;
+    publishTodayCount(widget.db, preview.newCards + due);
+    showLoaded(() {
       _booster = preview;
       _dueCount = due;
       _streak = streak;
       _learned = stats.owned;
       _wishCount = wishCount;
       _resetHour = resetHour;
-      _recent = [
-        for (final e in recent)
-          RecentLearned(card: e.card, level: e.userCard!.level),
-      ];
+      _drawFilter = drawFilter;
+      _recent = [for (final e in recent) e.card];
     });
   }
 
@@ -250,19 +226,7 @@ class _HomeScreenState extends State<HomeScreen> {
             const Positioned.fill(child: HexBg()),
             SafeArea(
               bottom: false,
-              child: _loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _failed
-                  ? LoadErrorNotice(
-                      onRetry: () {
-                        setState(() {
-                          _loading = true;
-                          _failed = false;
-                        });
-                        _refresh();
-                      },
-                    )
-                  : _buildContent(),
+              child: gated(_buildContent),
             ),
             Positioned(
               left: 0,
@@ -340,10 +304,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   )
                 else
-                  _RecentScroller(
-                    cards: _recent,
-                    onTap: (id) => _openCardDetail(id),
-                  ),
+                  MiniCardScroller(cards: _recent, onTap: _openCardDetail),
                 const SizedBox(height: 14),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
@@ -433,11 +394,7 @@ class _Greeting extends StatelessWidget {
         const SizedBox(height: 2),
         Text(
           returning ? 'Welcome back.' : 'Welcome.',
-          style: IunaText.display.copyWith(
-            fontWeight: FontWeight.w600,
-            height: 1.1,
-            color: IunaPalette.ink,
-          ),
+          style: IunaText.banner.copyWith(color: IunaPalette.ink),
         ),
       ],
     );
@@ -752,136 +709,6 @@ class _StreakStat extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           const _StatLabel('day streak'),
-        ],
-      ),
-    );
-  }
-}
-
-class RecentLearned {
-  const RecentLearned({required this.card, required this.level});
-  final CardRow card;
-  final int level;
-}
-
-class _RecentScroller extends StatelessWidget {
-  const _RecentScroller({required this.cards, required this.onTap});
-  final List<RecentLearned> cards;
-  final ValueChanged<int> onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    // A horizontal list needs a fixed height, so it grows with the
-    // text size instead of reading it from the cards.
-    final textGrowth =
-        (MediaQuery.textScalerOf(context).scale(100) / 100 - 1).clamp(0.0, 1.0);
-    final cardHeight = 150 + 64 * textGrowth;
-    return SizedBox(
-      height: cardHeight + 8,
-      child: Stack(
-        children: [
-          ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            itemCount: cards.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 10),
-            itemBuilder: (_, i) {
-              final c = cards[i].card;
-              return Tappable(
-                onTap: () => onTap(c.id),
-                child: SizedBox(
-                  width: 120,
-                  height: cardHeight,
-                  child: VocabCard(
-                    rarity: c.rarity,
-                    padding: const EdgeInsets.all(12),
-                    elevation: 0.6,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        RarityChip(
-                          rarity: c.rarity,
-                          size: RarityChipSize.compact,
-                        ),
-                        const Spacer(),
-                        FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text(
-                            c.kanji,
-                            textAlign: TextAlign.center,
-                            maxLines: 1,
-                            style: const TextStyle(
-                              fontSize: 30,
-                              fontWeight: FontWeight.w700,
-                              color: IunaPalette.ink,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          c.kana,
-                          textAlign: TextAlign.center,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: IunaText.caption.copyWith(
-                            color: IunaPalette.ink3,
-                          ),
-                        ),
-                        const Spacer(),
-                        Text(
-                          c.meaning,
-                          textAlign: TextAlign.center,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: IunaText.caption.copyWith(
-                            fontWeight: FontWeight.w500,
-                            color: IunaPalette.ink2,
-                            height: 1.2,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-          Positioned(
-            top: 0,
-            bottom: 0,
-            left: 0,
-            child: IgnorePointer(
-              child: Container(
-                width: 16,
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                    colors: [IunaPalette.bg, Color(0x00FBF3E2)],
-                    stops: [0.1, 1.0],
-                  ),
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            top: 0,
-            bottom: 0,
-            right: 0,
-            child: IgnorePointer(
-              child: Container(
-                width: 16,
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.centerRight,
-                    end: Alignment.centerLeft,
-                    colors: [IunaPalette.bg, Color(0x00FBF3E2)],
-                    stops: [0.1, 1.0],
-                  ),
-                ),
-              ),
-            ),
-          ),
         ],
       ),
     );

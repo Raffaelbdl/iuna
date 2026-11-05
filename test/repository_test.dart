@@ -629,6 +629,35 @@ void main() {
     expect(combined.map((e) => e.card.kanji).toList(), ['結界']);
   });
 
+  test('ownedCards puts a whole-word meaning first and caps at limit',
+      () async {
+    Future<void> card(String kanji, String meaning, Rarity r) =>
+        db.into(db.cards).insert(CardsCompanion.insert(
+              kanji: kanji,
+              kana: kanji,
+              meaning: meaning,
+              rarity: Value(r),
+            ));
+    await card('a', 'category', Rarity.ur);
+    await card('b', 'to educate', Rarity.ssr);
+    await card('c', 'cat; feline', Rarity.common);
+    await card('d', 'Cat (animal)', Rarity.rare);
+    await card('e', 'dog', Rarity.ur);
+
+    Future<List<String>> search({int? limit}) async => [
+          for (final e in await repo.ownedCards(
+            query: 'cat',
+            includeUnowned: true,
+            wholeWordFirst: true,
+            limit: limit,
+          ))
+            e.card.kanji,
+        ];
+    expect(await search(), ['d', 'c', 'a', 'b'],
+        reason: 'whole words first, each part rarer first');
+    expect(await search(limit: 3), ['d', 'c', 'a']);
+  });
+
   test('ownedCards includeUnowned: returns silhouettes for missing cards',
       () async {
     final ownedId = await _seedCard(db, '猫', 'ねこ', Rarity.common);
