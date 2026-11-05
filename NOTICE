@@ -30,8 +30,9 @@ JMdict
   (https://github.com/scriptin/jmdict-simplified).
 
 Example sentences — the Tatoeba Project
-  Japanese example sentences in the seed come from Tatoeba, through
-  JMdict's example index (JMdict_e_examp). CC-BY 2.0 France.
+  Japanese example sentences in the seed, and their English
+  translations, come from Tatoeba, through JMdict's example index
+  (JMdict_e_examp). CC-BY 2.0 France.
   https://tatoeba.org
   https://creativecommons.org/licenses/by/2.0/fr/
 

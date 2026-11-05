@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'db/database.dart';
+import 'db/example_english.dart';
 import 'learn/learn_settings.dart';
 import 'screens/home_screen.dart';
 import 'services/app_update.dart';
@@ -27,6 +28,8 @@ class _IunaAppState extends State<IunaApp> {
   void initState() {
     super.initState();
     LearnSettings.instance.load();
+    // Best effort, off the startup path: examples read fine without it.
+    backfillExampleEnglish(_db).catchError((Object _) {});
   }
 
   @override

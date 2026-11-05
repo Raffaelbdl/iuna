@@ -7,6 +7,7 @@ import '../db/database.dart';
 import '../db/repository.dart';
 import '../theme/iuna_theme.dart';
 import '../widgets/cta_button.dart';
+import '../widgets/example_line.dart';
 import '../widgets/hex_bg.dart';
 import '../widgets/iuna_icon_button.dart';
 import '../widgets/progress_dots.dart';
@@ -951,18 +952,7 @@ class _DetailsSheet extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          for (final ex in examples)
-                            Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 4),
-                              child: Text(
-                                '・${ex.sentence}',
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  color: IunaPalette.ink2,
-                                  height: 1.6,
-                                ),
-                              ),
-                            ),
+                          for (final ex in examples) ExampleLine(example: ex),
                         ],
                       ),
                     ),

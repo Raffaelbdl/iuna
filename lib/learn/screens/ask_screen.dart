@@ -5,14 +5,15 @@ import '../agent/bookmark_tool.dart';
 import '../agent/chat_controller.dart';
 import '../agent/chat_store.dart';
 import '../agent/tutor_prompt.dart';
+import '../deck.dart';
 import '../learn.dart';
 import '../photo/photo.dart';
 import '../voice/dictation.dart';
 import '../widgets/chat_view.dart';
 import '../words/tutor_words.dart';
 
-/// A question from the Learn hub's chat bar. Kept in memory only, so every
-/// question starts a fresh chat.
+/// A question from the Learn hub's chat bar, or from a card's. Kept in
+/// memory only, so every question starts a fresh chat.
 class AskScreen extends StatefulWidget {
   const AskScreen({
     super.key,
@@ -20,6 +21,7 @@ class AskScreen extends StatefulWidget {
     this.question,
     this.photo,
     this.voice,
+    this.card,
   }) : assert(
           voice == null
               ? (question != null || photo != null)
@@ -38,6 +40,9 @@ class AskScreen extends StatefulWidget {
   /// …or held-to-speak on the hub, transcribed here first.
   final VoiceClip? voice;
 
+  /// The card it was asked from, when it was.
+  final FocusCard? card;
+
   @override
   State<AskScreen> createState() => _AskScreenState();
 }
@@ -51,6 +56,7 @@ class _AskScreenState extends State<AskScreen> {
       preferences: await widget.env.repo.preferences(),
       today: DateTime.now(),
       wordLookup: await TutorWords.instance.available(),
+      card: widget.card,
     ),
     tools: [
       if (widget.env.bookmarks case final bookmarks?) BookmarkWordsTool(bookmarks),

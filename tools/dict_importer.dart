@@ -72,6 +72,7 @@ class JmdictEntry {
     required this.senses,
     required this.priorityTags,
     required this.exampleSentences,
+    this.exampleEnglish = const {},
     this.isCommon = false,
   });
 
@@ -89,6 +90,9 @@ class JmdictEntry {
   /// Japanese example sentences pulled from `<example>` /
   /// `<ex_sent xml:lang="jpn">`. Capped by the caller, not here.
   final List<String> exampleSentences;
+
+  /// Tatoeba's English for those sentences, keyed by the Japanese.
+  final Map<String, String> exampleEnglish;
 
   /// scriptin/jmdict-simplified collapses every `<ke_pri>`/`<re_pri>`
   /// signal into a single `common` flag per kanji/kana element. We OR
@@ -158,12 +162,30 @@ class _PreserveEntityMapping extends XmlDefaultEntityMapping {
   }
 }
 
+/// One `<example>`: its Japanese sentence, and the English beside it
+/// when there is one.
+void _addExample(
+  List<String> examples,
+  Map<String, String> english,
+  List<(String lang, String text)> sentences,
+) {
+  String? pick(String lang) => sentences
+      .where((s) => s.$1 == lang && s.$2.trim().isNotEmpty)
+      .map((s) => s.$2.trim())
+      .firstOrNull;
+  final ja = pick('jpn');
+  if (ja == null) return;
+  examples.add(ja);
+  if (pick('eng') case final en?) english[ja] = en;
+}
+
 JmdictEntry? _buildEntry(XmlElement entry) {
   String? kanji;
   String? kana;
   final priority = <String>{};
   final senses = <JmdictSense>[];
   final examples = <String>[];
+  final english = <String, String>{};
 
   for (final kEle in entry.findElements('k_ele')) {
     kanji ??= kEle.getElement('keb')?.innerText;
@@ -211,12 +233,10 @@ JmdictEntry? _buildEntry(XmlElement entry) {
     ));
 
     for (final ex in sense.findElements('example')) {
-      for (final s in ex.findElements('ex_sent')) {
-        final lang = s.getAttribute('xml:lang') ?? 'eng';
-        if (lang != 'jpn') continue;
-        final text = s.innerText.trim();
-        if (text.isNotEmpty) examples.add(text);
-      }
+      _addExample(examples, english, [
+        for (final s in ex.findElements('ex_sent'))
+          (s.getAttribute('xml:lang') ?? 'eng', s.innerText),
+      ]);
     }
   }
 
@@ -228,6 +248,7 @@ JmdictEntry? _buildEntry(XmlElement entry) {
     senses: senses,
     priorityTags: priority,
     exampleSentences: examples,
+    exampleEnglish: english,
     isCommon: priority.isNotEmpty,
   );
 }
@@ -284,6 +305,7 @@ JmdictEntry? _buildJsonEntry(Map<String, dynamic> w) {
 
   final senses = <JmdictSense>[];
   final examples = <String>[];
+  final english = <String, String>{};
   final senseList = (w['sense'] as List).cast<Map<String, dynamic>>();
   for (final s in senseList) {
     final glosses = <String>[
@@ -314,12 +336,11 @@ JmdictEntry? _buildJsonEntry(Map<String, dynamic> w) {
 
     for (final ex in (s['examples'] as List? ?? const [])
         .cast<Map<String, dynamic>>()) {
-      for (final sent
-          in (ex['sentences'] as List).cast<Map<String, dynamic>>()) {
-        if ((sent['lang'] ?? 'eng') != 'jpn') continue;
-        final text = (sent['text'] as String).trim();
-        if (text.isNotEmpty) examples.add(text);
-      }
+      _addExample(examples, english, [
+        for (final sent
+            in (ex['sentences'] as List).cast<Map<String, dynamic>>())
+          ((sent['lang'] as String?) ?? 'eng', sent['text'] as String),
+      ]);
     }
   }
 
@@ -331,6 +352,7 @@ JmdictEntry? _buildJsonEntry(Map<String, dynamic> w) {
     senses: senses,
     priorityTags: const <String>{},
     exampleSentences: examples,
+    exampleEnglish: english,
     isCommon: isCommon,
   );
 }
@@ -487,7 +509,8 @@ Future<ImportStats> importInto(
     VALUES (?, ?, ?, ?, ?)
   ''');
   final insertExample = db.prepare('''
-    INSERT INTO examples (sentence, source_title) VALUES (?, NULL)
+    INSERT INTO examples (sentence, translation, source_title)
+    VALUES (?, ?, NULL)
   ''');
   final linkExample = db.prepare('''
     INSERT OR IGNORE INTO card_examples (card_id, example_id) VALUES (?, ?)
@@ -549,7 +572,7 @@ Future<ImportStats> importInto(
       for (final sentence in capped) {
         var exId = exampleIds[sentence];
         if (exId == null) {
-          insertExample.execute([sentence]);
+          insertExample.execute([sentence, entry.exampleEnglish[sentence]]);
           exId = db.lastInsertRowId;
           exampleIds[sentence] = exId;
         }

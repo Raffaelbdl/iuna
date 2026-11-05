@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:iuna/learn/agent/tutor_prompt.dart';
 import 'package:iuna/learn/db/learn_database.dart';
 import 'package:iuna/learn/db/learn_repository.dart';
+import 'package:iuna/learn/deck.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -86,6 +87,42 @@ void main() {
     expect(prompt, contains('```choices'), reason: 'the multiple-choice contract');
     expect(prompt, isNot(contains('course_plan')));
     expect(prompt, contains("# The learner's cards"), reason: 'Ask can bookmark too');
+  });
+
+  test('an Ask chat opened from a card knows the card and where it stands', () async {
+    final assets = await TutorAssets.load();
+    String ask(FocusCard? card) => buildAskPrompt(
+          assets,
+          courses: const [],
+          preferences: '',
+          today: DateTime(2026, 9, 10),
+          wordLookup: true,
+          card: card,
+        );
+
+    expect(ask(null), isNot(contains('## The card they asked from')));
+
+    final owned = ask(const FocusCard(
+      kanji: '勉強',
+      kana: 'べんきょう',
+      senses: ['(n, vs) study', '(n) diligence'],
+      jlptLevel: 5,
+      level: 3,
+      failCount: 4,
+    ));
+    expect(owned, contains('the card for 勉強（べんきょう）'));
+    expect(owned, contains('- Card: in their collection, review level 3, failed 4 times'));
+    expect(owned, contains('- JLPT: N5'));
+    expect(owned, contains('  1. (n, vs) study\n  2. (n) diligence'));
+    expect(owned, contains('a hook to remember it by'));
+    expect(owned.indexOf('## The card they asked from'), greaterThan(owned.indexOf('# Context')),
+        reason: 'the static part stays a cacheable prefix');
+
+    final kana = ask(const FocusCard(kanji: 'ここ', kana: 'ここ', senses: ['here'], wished: true));
+    expect(kana, contains('the card for ここ,'));
+    expect(kana, contains('- Card: bookmarked, not drawn yet'));
+    expect(kana, contains('- JLPT: unlisted'));
+    expect(kana, isNot(contains('a hook to remember it by')));
   });
 
   test('readings go in parentheses only when there is no dictionary to tap', () async {

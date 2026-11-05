@@ -120,6 +120,7 @@ void main() {
     expect(arigatou.kana, 'ありがとう');
     expect(arigatou.senses.first.misc, ['uk']);
     expect(arigatou.exampleSentences, ['本当にありがとう。']);
+    expect(arigatou.exampleEnglish, {'本当にありがとう。': 'Thank you very much.'});
   });
 
   test('rarityFor honours priority precedence', () {
@@ -221,6 +222,8 @@ void main() {
       expect(arigatou.rarity, iuna.Rarity.superRare);
       final examples = await repo.examplesForCard(arigatou.id);
       expect(examples.map((e) => e.sentence).toList(), ['本当にありがとう。']);
+      expect(examples.single.translation, 'Thank you very much.');
+      expect(examples.single.generated, isFalse);
     },
   );
 }

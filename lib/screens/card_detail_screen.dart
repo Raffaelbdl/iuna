@@ -3,21 +3,37 @@ import 'package:intl/intl.dart';
 
 import '../db/database.dart';
 import '../db/repository.dart';
+import '../learn/agent/example_writer.dart';
+import '../learn/deck.dart';
+import '../learn/learn.dart';
+import '../learn/learn_settings.dart';
+import '../learn/widgets/ask_bar.dart';
 import '../services/tts.dart';
 import '../theme/iuna_theme.dart';
+import '../widgets/example_line.dart';
 import '../widgets/hex_bg.dart';
 import '../widgets/iuna_bottom_nav.dart';
 import '../widgets/iuna_icon_button.dart';
 import '../widgets/section_header.dart';
 import '../widgets/sense_row.dart';
+import '../widgets/snack.dart';
 import '../widgets/vocab_card.dart';
 import 'app_nav.dart';
 
 class CardDetailScreen extends StatefulWidget {
-  const CardDetailScreen({super.key, required this.db, required this.cardId});
+  const CardDetailScreen({
+    super.key,
+    required this.db,
+    required this.cardId,
+    this.learn,
+  });
 
   final AppDatabase db;
   final int cardId;
+
+  /// The tutor behind the card's chat bar, which shows only while
+  /// [LearnSettings.available]; tests pass their own.
+  final LearnEnv? learn;
 
   @override
   State<CardDetailScreen> createState() => _CardDetailScreenState();
@@ -32,6 +48,13 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
   List<CardSenseRow> _senses = const [];
   List<ExampleRow> _examples = const [];
   bool _wished = false;
+
+  late final LearnEnv _learn = widget.learn ?? LearnEnv.live(widget.db);
+
+  /// What Kuma-sensei is doing for this card, if anything. Writing shows
+  /// only on a card without examples and translating only on one with
+  /// some, so one at a time is all there is.
+  _TutorJob? _job;
 
   @override
   void initState() {
@@ -110,6 +133,93 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
     );
   }
 
+  /// Runs [work] for the card and reloads it; the result is saved even
+  /// if the learner left meanwhile.
+  Future<void> _runTutor(_TutorJob job, Future<void> Function(FocusCard card) work) async {
+    final card = _card;
+    if (card == null || _job != null) return;
+    setState(() => _job = job);
+    try {
+      await work(_focusCard(card));
+      if (mounted) await _load();
+    } on ExampleWriterError catch (e) {
+      if (mounted) showSnack(context, e.message);
+    } finally {
+      if (mounted) setState(() => _job = null);
+    }
+  }
+
+  void _writeExamples() => _runTutor(_TutorJob.write, (card) async {
+        await _repo.addGeneratedExamples(widget.cardId, await _learn.writeExamples(card));
+      });
+
+  void _translateExamples() => _runTutor(_TutorJob.translate, (card) async {
+        final missing = [for (final e in _examples) if (e.translation == null) e];
+        final english = await _learn.translateExamples(card, [for (final e in missing) e.sentence]);
+        await _repo.addExampleTranslations({
+          for (final (i, e) in missing.indexed) e.id: ?english[i],
+        });
+      });
+
+  Future<void> _clearExamples() async {
+    final removed = await _repo.clearGeneratedExamples(widget.cardId);
+    await _load();
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        duration: const Duration(seconds: 4),
+        content: const Text("Cleared Kuma-sensei's examples"),
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () async {
+            await _repo.addGeneratedExamples(widget.cardId, removed);
+            await _load();
+          },
+        ),
+      ),
+    );
+  }
+
+  FocusCard _focusCard(CardRow card) =>
+      FocusCard.fromDeck(card, _senses, userCard: _userCard, wished: _wished);
+
+  Widget _examplesButton({bool round = false}) {
+    final writing = _job == _TutorJob.write;
+    return AskBarButton(
+        icon: Icons.auto_awesome_rounded,
+        label: round ? null : (writing ? 'Writing examples…' : 'Give me examples'),
+        tooltip: round ? 'Give me examples' : null,
+        busy: writing,
+        onTap: _writeExamples,
+      );
+  }
+
+  /// On a card without examples, two buttons until Kuma teach opens the
+  /// chat bar; on one with examples, the plain chat bar.
+  Widget _askBar(CardRow card, Widget nav) {
+    final missing = _examples.isEmpty;
+    return AskBar(
+      env: _learn,
+      hint: missing ? 'Ask about ${card.kanji}…' : 'Ask Kuma-sensei about ${card.kanji}…',
+      nav: nav,
+      card: () => _focusCard(card),
+      // The tutor may have bookmarked this very card.
+      onReturn: _load,
+      leading: missing ? _examplesButton(round: true) : null,
+      folded: missing
+          ? (open) => Row(
+                children: [
+                  Expanded(child: _examplesButton()),
+                  const SizedBox(width: 8),
+                  AskBarButton(icon: Icons.school_rounded, label: 'Kuma teach', onTap: open),
+                ],
+              )
+          : null,
+    );
+  }
+
   void _onSpeakerTap() {
     final card = _card;
     if (card == null) return;
@@ -124,6 +234,20 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
   /// 4. snackbar otherwise.
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: LearnSettings.instance.available,
+      builder: (context, tutor, _) => _buildPage(context, tutor: tutor && _card != null),
+    );
+  }
+
+  Widget _buildPage(BuildContext context, {required bool tutor}) {
+    final nav = AppBottomNav(
+      db: widget.db,
+      // Detail is reached from Collection, so the Collection tab stays
+      // highlighted.
+      active: IunaNavTab.collection,
+      atTabRoot: false,
+    );
     return Scaffold(
       backgroundColor: IunaPalette.bg,
       body: DecoratedBox(
@@ -142,25 +266,19 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
                         style: TextStyle(color: IunaPalette.ink3),
                       ),
                     )
-                  : _buildBody(_card!),
-            ),
-            const Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: IgnorePointer(child: IunaNavFade()),
+                  : _buildBody(_card!, tutor: tutor),
             ),
             Positioned(
               left: 0,
               right: 0,
               bottom: 0,
-              child: AppBottomNav(
-                db: widget.db,
-                // Detail is reached from Collection, so the Collection
-                // tab stays highlighted.
-                active: IunaNavTab.collection,
-                atTabRoot: false,
-              ),
+              child: IgnorePointer(child: IunaNavFade(height: tutor ? AskBar.inset : 120)),
+            ),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: tutor ? _askBar(_card!, nav) : nav,
             ),
           ],
         ),
@@ -168,7 +286,8 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
     );
   }
 
-  Widget _buildBody(CardRow card) {
+  Widget _buildBody(CardRow card, {required bool tutor}) {
+    final untranslated = tutor && _examples.any((e) => e.translation == null);
     return Column(
       children: [
         _TopBar(
@@ -178,7 +297,7 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
         ),
         Expanded(
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(0, 4, 0, 110),
+            padding: EdgeInsets.fromLTRB(0, 4, 0, tutor ? AskBar.inset : 110),
             children: [
               _Hero(card: card, onSpeak: _onSpeakerTap),
               const SizedBox(height: 14),
@@ -206,27 +325,42 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
                         ],
                       ),
               ),
-              if (_examples.isNotEmpty) ...[
+              if (_examples.isNotEmpty || _job == _TutorJob.write) ...[
                 const SizedBox(height: 14),
                 _Section(
                   title: 'Examples',
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      for (final ex in _examples)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 4),
-                          child: Text(
-                            '・${ex.sentence}',
-                            style: const TextStyle(
-                              fontSize: 14,
-                              color: IunaPalette.ink2,
-                              height: 1.6,
-                            ),
-                          ),
+                      if (untranslated)
+                        _PanelAction(
+                          label: _job == _TutorJob.translate ? 'Translating…' : 'Translate',
+                          onPressed: _job == null ? _translateExamples : null,
                         ),
+                      if (_examples.any((e) => e.generated))
+                        _PanelAction(label: 'Clear', onPressed: _clearExamples),
                     ],
                   ),
+                  child: _examples.isEmpty
+                      ? const Row(
+                          children: [
+                            SizedBox.square(
+                              dimension: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                            SizedBox(width: 10),
+                            Text(
+                              'Kuma-sensei is writing some…',
+                              style: TextStyle(fontSize: 13, color: IunaPalette.ink3),
+                            ),
+                          ],
+                        )
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            for (final ex in _examples) ExampleLine(example: ex),
+                          ],
+                        ),
                 ),
               ],
               if (_userCard != null) ...[
@@ -481,9 +615,10 @@ class _BasicChip extends StatelessWidget {
 }
 
 class _Section extends StatelessWidget {
-  const _Section({required this.title, required this.child});
+  const _Section({required this.title, required this.child, this.trailing});
   final String title;
   final Widget child;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -497,7 +632,10 @@ class _Section extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            IunaEyebrow(title),
+            if (trailing == null)
+              IunaEyebrow(title)
+            else
+              Row(children: [Expanded(child: IunaEyebrow(title)), trailing!]),
             const SizedBox(height: 8),
             child,
           ],
@@ -591,3 +729,22 @@ class _SuspendRow extends StatelessWidget {
     );
   }
 }
+
+class _PanelAction extends StatelessWidget {
+  const _PanelAction({required this.label, required this.onPressed});
+  final String label;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) => TextButton(
+        onPressed: onPressed,
+        style: TextButton.styleFrom(
+          foregroundColor: IunaPalette.ink3,
+          visualDensity: VisualDensity.compact,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        child: Text(label, style: const TextStyle(fontSize: 12)),
+      );
+}
+
+enum _TutorJob { write, translate }

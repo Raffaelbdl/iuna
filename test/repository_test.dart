@@ -543,6 +543,33 @@ void main() {
     expect(senses.first.pos, 'v5r,vt');
   });
 
+  test("clearing Kuma-sensei's examples leaves the dictionary's and other cards' alone",
+      () async {
+    final iku = await _seedCard(db, '行く', 'いく', Rarity.common);
+    final kuru = await _seedCard(db, '来る', 'くる', Rarity.common);
+    // One dictionary sentence shared by both cards, as the seed links them.
+    final shared = await db.into(db.examples).insert(ExamplesCompanion.insert(sentence: '行ったり来たり。'));
+    for (final card in [iku, kuru]) {
+      await db.into(db.cardExamples).insert(CardExamplesCompanion.insert(cardId: card, exampleId: shared));
+    }
+    await repo.addGeneratedExamples(iku, [
+      (sentence: '駅に行く。', translation: 'I go to the station.'),
+      (sentence: '行こう。', translation: "Let's go."),
+    ]);
+    await repo.addGeneratedExamples(kuru, [(sentence: '友達が来る。', translation: 'A friend is coming.')]);
+
+    expect([for (final e in await repo.examplesForCard(iku)) e.sentence], ['行ったり来たり。', '駅に行く。', '行こう。']);
+
+    final removed = await repo.clearGeneratedExamples(iku);
+    expect(removed, [
+      (sentence: '駅に行く。', translation: 'I go to the station.'),
+      (sentence: '行こう。', translation: "Let's go."),
+    ]);
+    expect([for (final e in await repo.examplesForCard(iku)) e.sentence], ['行ったり来たり。']);
+    expect([for (final e in await repo.examplesForCard(kuru)) e.sentence], ['行ったり来たり。', '友達が来る。']);
+    expect(await db.select(db.examples).get(), hasLength(2), reason: 'cleared rows are gone, not orphaned');
+  });
+
   test('ownedCards returns only cards with a user_card row', () async {
     final ownedId = await _seedCard(db, 'k1', 'kana1', Rarity.common);
     await _seedCard(db, 'k2', 'kana2', Rarity.common); // unowned

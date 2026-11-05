@@ -11,9 +11,7 @@ import '../../widgets/kuma_mascot.dart';
 import '../../widgets/section_header.dart';
 import '../db/learn_repository.dart';
 import '../learn.dart';
-import '../photo/photo.dart';
-import '../widgets/chat_composer.dart';
-import 'ask_screen.dart';
+import '../widgets/ask_bar.dart';
 import 'course_screen.dart';
 import 'learn_widgets.dart';
 import 'new_course_sheet.dart';
@@ -38,8 +36,6 @@ class LearnScreen extends StatefulWidget {
 
 class _LearnScreenState extends State<LearnScreen> {
   late final LearnEnv _env = widget.env ?? LearnEnv.live(widget.db);
-  final _question = TextEditingController();
-  Photo? _photo;
   List<CourseSummary> _courses = const [];
   bool _loading = true;
   StreamSubscription<int>? _changes;
@@ -60,7 +56,6 @@ class _LearnScreenState extends State<LearnScreen> {
   @override
   void dispose() {
     _changes?.cancel();
-    _question.dispose();
     super.dispose();
   }
 
@@ -71,26 +66,6 @@ class _LearnScreenState extends State<LearnScreen> {
       _courses = courses;
       _loading = false;
     });
-  }
-
-  /// Each question opens its own Ask chat, so every one starts fresh.
-  void _ask() {
-    final question = _question.text.trim();
-    final photo = _photo;
-    if (question.isEmpty && photo == null) return;
-    _question.clear();
-    setState(() => _photo = null);
-    _openAsk(AskScreen(
-      env: _env,
-      question: question.isEmpty ? null : question,
-      photo: photo,
-    ));
-  }
-
-  void _openAsk(AskScreen ask) {
-    // Or the bar takes focus back on return, and the keyboard with it.
-    FocusScope.of(context).unfocus();
-    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ask));
   }
 
   Future<void> _openCourse(int id, {bool openRoom = false}) async {
@@ -108,9 +83,6 @@ class _LearnScreenState extends State<LearnScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Asked above the Scaffold: its body only sees the keyboard as a
-    // shorter box.
-    final typing = MediaQuery.viewInsetsOf(context).bottom > 0;
     return Scaffold(
       backgroundColor: IunaPalette.bg,
       body: DecoratedBox(
@@ -123,7 +95,7 @@ class _LearnScreenState extends State<LearnScreen> {
               child: _loading
                   ? const Center(child: CircularProgressIndicator())
                   : ListView(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 190),
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, AskBar.inset),
                       children: [
                         _Header(kumaSeed: widget.kumaSeed),
                         IunaSectionHeader(
@@ -165,33 +137,16 @@ class _LearnScreenState extends State<LearnScreen> {
               left: 0,
               right: 0,
               bottom: 0,
-              child: IgnorePointer(child: IunaNavFade(height: 190)),
+              child: IgnorePointer(child: IunaNavFade(height: AskBar.inset)),
             ),
             Positioned(
               left: 0,
               right: 0,
               bottom: 0,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-                    child: ChatComposer(
-                      controller: _question,
-                      hint: 'Ask Kuma-sensei anything…',
-                      onSend: _ask,
-                      recorder: _env.dictation?.recorder,
-                      onVoice: (clip) => _openAsk(AskScreen(env: _env, voice: clip)),
-                      picker: _env.photos,
-                      photo: _photo,
-                      onPhoto: _env.photos == null
-                          ? null
-                          : (photo) => setState(() => _photo = photo),
-                    ),
-                  ),
-                  // While typing, the bar sits right on the keyboard.
-                  if (!typing) AppBottomNav(db: widget.db, active: IunaNavTab.learn),
-                ],
+              child: AskBar(
+                env: _env,
+                hint: 'Ask Kuma-sensei anything…',
+                nav: AppBottomNav(db: widget.db, active: IunaNavTab.learn),
               ),
             ),
           ],

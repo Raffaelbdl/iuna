@@ -127,7 +127,12 @@ Future<void> _seedInstalledPack(AppDatabase db, {required int cards}) {
 /// so the detail screen has every panel populated. With
 /// `owned: false` we skip the user_cards row to capture the
 /// dictionary-style detail view (no stats panel).
-Future<int> _seedDetailCard(AppDatabase db, {bool owned = true}) async {
+Future<int> _seedDetailCard(
+  AppDatabase db, {
+  bool owned = true,
+  bool examples = true,
+  bool english = true,
+}) async {
   final cardId = await db
       .into(db.cards)
       .insert(
@@ -171,10 +176,18 @@ Future<int> _seedDetailCard(AppDatabase db, {bool owned = true}) async {
           ),
         );
   }
-  for (final sentence in const ['明日学校へ行く。', '会議は順調に行く。']) {
+  for (final (sentence, translation) in examples
+      ? const [
+          ('明日学校へ行く。', "I'll go to school tomorrow."),
+          ('会議は順調に行く。', 'The meeting is going smoothly.'),
+        ]
+      : const <(String, String)>[]) {
     final exId = await db
         .into(db.examples)
-        .insert(ExamplesCompanion.insert(sentence: sentence));
+        .insert(ExamplesCompanion.insert(
+          sentence: sentence,
+          translation: Value(english ? translation : null),
+        ));
     await db
         .into(db.cardExamples)
         .insert(CardExamplesCompanion.insert(cardId: cardId, exampleId: exId));
@@ -887,6 +900,74 @@ void main() {
       tester,
       'card_detail_unowned',
       CardDetailScreen(db: db, cardId: cardId),
+      logical: const Size(360, 900),
+      settle: const Duration(milliseconds: 500),
+    );
+  });
+
+  Future<(LearnEnv, AppDatabase, int)> tutorCard({bool examples = false}) async {
+    await _withLearnSettings(apiKey: 'sk-or-v1-golden');
+    final (env, deckDb, learnDb) = await _learnEnv(FakeLlm([]));
+    addTearDown(deckDb.close);
+    addTearDown(learnDb.close);
+    return (env, deckDb, await _seedDetailCard(deckDb, examples: examples, english: false));
+  }
+
+  testWidgets('card detail — examples without English offer Translate', (tester) async {
+    final (env, deckDb, cardId) = await tutorCard(examples: true);
+    await _shoot(
+      tester,
+      'card_detail_translate',
+      CardDetailScreen(db: deckDb, cardId: cardId, learn: env),
+      logical: const Size(360, 900),
+      settle: const Duration(milliseconds: 500),
+      act: () async {
+        await tester.drag(find.byType(ListView).first, const Offset(0, -500));
+        await tester.pump(const Duration(milliseconds: 300));
+      },
+    );
+  });
+
+  testWidgets('card detail — tutor on, no examples yet: two buttons', (tester) async {
+    final (env, deckDb, cardId) = await tutorCard();
+    await _shoot(
+      tester,
+      'card_detail_tutor',
+      CardDetailScreen(db: deckDb, cardId: cardId, learn: env),
+      logical: const Size(360, 900),
+      settle: const Duration(milliseconds: 500),
+    );
+  });
+
+  testWidgets('card detail — Kuma teach opens the chat bar', (tester) async {
+    final (env, deckDb, cardId) = await tutorCard();
+    await _shoot(
+      tester,
+      'card_detail_tutor_open',
+      CardDetailScreen(db: deckDb, cardId: cardId, learn: env),
+      logical: const Size(360, 900),
+      settle: const Duration(milliseconds: 500),
+      act: () async {
+        await tester.tap(find.text('Kuma teach'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+      },
+    );
+  });
+
+  testWidgets("card detail — Kuma-sensei's examples, then the plain chat bar", (
+    tester,
+  ) async {
+    final (env, deckDb, cardId) = await tutorCard();
+    await IunaRepository(deckDb).addGeneratedExamples(cardId, const [
+      (sentence: '駅まで歩いて行く。', translation: 'I walk to the station.'),
+      (sentence: '話し合いはうまく行った。', translation: 'The talks went well.'),
+      (sentence: '日本語がだんだん分かって行く。', translation: 'I understand Japanese more and more.'),
+    ]);
+    await _shoot(
+      tester,
+      'card_detail_kuma_examples',
+      CardDetailScreen(db: deckDb, cardId: cardId, learn: env),
       logical: const Size(360, 900),
       settle: const Duration(milliseconds: 500),
     );

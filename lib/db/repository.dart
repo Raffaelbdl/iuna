@@ -28,6 +28,10 @@ class MetaKeys {
   /// (or absent) means "draw from everything". Deliberately not a
   /// boolean — more packs will ship alongside `science`.
   static const boosterPackFilter = 'booster_pack_filter';
+
+  /// Which round of the seed's example English the deck has taken in
+  /// (`example_english.dart`).
+  static const exampleEnglish = 'example_english';
 }
 
 /// What applying a pack changed. [tagged] counts headwords the deck
@@ -241,6 +245,9 @@ class _LogicalDay {
         for (var i = count - 1; i >= 0; i--) shiftDayKey(key, -i),
       ];
 }
+
+/// An example sentence and its English, as Kuma-sensei writes them.
+typedef ExampleText = ({String sentence, String translation});
 
 class IunaRepository with MetaTimestamps {
   IunaRepository(this.db, {Random? random}) : _random = random ?? Random();
@@ -1273,8 +1280,50 @@ class IunaRepository with MetaTimestamps {
         db.cardExamples,
         db.cardExamples.exampleId.equalsExp(db.examples.id),
       ),
-    ])..where(db.cardExamples.cardId.equals(cardId));
+    ])
+      ..where(db.cardExamples.cardId.equals(cardId))
+      ..orderBy([OrderingTerm.asc(db.examples.id)]);
     final rows = await query.get();
     return rows.map((r) => r.readTable(db.examples)).toList();
   }
+
+  /// Links Kuma-sensei's sentences to [cardId] only; each is its own
+  /// row, so clearing them never reaches another card.
+  Future<void> addGeneratedExamples(int cardId, List<ExampleText> examples) =>
+      db.transaction(() async {
+        for (final e in examples) {
+          final id = await db.into(db.examples).insert(ExamplesCompanion.insert(
+                sentence: e.sentence,
+                translation: Value(e.translation.isEmpty ? null : e.translation),
+                generated: const Value(true),
+              ));
+          await db
+              .into(db.cardExamples)
+              .insert(CardExamplesCompanion.insert(cardId: cardId, exampleId: id));
+        }
+      });
+
+  /// Fills English the examples don't have yet, by example id; English
+  /// already there is kept.
+  Future<void> addExampleTranslations(Map<int, String> english) => db.batch((b) {
+        for (final MapEntry(key: id, value: en) in english.entries) {
+          b.update(db.examples, ExamplesCompanion(translation: Value(en)),
+              where: (e) => e.id.equals(id) & e.translation.isNull());
+        }
+      });
+
+  /// Removes what [addGeneratedExamples] put on [cardId], and returns it
+  /// so an undo can put it back.
+  Future<List<ExampleText>> clearGeneratedExamples(int cardId) =>
+      db.transaction(() async {
+        final mine = [
+          for (final e in await examplesForCard(cardId))
+            if (e.generated) e,
+        ];
+        await (db.delete(db.examples)..where((e) => e.id.isIn([for (final e in mine) e.id])))
+            .go();
+        return [
+          for (final e in mine) (sentence: e.sentence, translation: e.translation ?? ''),
+        ];
+      });
 }
