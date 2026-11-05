@@ -2,35 +2,15 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart' show Icons;
 
+import '../../core/japanese_text.dart';
+import '../deck.dart';
 import 'tools.dart';
 
 const int kMaxBookmarkWords = 20;
 
-/// What bookmarking one word did.
-enum BookmarkOutcome {
-  bookmarked('bookmarked'),
-  alreadyBookmarked('already bookmarked'),
-  owned('already in their collection — left alone'),
-  notFound('not found — check the written form and the reading'),
-  noDictionary('not in the built-in deck, and the full dictionary is not '
-      'downloaded (Settings → Dictionary)');
-
-  const BookmarkOutcome(this.wire);
-
-  /// How the tool result reports it to the model.
-  final String wire;
-}
-
-/// The learner's card deck, as far as the tutor may touch it.
-abstract interface class WordBookmarks {
-  /// Bookmarks `(word, reading)` unless the learner already owns it.
-  Future<BookmarkOutcome> bookmark(String word, String reading);
-}
-
 /// `会議（かいぎ）`: how the tutor writes a word in chat, so it may pass
 /// one that way too.
 final _withReading = RegExp(r'^(.+?)\s*[（(]\s*(.+?)\s*[）)]$');
-final _kanji = RegExp(r'[㐀-䶿一-鿿々]');
 
 /// The model's word list down to distinct `(word, reading)` pairs, all
 /// checked before a single word is bookmarked. A kana word is its own
@@ -64,7 +44,7 @@ List<(String, String)> parseBookmarkWords(Object? raw) {
       if (reading.isEmpty) reading = paren[2]!;
     }
     if (reading.isEmpty) {
-      if (_kanji.hasMatch(word)) throw ToolError("word $i: $word needs its kana 'reading'");
+      if (kanjiChar.hasMatch(word)) throw ToolError("word $i: $word needs its kana 'reading'");
       reading = word;
     }
     if (!out.contains((word, reading))) out.add((word, reading));

@@ -12,6 +12,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:iuna/core/deck_rules.dart';
+import 'package:iuna/core/jmdict_labels.dart';
 import 'package:sqlite3/sqlite3.dart';
 import 'package:xml/xml.dart';
 import 'package:xml/xml_events.dart';
@@ -443,29 +444,11 @@ String glossCsv(List<String> glosses) => glosses.join(', ');
 String buildDefinition(JmdictSense sense) {
   final parts = <String>[];
   if (sense.note.isNotEmpty) parts.add(sense.note);
-  // A short list of misc tags worth surfacing in the UI. Most JMdict
-  // misc values are linguistic shorthand the user doesn't need to see.
-  const userVisibleMisc = {
-    'uk': 'usually written in kana',
-    'arch': 'archaic',
-    'obs': 'obsolete',
-    'col': 'colloquial',
-    'sl': 'slang',
-    'hon': 'honorific',
-    'hum': 'humble',
-    'pol': 'polite',
-    'derog': 'derogatory',
-    'rare': 'rare',
-    'fam': 'familiar',
-    'chn': "children's term",
-    'm-sl': 'manga slang',
-    'on-mim': 'onomatopoeic / mimetic',
-  };
   for (final m in sense.misc) {
-    final label = userVisibleMisc[m];
+    final label = jmdictMiscLabels[m];
     if (label != null) parts.add(label);
   }
-  return parts.join(' · ');
+  return parts.join(kDefinitionSeparator);
 }
 
 /// Aggregate counters returned by [importInto].

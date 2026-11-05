@@ -9,6 +9,7 @@ import '../learn.dart';
 import '../photo/photo.dart';
 import '../voice/dictation.dart';
 import '../widgets/chat_view.dart';
+import '../words/tutor_words.dart';
 
 /// A question from the Learn hub's chat bar. Kept in memory only, so every
 /// question starts a fresh chat.
@@ -49,6 +50,7 @@ class _AskScreenState extends State<AskScreen> {
       courses: await widget.env.repo.courseSummaries(),
       preferences: await widget.env.repo.preferences(),
       today: DateTime.now(),
+      wordLookup: await TutorWords.instance.available(),
     ),
     tools: [
       if (widget.env.bookmarks case final bookmarks?) BookmarkWordsTool(bookmarks),
@@ -89,6 +91,7 @@ class _AskScreenState extends State<AskScreen> {
           controller: _chat,
           hint: 'Ask a follow-up…',
           picker: widget.env.photos,
+          bookmarks: widget.env.bookmarks,
         ),
       ),
     );

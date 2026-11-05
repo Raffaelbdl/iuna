@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart' show Icons;
 
 import '../db/learn_repository.dart';
+import '../deck.dart';
 import 'ask_quiz_tool.dart';
 import 'bookmark_tool.dart';
 import 'tools.dart';

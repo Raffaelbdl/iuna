@@ -140,7 +140,13 @@ class _CourseScreenState extends State<CourseScreen> {
             ),
             if (course.stateMarkdown.trim().isNotEmpty) ...[
               const SizedBox(height: 12),
-              LearnPanel(child: TutorMarkdown(course.stateMarkdown, fontSize: 13)),
+              LearnPanel(
+                child: TutorMarkdown(
+                  course.stateMarkdown,
+                  fontSize: 13,
+                  bookmarks: widget.env.bookmarks,
+                ),
+              ),
             ],
             const IunaSectionHeader(
               'Teaching preferences · every course',
@@ -152,7 +158,7 @@ class _CourseScreenState extends State<CourseScreen> {
                       'None yet. Kuma-sensei notes how you like to be taught as it learns.',
                       style: TextStyle(fontSize: 13, color: IunaPalette.ink3),
                     )
-                  : TutorMarkdown(prefs, fontSize: 13),
+                  : TutorMarkdown(prefs, fontSize: 13, bookmarks: widget.env.bookmarks),
             ),
           ],
         ),

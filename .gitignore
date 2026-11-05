@@ -77,3 +77,4 @@ google-services.json
 
 # Personal, machine-specific agent notes.
 CLAUDE.local.md
+.claude/skills/verify/

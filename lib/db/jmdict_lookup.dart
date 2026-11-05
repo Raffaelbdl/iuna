@@ -5,6 +5,7 @@ import 'package:sqlite3/sqlite3.dart';
 import 'package:sqlite3_flutter_libs/sqlite3_flutter_libs.dart';
 
 import '../core/deck_rules.dart';
+import '../core/jmdict_labels.dart';
 import 'sqlite_open.dart';
 
 /// The sidecar `DictDownload` installs under the documents directory.
@@ -26,6 +27,13 @@ class JmdictSense {
   /// Optional prose: `<s_inf>` note + selected `<misc>` tags. Empty
   /// string when JMdict has nothing to surface.
   final String def;
+
+  /// Whether this sense carries misc [tag] (`uk`, `arch`…) among the
+  /// labels in [def]: a whole label, not a word inside the note.
+  bool hasMisc(String tag) {
+    final label = jmdictMiscLabels[tag]!;
+    return def.contains(label) && def.split(kDefinitionSeparator).contains(label);
+  }
 }
 
 class JmdictHit {
@@ -93,7 +101,7 @@ class JmdictLookup {
     // folding to worry about anyway.
     final pattern = '$q*';
     final stmt = db.prepare('''
-      SELECT kanji, kana, senses_json, rarity, jlpt_level, freq_rank
+      SELECT $_hitColumns
       FROM jmdict
       WHERE kanji GLOB ? OR kana GLOB ?
       ORDER BY (freq_rank IS NULL), freq_rank ASC, kanji
@@ -114,7 +122,7 @@ class JmdictLookup {
     final db = _db;
     if (db == null) return null;
     final stmt = db.prepare('''
-      SELECT kanji, kana, senses_json, rarity, jlpt_level, freq_rank
+      SELECT $_hitColumns
       FROM jmdict
       WHERE kanji = ? AND kana = ?
       LIMIT 1
@@ -128,6 +136,22 @@ class JmdictLookup {
     }
   }
 
+  /// Every headword written or read as one of [forms], from the handle
+  /// [warmUp] opened; nothing when it isn't open.
+  List<JmdictHit> byForms(Iterable<String> forms) {
+    final db = _db;
+    if (db == null) return const [];
+    // One JSON parameter instead of a placeholder per form: no variable
+    // limit to chunk around, and no row returned twice across chunks.
+    final rows = db.select(
+      'SELECT $_hitColumns FROM jmdict '
+      'WHERE kanji IN (SELECT value FROM json_each(?1)) '
+      'OR kana IN (SELECT value FROM json_each(?1))',
+      [jsonEncode(forms.toList())],
+    );
+    return [for (final r in rows) _hitFromRow(r)];
+  }
+
   /// Closes the sqlite handle. Required before deleting the file on
   /// disk (Android keeps the inode alive otherwise, so disk space
   /// isn't reclaimed).
@@ -136,6 +160,9 @@ class JmdictLookup {
     _db = null;
   }
 }
+
+/// What [_hitFromRow] reads.
+const _hitColumns = 'kanji, kana, senses_json, rarity, jlpt_level, freq_rank';
 
 JmdictHit _hitFromRow(Row r) {
   final raw = jsonDecode(r['senses_json'] as String) as List;

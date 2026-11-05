@@ -159,4 +159,24 @@ void main() {
         reason: 're-warmUp after delete is a no-op');
     expect(await JmdictLookup.instance.search('x'), isEmpty);
   });
+
+  test('byForms finds headwords by written form or reading, past the variable limit',
+      () async {
+    writeTestSidecar(p.join(tmpDir.path, kJmdictFileName), [
+      for (final (kanji, kana) in [('会議', 'かいぎ'), ('今日', 'きょう'), ('今日', 'こんにち'), ('有る', 'ある')])
+        SidecarEntry(
+          kanji: kanji,
+          kana: kana,
+          senses: const [JmdictSense(pos: 'n', gloss: 'g', def: '')],
+          rarity: Rarity.common,
+        ),
+    ]);
+    expect(JmdictLookup.instance.byForms(['会議']), isEmpty, reason: 'not warmed up yet');
+    await JmdictLookup.instance.warmUp();
+
+    final padding = [for (var i = 0; i < 900; i++) 'pad$i'];
+    final hits = JmdictLookup.instance.byForms([...padding, '今日', 'ある']);
+    expect({for (final h in hits) (h.kanji, h.kana)},
+        {('今日', 'きょう'), ('今日', 'こんにち'), ('有る', 'ある')});
+  });
 }

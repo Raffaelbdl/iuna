@@ -227,8 +227,8 @@ loop nor the chat view switches on tool names.
 | `bookmark_words` | `bookmark_tool.dart` | Puts words on the deck's wishlist through `DeckBookmarks`; uses the dictionary for words the deck lacks; leaves owned cards alone. |
 
 **Prompt.** The static part comes first so provider prefix caching hits:
-persona, harness notes, the multiple-choice contract, the deck and photo
-rules, and three teaching skills from `assets/learn/`. Then the course
+persona, harness notes, the readings rule, the multiple-choice contract,
+the deck and photo rules, and three teaching skills from `assets/learn/`. Then the course
 context. A tutor message that ends in a ```` ```choices ```` block becomes
 answer buttons.
 
@@ -238,6 +238,35 @@ visible to the learner.
 
 **Ask.** Each message from the chat bar on the Learn hub opens a
 throwaway in-memory chat. Its only tool is `bookmark_words`.
+
+### Tapping a word (`words/`)
+
+The tutor writes Japanese without readings; the learner taps a word for
+its reading, meanings and dictionary form. This needs the JMdict sidecar:
+without it, the prompt carries `readings_inline.md` (readings in
+parentheses) instead of `readings_tap.md`, and nothing is tappable.
+
+- `TutorWords` reads a finished message once (cached by text, one read
+  per frame so a screenful of bubbles doesn't stall): every substring of
+  each Japanese run, up to 10 characters, and its deinflections go to the
+  sidecar in one `byForms` query.
+- `deinflect.dart` undoes conjugations by suffix rules chained through
+  what each form conjugates as (食べていました → 食べる: ongoing, polite,
+  past), checked against the headword's JMdict `pos`.
+- `segmenter.dart` picks the cheapest split of a run. A plain word costs
+  1; particles and the copula less; rare, archaic or kana-for-kanji
+  matches more; set phrases ending in a particle much more, so 今日は is
+  今日・は and not こんにちは.
+- `TutorMarkdown` renders each word as a span with its own tap
+  recognizer and opens `WordSheet` on tap. A pressed word is marked by a
+  painter over the text, so the markdown never re-parses mid-press.
+  Lookups are off while a reply streams and on quiz cards, which test
+  exactly what a lookup would give away.
+- `WordSheet` shows the word's deck status (Add card's chip) and, for a
+  word not owned or wished for, a Bookmark button. It wishlists through
+  `WordBookmarks` (`deck.dart`), the same port as the tutor's
+  `bookmark_words`, so it never makes a card owned. The deck comes in as
+  `LearnEnv.bookmarks`, passed down by each screen.
 
 ### Photos and dictation
 

@@ -1,6 +1,6 @@
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:iuna/learn/agent/bookmark_tool.dart';
+import 'package:iuna/learn/deck.dart';
 import 'package:iuna/learn/db/learn_database.dart';
 import 'package:iuna/learn/db/learn_repository.dart';
 import 'package:iuna/learn/learn.dart';
@@ -9,6 +9,7 @@ import 'package:iuna/learn/llm/llm.dart';
 import 'package:iuna/learn/llm/model_vision.dart';
 import 'package:iuna/learn/photo/photo_picker.dart';
 import 'package:iuna/learn/voice/dictation.dart';
+import 'package:iuna/learn/words/tutor_words.dart';
 
 /// A [LearnEnv] over an in-memory `learn.sqlite`, closed when the test
 /// ends.
@@ -20,6 +21,10 @@ LearnEnv testLearnEnv(
   PhotoPicker? photos,
   VisionModels? vision,
 }) {
+  // No dictionary unless the test brings one: the sidecar's probe reads
+  // the documents directory, which fake time never reaches.
+  TutorWords.instance = TutorWords(lexicon: () async => null);
+  addTearDown(() => TutorWords.instance = TutorWords());
   final db = LearnDatabase.forTesting(NativeDatabase.memory());
   addTearDown(db.close);
   final repo = LearnRepository(db);
