@@ -5,8 +5,10 @@ import '../../db/jmdict_lookup.dart';
 import '../../db/repository.dart';
 import '../../services/tts.dart';
 import '../../theme/iuna_theme.dart';
+import '../../widgets/cta_button.dart';
 import '../../widgets/paper_sheet.dart';
 import '../../widgets/sense_row.dart';
+import '../../widgets/snack.dart';
 import '../../widgets/vocab_card.dart';
 import '../deck.dart';
 import '../words/segmenter.dart';
@@ -106,7 +108,7 @@ class _WordSheetState extends State<WordSheet> {
                     if (reading.inflections.isNotEmpty)
                       Text(
                         '${widget.surface} · ${reading.inflections.join(' · ')}',
-                        style: const TextStyle(fontSize: 12, color: IunaPalette.ink3),
+                        style: IunaText.caption.copyWith(color: IunaPalette.ink3),
                       ),
                   ],
                 ),
@@ -123,12 +125,11 @@ class _WordSheetState extends State<WordSheet> {
                     children: [
                       JmdictSenseList(hit.senses),
                       if (others.isNotEmpty) ...[
-                        const Padding(
+                        Padding(
                           padding: EdgeInsets.fromLTRB(0, 14, 0, 4),
                           child: Text(
                             'Could also be',
-                            style: TextStyle(
-                              fontSize: 12,
+                            style: IunaText.chip.copyWith(
                               fontWeight: FontWeight.w700,
                               color: IunaPalette.ink3,
                             ),
@@ -163,7 +164,7 @@ class _Headword extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         if (kanji != kana)
-          Text(kana, style: const TextStyle(fontSize: 14, color: IunaPalette.ink2, height: 1.2)),
+          Text(kana, style: IunaText.body.copyWith(color: IunaPalette.ink2, height: 1.2)),
         Text(
           kanji,
           style: const TextStyle(
@@ -191,29 +192,40 @@ class _Other extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(IunaRadii.sm),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Text.rich(
-          TextSpan(
-            children: [
-              TextSpan(
-                text: hit.kanji,
-                style: const TextStyle(fontWeight: FontWeight.w700, color: IunaPalette.ink),
-              ),
-              if (hit.kanji != hit.kana)
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 48),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text.rich(
                 TextSpan(
-                  text: '  ${hit.kana}',
-                  style: const TextStyle(color: IunaPalette.ink2),
+                  children: [
+                    TextSpan(
+                      text: hit.kanji,
+                      style: const TextStyle(fontWeight: FontWeight.w700, color: IunaPalette.ink),
+                    ),
+                    if (hit.kanji != hit.kana)
+                      TextSpan(
+                        text: '  ${hit.kana}',
+                        style: const TextStyle(color: IunaPalette.ink2),
+                      ),
+                    TextSpan(
+                      text: '  $gloss',
+                      style: const TextStyle(color: IunaPalette.ink3),
+                    ),
+                  ],
                 ),
-              TextSpan(
-                text: '  $gloss',
-                style: const TextStyle(color: IunaPalette.ink3),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: IunaText.bodySmall.copyWith(height: 1.4),
               ),
-            ],
-          ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 13, height: 1.4),
+            ),
+            const Icon(
+              Icons.chevron_right_rounded,
+              size: 20,
+              color: IunaPalette.ink3,
+            ),
+          ],
         ),
       ),
     );
@@ -232,9 +244,8 @@ class _DeckAction extends StatefulWidget {
   State<_DeckAction> createState() => _DeckActionState();
 }
 
-class _DeckActionState extends State<_DeckAction> {
+class _DeckActionState extends State<_DeckAction> with BusyGuard {
   CardLookupStatus? _status;
-  bool _busy = false;
 
   @override
   void initState() {
@@ -247,8 +258,8 @@ class _DeckActionState extends State<_DeckAction> {
   }
 
   Future<void> _bookmark() async {
-    setState(() => _busy = true);
-    _show(await widget.bookmarks.wishlist(widget.entry));
+    final status = await whileBusy("Couldn't add it to your wishlist.", () => widget.bookmarks.wishlist(widget.entry));
+    if (status != null) _show(status);
   }
 
   @override
@@ -256,17 +267,19 @@ class _DeckActionState extends State<_DeckAction> {
     final status = _status;
     if (status == null) return const SizedBox(height: 40);
     final open = status == CardLookupStatus.notFound || status == CardLookupStatus.available;
-    return Row(
+    return Wrap(
+      spacing: 10,
+      runSpacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         CardStatusChip(status: status),
-        if (open) ...[
-          const SizedBox(width: 10),
-          FilledButton.tonalIcon(
-            onPressed: _busy ? null : _bookmark,
-            icon: const Icon(Icons.bookmark_add_outlined, size: 18),
-            label: const Text('Bookmark'),
+        if (open)
+          IunaGhostButton(
+            label: 'Add to wishlist',
+            leadingIcon: Icons.bookmark_add_outlined,
+            shrinkWrap: true,
+            onTap: busy ? null : _bookmark,
           ),
-        ],
       ],
     );
   }

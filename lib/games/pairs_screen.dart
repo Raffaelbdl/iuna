@@ -2,12 +2,16 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../db/database.dart';
 import '../db/repository.dart';
+import '../screens/today_flow.dart';
 import '../services/tts.dart';
 import '../theme/iuna_theme.dart';
 import '../widgets/section_header.dart';
+import '../widgets/notice.dart';
+import '../widgets/tappable.dart';
 import 'game_draw.dart';
 import 'game_widgets.dart';
 import 'pairs.dart';
@@ -39,11 +43,10 @@ class PairsScreen extends StatefulWidget {
 
 enum _TileLook { idle, selected, matched, wrong }
 
-class _PairsScreenState extends State<PairsScreen> {
+class _PairsScreenState extends State<PairsScreen> with LoadGate {
   late final IunaRepository _repo = IunaRepository(widget.db);
   late final Random _random = Random(widget.seed);
 
-  bool _loading = true;
   List<DailyDeckEntry> _cards = const [];
   Map<int, DailyDeckEntry> _byId = const {};
   GameMemory _memory = GameMemory();
@@ -63,7 +66,7 @@ class _PairsScreenState extends State<PairsScreen> {
   @override
   void initState() {
     super.initState();
-    _load();
+    load();
   }
 
   @override
@@ -72,19 +75,25 @@ class _PairsScreenState extends State<PairsScreen> {
     super.dispose();
   }
 
-  Future<void> _load() async {
-    final (cards, memory) = await (
-      _repo.gameCards(),
-      _repo.getGameMemory(),
-    ).wait;
-    if (!mounted) return;
+  @override
+  Future<void> load() async {
+    final loaded = await guardLoad(
+      'Pairs',
+      () => (_repo.gameCards(), _repo.getGameMemory()).wait,
+    );
+    if (loaded == null || !mounted) return;
+    final (cards, memory) = loaded;
     _cards = cards;
     _byId = {for (final c in cards) c.card.id: c};
     _memory = GameMemory.parse(memory)..startSession();
-    setState(() {
-      _loading = false;
-      _deal();
-    });
+    showLoaded(_deal);
+  }
+
+  Future<void> _openToday() async {
+    await openTodayFlow(context, widget.db);
+    if (!mounted) return;
+    setState(() => loading = true);
+    await load();
   }
 
   /// Deals the next round in this round's mode, or in the next mode
@@ -139,8 +148,9 @@ class _PairsScreenState extends State<PairsScreen> {
           _memory.missed(first!.cardId);
           _save();
           _wrong = {first, tile};
+          HapticFeedback.lightImpact();
           _wrongTimer?.cancel();
-          _wrongTimer = Timer(const Duration(milliseconds: 450), () {
+          _wrongTimer = Timer(const Duration(milliseconds: 700), () {
             if (mounted) setState(() => _wrong = const {});
           });
         case PairsTap.match when round.finished:
@@ -165,13 +175,16 @@ class _PairsScreenState extends State<PairsScreen> {
     return GamePage(
       title: 'Pairs',
       onSkip: round == null || round.finished ? null : _skip,
-      body: _loading
+      body: loading
           ? const Center(child: CircularProgressIndicator())
+          : failed
+          ? LoadErrorNotice(onRetry: retry)
           : round == null
-          ? const GameNotice(
+          ? IunaNotice(
               text:
                   'Pairs needs at least $kMinPairs cards you have met. '
-                  'Open a pack and flip its cards to start.',
+                  'Open a pack and reveal its cards to start.',
+              action: (label: 'Go to Today', onTap: _openToday),
             )
           : round.finished
           ? _summary(round)
@@ -182,6 +195,7 @@ class _PairsScreenState extends State<PairsScreen> {
   Widget _summary(PairsRound round) {
     final seconds = (_took ?? Duration.zero).inSeconds;
     return GameSummary(
+      db: widget.db,
       kicker: round.misses == 0 ? 'かんぺき' : 'できた',
       headline: round.misses == 0 ? 'A clean sweep.' : 'All pairs found.',
       figures: [
@@ -216,15 +230,17 @@ class _Board extends StatelessWidget {
       child: Column(
         children: [
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              IunaEyebrow(round.mode.label),
-              const Spacer(),
-              Text(
-                '${round.matched.length} / ${round.size}',
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: IunaPalette.ink3,
+              Flexible(child: IunaEyebrow(round.mode.label)),
+              const SizedBox(width: 12),
+              Flexible(
+                child: Text(
+                  '${round.matched.length} of ${round.size} matched',
+                  textAlign: TextAlign.end,
+                  style: IunaText.chip.copyWith(
+                    color: IunaPalette.ink3,
+                  ),
                 ),
               ),
             ],
@@ -241,6 +257,7 @@ class _Board extends StatelessWidget {
                     Expanded(
                       child: _Tile(
                         tile: tile,
+                        row: i + 1,
                         look: look(tile),
                         onTap: () => onTap(tile),
                       ),
@@ -257,17 +274,25 @@ class _Board extends StatelessWidget {
 }
 
 class _Tile extends StatelessWidget {
-  const _Tile({required this.tile, required this.look, required this.onTap});
+  const _Tile({
+    required this.tile,
+    required this.row,
+    required this.look,
+    required this.onTap,
+  });
 
   final PairTile tile;
+
+  /// 1-based, to tell sound tiles apart to a screen reader.
+  final int row;
   final _TileLook look;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final (fill, border) = switch (look) {
-      _TileLook.idle => (IunaPalette.paper, const Color(0x0F4A3520)),
-      _TileLook.selected => (const Color(0xFFFFF1D6), IunaPalette.bellGold),
+      _TileLook.idle => (IunaPalette.paper, IunaPalette.hairline),
+      _TileLook.selected => (IunaPalette.optionPicked, IunaPalette.ctaBottom),
       _TileLook.matched => (
         IunaPalette.rarityCommonFill,
         IunaPalette.rarityCommon,
@@ -277,7 +302,7 @@ class _Tile extends StatelessWidget {
     final ink = look == _TileLook.wrong
         ? IunaPalette.raritySsrInk
         : IunaPalette.ink;
-    final Widget face = tile.sound
+    final Widget word = tile.sound
         ? Icon(Icons.volume_up_rounded, size: 28, color: ink)
         : tile.japanese
         ? FittedBox(
@@ -299,16 +324,34 @@ class _Tile extends StatelessWidget {
             textAlign: TextAlign.center,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 13,
+            style: IunaText.bodySmall.copyWith(
               fontWeight: FontWeight.w600,
               height: 1.25,
               color: ink,
             ),
           );
-    return GestureDetector(
+    // A mark beside the colour, as in the sentence games, so a miss
+    // doesn't rest on hue alone.
+    final Widget face = look != _TileLook.wrong
+        ? word
+        : Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.close_rounded, size: 18, color: ink),
+              const SizedBox(width: 4),
+              Flexible(child: word),
+            ],
+          );
+    return Tappable(
       key: ValueKey('pair-${tile.side.name}-${tile.cardId}'),
       onTap: onTap,
+      selected: look == _TileLook.selected,
+      label: switch (look) {
+        _TileLook.matched => tile.sound ? 'Sound $row, matched' : 'Matched',
+        _TileLook.wrong => tile.sound ? 'Sound $row, not a pair' : 'Not a pair',
+        _ when tile.sound => 'Play sound $row',
+        _ => null,
+      },
       child: AnimatedOpacity(
         duration: const Duration(milliseconds: 220),
         opacity: look == _TileLook.matched ? 0.45 : 1,

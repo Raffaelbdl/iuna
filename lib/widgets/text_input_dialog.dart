@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../theme/iuna_theme.dart';
+
 /// What the learner chose in [showTextInputDialog]. [remove] is the
-/// optional destructive action (e.g. "Remove key").
+/// optional third action ("Remove key", "Reset").
 typedef TextInputResult = ({String text, bool remove});
 
 /// A one-field dialog that owns its controller, so the field survives
@@ -15,6 +17,7 @@ Future<TextInputResult?> showTextInputDialog(
   bool obscure = false,
   String confirmLabel = 'Save',
   String? removeLabel,
+  bool removeIsDestructive = false,
 }) {
   return showDialog<TextInputResult>(
     context: context,
@@ -26,6 +29,7 @@ Future<TextInputResult?> showTextInputDialog(
       obscure: obscure,
       confirmLabel: confirmLabel,
       removeLabel: removeLabel,
+      removeIsDestructive: removeIsDestructive,
     ),
   );
 }
@@ -39,6 +43,7 @@ class _TextInputDialog extends StatefulWidget {
     required this.obscure,
     required this.confirmLabel,
     required this.removeLabel,
+    required this.removeIsDestructive,
   });
 
   final String title;
@@ -48,6 +53,7 @@ class _TextInputDialog extends StatefulWidget {
   final bool obscure;
   final String confirmLabel;
   final String? removeLabel;
+  final bool removeIsDestructive;
 
   @override
   State<_TextInputDialog> createState() => _TextInputDialogState();
@@ -85,6 +91,7 @@ class _TextInputDialogState extends State<_TextInputDialog> {
               hintText: widget.hint,
               suffixIcon: widget.obscure
                   ? IconButton(
+                      tooltip: _hidden ? 'Show' : 'Hide',
                       icon: Icon(_hidden ? Icons.visibility_rounded : Icons.visibility_off_rounded),
                       onPressed: () => setState(() => _hidden = !_hidden),
                     )
@@ -97,10 +104,13 @@ class _TextInputDialogState extends State<_TextInputDialog> {
       actions: [
         if (widget.removeLabel != null)
           TextButton(
+            style: widget.removeIsDestructive
+                ? TextButton.styleFrom(foregroundColor: IunaPalette.danger)
+                : null,
             onPressed: () => Navigator.of(context).pop((text: '', remove: true)),
             child: Text(widget.removeLabel!),
           ),
-        TextButton(
+        OutlinedButton(
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cancel'),
         ),

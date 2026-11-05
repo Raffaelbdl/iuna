@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/jmdict_labels.dart';
 import '../db/jmdict_lookup.dart';
 import '../theme/iuna_theme.dart';
 
@@ -39,12 +40,15 @@ class SenseRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Grows with the text, so a large font doesn't break "1."
+          // over two lines.
           SizedBox(
-            width: 18,
+            width: MediaQuery.textScalerOf(context).scale(18),
             child: Text(
               '$ordinal.',
-              style: const TextStyle(
-                fontSize: 13,
+              maxLines: 1,
+              softWrap: false,
+              style: IunaText.bodySmall.copyWith(
                 fontWeight: FontWeight.w700,
                 color: IunaPalette.ink3,
                 height: 1.4,
@@ -58,8 +62,7 @@ class SenseRow extends StatelessWidget {
               children: [
                 Text(
                   gloss,
-                  style: const TextStyle(
-                    fontSize: 14,
+                  style: IunaText.body.copyWith(
                     fontWeight: FontWeight.w500,
                     color: IunaPalette.ink,
                     height: 1.4,
@@ -69,12 +72,10 @@ class SenseRow extends StatelessWidget {
                   Padding(
                     padding: const EdgeInsets.only(top: 2),
                     child: Text(
-                      pos,
-                      style: const TextStyle(
-                        fontSize: 10,
+                      posLabel(pos),
+                      style: IunaText.caption.copyWith(
                         fontStyle: FontStyle.italic,
-                        color: IunaPalette.inkMute,
-                        fontFeatures: [FontFeature.tabularFigures()],
+                        color: IunaPalette.ink3,
                       ),
                     ),
                   ),
@@ -83,8 +84,7 @@ class SenseRow extends StatelessWidget {
                     padding: const EdgeInsets.only(top: 4),
                     child: Text(
                       definition,
-                      style: const TextStyle(
-                        fontSize: 13,
+                      style: IunaText.bodySmall.copyWith(
                         color: IunaPalette.ink2,
                         height: 1.5,
                       ),

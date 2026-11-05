@@ -13,10 +13,12 @@ abstract class ChatStore {
   Future<void> compact({required ChatMessage through, required String summary});
 }
 
-/// The Ask chat: gone as soon as the screen is.
+/// The Ask chat: kept in memory for the app session only.
 class MemoryChatStore implements ChatStore {
   final List<ChatMessage> _messages = [];
   var _nextId = 1;
+
+  List<ChatMessage> get messages => List.unmodifiable(_messages);
 
   @override
   Future<List<ChatMessage>> load() async => List.of(_messages);

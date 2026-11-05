@@ -98,7 +98,7 @@ class StreakStats {
 class ReviewBreakdown {
   const ReviewBreakdown({
     required this.trueRetention,
-    required this.byKind,
+    required this.newRetention,
     required this.byRarity,
     required this.reviews,
     required this.learned,
@@ -113,8 +113,11 @@ class ReviewBreakdown {
   /// from a graduated card).
   final ({int total, int correct}) trueRetention;
 
-  /// Pass rate per [ReviewKind] (the donut on the stats screen).
-  final Map<ReviewKind, ({int total, int correct})> byKind;
+  /// The same over the reviews before that (prev interval under a
+  /// day): cards still new. With [trueRetention] it splits every review
+  /// in two for the donut on the stats screen. Not per [ReviewKind],
+  /// whose pass rates are fixed by its definition.
+  final ({int total, int correct}) newRetention;
 
   /// Pass rate per rarity ("Accuracy by rarity").
   final Map<Rarity, ({int total, int correct})> byRarity;
@@ -344,17 +347,17 @@ extension DeckStats on IunaRepository {
   }
 
   /// Every all-time pass rate on the stats screen plus the lifetime
-  /// counts, from one `review_log` scan grouped by (kind, rarity,
-  /// mature) — a few dozen rows.
+  /// counts, from one `review_log` scan grouped by (rarity, mature) —
+  /// a few rows.
   Future<ReviewBreakdown> reviewBreakdown() async {
     final learnedCount = db.userCards.cardId.count();
     final (cells, learnedRow) = await (
       db
           .customSelect(
-            'SELECT kind, rarity, '
+            'SELECT rarity, '
             'prev_interval_minutes >= ${60 * 24} AS mature, '
             'COUNT(*) AS n, SUM(correct) AS ok FROM review_log '
-            'GROUP BY kind, rarity, mature',
+            'GROUP BY rarity, mature',
             readsFrom: {db.reviewLog},
           )
           .get(),
@@ -363,24 +366,24 @@ extension DeckStats on IunaRepository {
 
     const zero = (total: 0, correct: 0);
     var trueRetention = zero;
-    final byKind = {for (final k in ReviewKind.values) k: zero};
+    var newRetention = zero;
     final byRarity = {for (final r in Rarity.values) r: zero};
     var reviews = 0;
     for (final c in cells) {
       final n = c.read<int>('n');
       final ok = c.read<int>('ok');
-      final kind = ReviewKind.values[c.read<int>('kind')];
       final rarity = Rarity.values[c.read<int>('rarity')];
-      byKind[kind] = _plus(byKind[kind]!, n, ok);
       byRarity[rarity] = _plus(byRarity[rarity]!, n, ok);
       if (c.read<int>('mature') == 1) {
         trueRetention = _plus(trueRetention, n, ok);
+      } else {
+        newRetention = _plus(newRetention, n, ok);
       }
       reviews += n;
     }
     return ReviewBreakdown(
       trueRetention: trueRetention,
-      byKind: byKind,
+      newRetention: newRetention,
       byRarity: byRarity,
       reviews: reviews,
       learned: learnedRow.read(learnedCount) ?? 0,

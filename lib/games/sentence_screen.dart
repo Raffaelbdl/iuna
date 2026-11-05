@@ -7,12 +7,14 @@ import '../db/database.dart';
 import '../db/jmdict_lookup.dart' show kJmdictFileName;
 import '../db/repository.dart';
 import '../db/sqlite_open.dart';
-import '../screens/settings_screen.dart';
+import '../screens/settings/dictionary_section.dart';
 import '../services/dict_download.dart';
 import '../services/tts.dart';
 import '../theme/iuna_theme.dart';
 import '../widgets/cta_button.dart';
 import '../widgets/section_header.dart';
+import '../widgets/notice.dart';
+import '../widgets/tappable.dart';
 import 'game_draw.dart';
 import 'game_widgets.dart';
 import 'sentence_feed.dart';
@@ -50,7 +52,7 @@ class SentenceScreen extends StatefulWidget {
   State<SentenceScreen> createState() => _SentenceScreenState();
 }
 
-class _SentenceScreenState extends State<SentenceScreen> {
+class _SentenceScreenState extends State<SentenceScreen> with LoadGate {
   late final IunaRepository _repo = IunaRepository(widget.db);
   late final Random _random = Random(widget.seed);
 
@@ -71,7 +73,7 @@ class _SentenceScreenState extends State<SentenceScreen> {
   @override
   void initState() {
     super.initState();
-    _start();
+    load();
   }
 
   @override
@@ -85,19 +87,20 @@ class _SentenceScreenState extends State<SentenceScreen> {
     return isolateTiler((await documentsFile(kJmdictFileName)).path);
   }
 
-  Future<void> _start() async {
-    final (tiler, cards, memory) = await (
-      widget.tiler == null ? _dictionaryTiler() : Future.value(widget.tiler),
-      _repo.gameCards(),
-      _repo.getGameMemory(),
-    ).wait;
-    if (!mounted) return;
-    if (tiler == null) {
-      setState(() => _noDictionary = true);
-      return;
-    }
-    // _advance draws it.
-    _noDictionary = false;
+  @override
+  Future<void> load() async {
+    final loaded = await guardLoad(
+      widget.game.title,
+      () => (
+        widget.tiler == null ? _dictionaryTiler() : Future.value(widget.tiler),
+        _repo.gameCards(),
+        _repo.getGameMemory(),
+      ).wait,
+    );
+    if (loaded == null || !mounted) return;
+    final (tiler, cards, memory) = loaded;
+    showLoaded(() => _noDictionary = tiler == null);
+    if (tiler == null) return;
     _memory = GameMemory.parse(memory)..startSession();
     _feed = SentenceFeed(
       repo: _repo,
@@ -110,12 +113,15 @@ class _SentenceScreenState extends State<SentenceScreen> {
     await _advance();
   }
 
-  Future<void> _openSettings() async {
-    await Navigator.of(
+  Future<void> _offerDictionary() async {
+    final ready = await showDictionaryOffer(
       context,
-    ).push(MaterialPageRoute(builder: (_) => SettingsScreen(db: widget.db)));
-    if (!mounted) return;
-    await _start();
+      title: 'Download the dictionary',
+      body:
+          'Sentences are split into tiles with the offline dictionary, a '
+          'one-time download.',
+    );
+    if (ready && mounted) await load();
   }
 
   void _save() => unawaited(_repo.setGameMemory(_memory.encode()));
@@ -208,18 +214,20 @@ class _SentenceScreenState extends State<SentenceScreen> {
   }
 
   Widget _body(SentenceTask? task) {
+    if (failed) return LoadErrorNotice(onRetry: retry);
     if (_noDictionary) {
-      return GameNotice(
+      return IunaNotice(
         text:
             'Sentences are split into tiles with the offline dictionary. '
-            'Download it in Settings, then come back.',
-        action: (label: 'Open Settings', onTap: _openSettings),
+            'Download it once to play.',
+        action: (label: 'Get the dictionary', onTap: _offerDictionary),
       );
     }
     if (_summary) {
       final right = _round.where((r) => r.$2).length;
       final all = right == _round.length;
       return GameSummary(
+        db: widget.db,
         kicker: all ? 'かんぺき' : 'できた',
         headline: all ? 'Every sentence right.' : 'Round done.',
         figures: [(value: '$right / ${_round.length}', label: 'right')],
@@ -262,16 +270,12 @@ class _SentenceScreenState extends State<SentenceScreen> {
                 onTap: _next,
               )
             : task is SentenceBoard
-            ? AnimatedOpacity(
-                duration: const Duration(milliseconds: 160),
-                opacity: task.complete ? 1 : 0.4,
-                child: IunaCtaButton(label: 'Check', onTap: _check),
-              )
+            ? _CheckButton(onTap: task.complete ? _check : null)
             : null,
       );
     }
     if (!_exhausted) return const Center(child: CircularProgressIndicator());
-    return const GameNotice(
+    return const IunaNotice(
       text:
           'No more sentences for now. They come from the examples of '
           'the cards you own, so more cards bring more of them.',
@@ -315,9 +319,7 @@ class _Frame extends StatelessWidget {
                   const Spacer(),
                   Text(
                     '$number / $kSentencesPerRound',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
+                    style: IunaText.chip.copyWith(
                       color: IunaPalette.ink3,
                     ),
                   ),
@@ -329,8 +331,7 @@ class _Frame extends StatelessWidget {
                 decoration: paperPanelDecoration(),
                 child: Text(
                   english,
-                  style: const TextStyle(
-                    fontSize: 18,
+                  style: IunaText.title.copyWith(
                     fontWeight: FontWeight.w600,
                     height: 1.35,
                     color: IunaPalette.ink,
@@ -353,6 +354,30 @@ class _Frame extends StatelessWidget {
   }
 }
 
+/// Check, disabled until every tile is placed, and saying so.
+class _CheckButton extends StatelessWidget {
+  const _CheckButton({required this.onTap});
+
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (onTap == null) ...[
+          Text(
+            'Place every tile to check',
+            style: IunaText.caption.copyWith(color: IunaPalette.ink3),
+          ),
+          const SizedBox(height: 8),
+        ],
+        IunaCtaButton(label: 'Check', onTap: onTap),
+      ],
+    );
+  }
+}
+
 /// Sentence builder: the placed tiles, then the bank until checked.
 class _Order extends StatelessWidget {
   const _Order({required this.board, required this.onTap});
@@ -368,13 +393,12 @@ class _Order extends StatelessWidget {
       children: [
         _Well(
           child: board.placed.isEmpty
-              ? const Center(
+              ? Center(
                   child: Text(
                     'Tap the tiles in order',
-                    style: TextStyle(
-                      fontSize: 13,
+                    style: IunaText.bodySmall.copyWith(
                       fontStyle: FontStyle.italic,
-                      color: IunaPalette.inkMute,
+                      color: IunaPalette.ink3,
                     ),
                   ),
                 )
@@ -514,9 +538,9 @@ class _Well extends StatelessWidget {
       constraints: const BoxConstraints(minHeight: 112),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0x80FFFDF6),
+        color: IunaPalette.paper.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(IunaRadii.md),
-        border: Border.all(color: const Color(0x294A3520), width: 1),
+        border: Border.all(color: IunaPalette.outline, width: 1),
       ),
       child: child,
     );
@@ -559,15 +583,14 @@ class _Verdict extends StatelessWidget {
               children: [
                 Text(
                   right ? '正解 · Right.' : 'Not quite.',
-                  style: TextStyle(
-                    fontSize: 15,
+                  style: IunaText.subtitle.copyWith(
                     fontWeight: FontWeight.w700,
                     color: ink,
                   ),
                 ),
                 if (note != null) ...[
                   const SizedBox(height: 6),
-                  Text(note, style: TextStyle(fontSize: 12, color: ink)),
+                  Text(note, style: IunaText.caption.copyWith(color: ink)),
                   const SizedBox(height: 4),
                   Text(
                     sentence,
@@ -614,13 +637,13 @@ class _Chip extends StatelessWidget {
     final (fill, border, ink) = switch (look) {
       _ChipLook.idle => (
         IunaPalette.paper,
-        const Color(0x1F4A3520),
+        IunaPalette.outline,
         IunaPalette.ink,
       ),
       _ChipLook.ghost => (
-        const Color(0x00000000),
-        const Color(0x1F4A3520),
-        const Color(0x00000000),
+        Colors.transparent,
+        IunaPalette.outline,
+        Colors.transparent,
       ),
       _ChipLook.right => (
         IunaPalette.rarityCommonFill,
@@ -633,9 +656,21 @@ class _Chip extends StatelessWidget {
         IunaPalette.raritySsrInk,
       ),
     };
-    return GestureDetector(
+    // A mark beside the colour, so right and wrong don't rest on hue.
+    final mark = switch (look) {
+      _ChipLook.right => Icons.check_rounded,
+      _ChipLook.wrong => Icons.close_rounded,
+      _ => null,
+    };
+    return Tappable(
       onTap: onTap,
+      label: switch (look) {
+        _ChipLook.right => 'Right',
+        _ChipLook.wrong => 'Wrong',
+        _ => null,
+      },
       child: Container(
+        constraints: const BoxConstraints(minHeight: 48, minWidth: 48),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
         decoration: BoxDecoration(
           color: fill,
@@ -644,20 +679,29 @@ class _Chip extends StatelessWidget {
           boxShadow: look == _ChipLook.idle
               ? const [
                   BoxShadow(
-                    color: Color(0x144A3520),
+                    color: IunaPalette.divider,
                     blurRadius: 6,
                     offset: Offset(0, 2),
                   ),
                 ]
               : null,
         ),
-        child: Text(
-          text,
-          style: TextStyle(
-            fontSize: 19,
-            fontWeight: FontWeight.w600,
-            color: ink,
-          ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (mark != null) ...[
+              Icon(mark, size: 18, color: ink),
+              const SizedBox(width: 4),
+            ],
+            Text(
+              text,
+              style: TextStyle(
+                fontSize: 19,
+                fontWeight: FontWeight.w600,
+                color: ink,
+              ),
+            ),
+          ],
         ),
       ),
     );

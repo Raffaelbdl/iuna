@@ -58,7 +58,7 @@ void main() {
     // Multiple steppers on the screen now (boosters + review-time cap).
     // Scope to the booster row so the +/− icons are unambiguous.
     final boosterRow = find.ancestor(
-      of: find.text('Booster packs per day'),
+      of: find.text('Packs per day'),
       matching: find.byType(ListTile),
     );
     final inc = find.descendant(
@@ -86,6 +86,8 @@ void main() {
 
     expect(await repo.getResetHour(), kDefaultResetHour);
 
+    await tester.ensureVisible(find.byType(DropdownButton<int>));
+    await tester.pumpAndSettle();
     await tester.tap(find.byType(DropdownButton<int>));
     await tester.pumpAndSettle();
     // intl's DateFormat.j() uses a NARROW NO-BREAK SPACE (U+202F)

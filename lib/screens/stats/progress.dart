@@ -8,18 +8,18 @@ class _JlptProgress extends StatelessWidget {
 
   static const _levelOrder = [5, 4, 3, 2, 1];
   static const _levelColors = <int, Color>{
-    5: _SP.mint,
-    4: _SP.blue,
-    3: _SP.lilac,
-    2: _SP.honey,
-    1: _SP.pink,
+    5: IunaPalette.chartMint,
+    4: IunaPalette.chartBlue,
+    3: IunaPalette.chartLilac,
+    2: IunaPalette.chartHoney,
+    1: IunaPalette.bowPink,
   };
 
   @override
   Widget build(BuildContext context) {
     final hasAny = byLevel.values.any((v) => v.total > 0);
     if (!hasAny) {
-      return const _EmptyHint(text: 'No JLPT-tagged cards in your deck yet.');
+      return const _EmptyHint(text: 'No cards with a JLPT level yet.');
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -31,7 +31,7 @@ class _JlptProgress extends StatelessWidget {
               level: lvl,
               owned: byLevel[lvl]?.owned ?? 0,
               total: byLevel[lvl]?.total ?? 0,
-              color: _levelColors[lvl] ?? _SP.mint,
+              color: _levelColors[lvl] ?? IunaPalette.chartMint,
             ),
           ),
       ],
@@ -67,8 +67,7 @@ class _JlptRow extends StatelessWidget {
           ),
           child: Text(
             'N$level',
-            style: const TextStyle(
-              fontSize: 11,
+            style: IunaText.chip.copyWith(
               fontWeight: FontWeight.w700,
               color: IunaPalette.ink,
             ),
@@ -95,11 +94,11 @@ class _PackProgress extends StatelessWidget {
   final Map<String, ({String label, int owned, int total})> byPack;
 
   static const _colors = <Color>[
-    _SP.lilac,
-    _SP.mint,
-    _SP.honey,
-    _SP.blue,
-    _SP.pink,
+    IunaPalette.chartLilac,
+    IunaPalette.chartMint,
+    IunaPalette.chartHoney,
+    IunaPalette.chartBlue,
+    IunaPalette.bowPink,
   ];
 
   @override
@@ -149,8 +148,7 @@ class _PackRow extends StatelessWidget {
               child: Text(
                 label,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 11,
+                style: IunaText.chip.copyWith(
                   fontWeight: FontWeight.w700,
                   color: IunaPalette.ink,
                 ),

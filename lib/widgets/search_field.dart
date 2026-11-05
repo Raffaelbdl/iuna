@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/iuna_theme.dart';
+import 'tappable.dart';
 
 /// Frosted search box with a clear-X once something is typed.
 class IunaSearchField extends StatelessWidget {
@@ -51,27 +52,30 @@ class IunaSearchField extends StatelessWidget {
                 onChanged: onChanged,
                 decoration: InputDecoration(
                   hintText: hint,
-                  hintStyle: const TextStyle(color: IunaPalette.inkMute),
+                  hintStyle: const TextStyle(color: IunaPalette.ink3),
                   border: InputBorder.none,
                   isDense: true,
                 ),
-                style: const TextStyle(
-                  fontSize: 14,
+                style: IunaText.body.copyWith(
                   color: IunaPalette.ink,
                   fontWeight: FontWeight.w500,
                 ),
               ),
             ),
             if (controller.text.isNotEmpty)
-              GestureDetector(
+              Tappable(
+                label: 'Clear search',
                 onTap: () {
                   controller.clear();
                   onChanged('');
                 },
-                child: const Icon(
-                  Icons.close_rounded,
-                  size: 18,
-                  color: IunaPalette.ink3,
+                child: const SizedBox.square(
+                  dimension: 48,
+                  child: Icon(
+                    Icons.close_rounded,
+                    size: 18,
+                    color: IunaPalette.ink3,
+                  ),
                 ),
               ),
           ],

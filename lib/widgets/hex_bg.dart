@@ -21,11 +21,18 @@ class HexBg extends StatefulWidget {
     this.intensity = HexBgIntensity.rich,
     this.palette = HexBgPalette.pastel,
     this.seed = 7,
+    this.calmTop = 0,
   });
 
   final HexBgIntensity intensity;
   final HexBgPalette palette;
   final int seed;
+
+  /// The share of the height, from the top, where the outline rings
+  /// fade back so they don't cut through text (filters, a recap's
+  /// copy). 0 leaves them all at full strength; 1 calms the whole
+  /// screen.
+  final double calmTop;
 
   @override
   State<HexBg> createState() => _HexBgState();
@@ -129,7 +136,11 @@ class _HexBgState extends State<HexBg> with SingleTickerProviderStateMixin {
   Widget build(BuildContext context) {
     return RepaintBoundary(
       child: CustomPaint(
-        painter: _HexBgPainter(hexes: _hexes, time: _seconds),
+        painter: _HexBgPainter(
+          hexes: _hexes,
+          time: _seconds,
+          calmTop: widget.calmTop,
+        ),
       ),
     );
   }
@@ -179,11 +190,24 @@ class _Hex {
 }
 
 class _HexBgPainter extends CustomPainter {
-  _HexBgPainter({required this.hexes, required this.time})
-    : super(repaint: time);
+  _HexBgPainter({
+    required this.hexes,
+    required this.time,
+    required this.calmTop,
+  }) : super(repaint: time);
 
   final List<_Hex> hexes;
   final ValueListenable<double> time;
+  final double calmTop;
+
+  /// How much of an outline's alpha it keeps at [y] (0..1 down the
+  /// screen): a third inside the calm band, easing to all of it a
+  /// little below.
+  double _strength(double y) {
+    if (calmTop <= 0) return 1;
+    final t = ((y - calmTop) / 0.12).clamp(0.0, 1.0);
+    return 0.3 + 0.7 * t * t * (3 - 2 * t);
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -194,7 +218,13 @@ class _HexBgPainter extends CustomPainter {
       final cx = h.x * size.width + h.tx * t;
       final cy = h.y * size.height + h.ty * t;
       final rot = h.spin * t * math.pi / 180;
-      canvas.drawPath(_hexPath(Offset(cx, cy), h.size / 2, rot), h.paint);
+      final paint = h.paint;
+      if (h.kind == _HexKind.outline) {
+        paint.color = h.color.withValues(
+          alpha: h.color.a * _strength(cy / size.height),
+        );
+      }
+      canvas.drawPath(_hexPath(Offset(cx, cy), h.size / 2, rot), paint);
     }
   }
 
@@ -216,5 +246,5 @@ class _HexBgPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _HexBgPainter old) =>
-      old.time != time || old.hexes != hexes;
+      old.time != time || old.hexes != hexes || old.calmTop != calmTop;
 }

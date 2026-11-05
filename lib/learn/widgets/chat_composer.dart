@@ -119,9 +119,16 @@ class _ChatComposerState extends State<ChatComposer> with SingleTickerProviderSt
 
   Future<void> _press(PointerDownEvent event) async {
     if (!widget.enabled || _hold != _Hold.idle) return;
-    _hold = _Hold.starting;
     _pressX = event.position.dx;
     _pressY = event.position.dy;
+    await _begin();
+  }
+
+  /// Starts recording. [locked] goes straight to hands-free, for a
+  /// screen reader's tap, which can't hold.
+  Future<void> _begin({bool locked = false}) async {
+    if (!widget.enabled || _hold != _Hold.idle) return;
+    _hold = _Hold.starting;
     _lift.value = 0;
     _cancelArmed = false;
     final recorder = _recorder ??= widget.recorder!();
@@ -139,7 +146,7 @@ class _ChatComposerState extends State<ChatComposer> with SingleTickerProviderSt
       await recorder.start();
     } catch (e) {
       _hold = _Hold.idle;
-      if (mounted) showSnack(context, 'The microphone would not start: $e');
+      if (mounted) showErrorSnack(context, "The microphone didn't start. Try again.", e);
       return;
     }
     if (_hold != _Hold.starting || !mounted) {
@@ -153,7 +160,7 @@ class _ChatComposerState extends State<ChatComposer> with SingleTickerProviderSt
     _seconds.value = 0;
     _ticker.start();
     HapticFeedback.lightImpact();
-    setState(() => _hold = _Hold.recording);
+    setState(() => _hold = locked ? _Hold.locked : _Hold.recording);
   }
 
   void _move(PointerMoveEvent event) {
@@ -270,7 +277,7 @@ class _ChatComposerState extends State<ChatComposer> with SingleTickerProviderSt
       final photo = await widget.picker!.pick(source);
       if (photo != null) widget.onPhoto!(photo);
     } catch (e) {
-      if (mounted) showSnack(context, 'That photo could not be attached: $e');
+      if (mounted) showErrorSnack(context, "That photo couldn't be attached.", e);
     }
   }
 
@@ -281,7 +288,7 @@ class _ChatComposerState extends State<ChatComposer> with SingleTickerProviderSt
     final bar = Container(
       padding: const EdgeInsets.fromLTRB(16, 2, 4, 2),
       decoration: BoxDecoration(
-        color: const Color(0xE6FFFDF6),
+        color: IunaPalette.paper,
         borderRadius: BorderRadius.circular(IunaRadii.xl),
         border: Border.all(color: const Color.fromRGBO(74, 53, 32, 0.08), width: 0.5),
         boxShadow: panelShadow(),
@@ -312,10 +319,10 @@ class _ChatComposerState extends State<ChatComposer> with SingleTickerProviderSt
                         maxLines: 5,
                         keyboardType: TextInputType.multiline,
                         textCapitalization: TextCapitalization.sentences,
-                        style: const TextStyle(fontSize: 14, color: IunaPalette.ink),
+                        style: IunaText.body.copyWith(color: IunaPalette.ink),
                         decoration: InputDecoration(
                           hintText: _nudge ?? widget.hint,
-                          hintStyle: const TextStyle(color: IunaPalette.inkMute),
+                          hintStyle: const TextStyle(color: IunaPalette.ink3),
                           border: InputBorder.none,
                           isDense: true,
                           contentPadding: const EdgeInsets.symmetric(vertical: 12),
@@ -340,12 +347,13 @@ class _ChatComposerState extends State<ChatComposer> with SingleTickerProviderSt
               // belongs with the mic, not with the field.
               if (_canAttach && !recording && widget.photo == null)
                 SizedBox(
-                  width: 34,
+                  width: 48,
                   height: 48,
                   child: IconButton(
                     tooltip: 'Attach a photo',
                     onPressed: widget.enabled && !widget.busy ? _attach : null,
                     padding: EdgeInsets.zero,
+                    alignment: Alignment.centerRight,
                     icon: Icon(
                       Icons.add_photo_alternate_outlined,
                       size: 24,
@@ -367,7 +375,7 @@ class _ChatComposerState extends State<ChatComposer> with SingleTickerProviderSt
                   icon: const Icon(
                     Icons.arrow_circle_up_rounded,
                     size: 30,
-                    color: IunaPalette.ctaBottom,
+                    color: IunaPalette.honeyInk,
                   ),
                 )
               else
@@ -384,7 +392,7 @@ class _ChatComposerState extends State<ChatComposer> with SingleTickerProviderSt
                       icon: Icon(
                         Icons.arrow_circle_up_rounded,
                         size: 30,
-                        color: can ? IunaPalette.ctaBottom : IunaPalette.inkMute,
+                        color: can ? IunaPalette.honeyInk : IunaPalette.inkMute,
                       ),
                     );
                   },
@@ -417,7 +425,12 @@ class _ChatComposerState extends State<ChatComposer> with SingleTickerProviderSt
       child: Semantics(
         button: true,
         enabled: widget.enabled,
-        label: 'Hold to speak, slide up to lock',
+        label: 'Dictate',
+        hint: 'Hold to speak, or tap for hands-free',
+        onTap: widget.enabled && _hold == _Hold.idle
+            ? () => unawaited(_begin(locked: true))
+            : null,
+        excludeSemantics: true,
         child: SizedBox(
           width: 48,
           height: 48,
@@ -440,11 +453,11 @@ class _ChatComposerState extends State<ChatComposer> with SingleTickerProviderSt
                 child: Icon(
                   _cancelArmed ? Icons.delete_outline_rounded : Icons.mic_rounded,
                   size: active ? 20 : 26,
-                  color: active
+                  color: !active
+                      ? (widget.enabled ? IunaPalette.honeyInk : IunaPalette.inkMute)
+                      : _cancelArmed
                       ? Colors.white
-                      : widget.enabled
-                      ? IunaPalette.ctaBottom
-                      : IunaPalette.inkMute,
+                      : kCtaInk,
                 ),
               ),
             ),
@@ -533,8 +546,7 @@ class _RecordingBarState extends State<_RecordingBar> with SingleTickerProviderS
           valueListenable: widget.seconds,
           builder: (context, seconds, _) => Text(
             clockLabel(Duration(seconds: seconds)),
-            style: const TextStyle(
-              fontSize: 13,
+            style: IunaText.bodySmall.copyWith(
               fontWeight: FontWeight.w600,
               color: IunaPalette.ink2,
               fontFeatures: [FontFeature.tabularFigures()],
@@ -544,10 +556,9 @@ class _RecordingBarState extends State<_RecordingBar> with SingleTickerProviderS
         const SizedBox(width: 10),
         Expanded(
           child: armed
-              ? const Text(
+              ? Text(
                   'Release to cancel',
-                  style: TextStyle(
-                    fontSize: 13,
+                  style: IunaText.bodySmall.copyWith(
                     fontWeight: FontWeight.w600,
                     color: IunaPalette.raritySsrInk,
                   ),
@@ -563,19 +574,18 @@ class _RecordingBarState extends State<_RecordingBar> with SingleTickerProviderS
           TextButton(
             onPressed: widget.onCancel,
             style: TextButton.styleFrom(
-              minimumSize: const Size(0, 32),
+              minimumSize: const Size(48, 48),
               padding: const EdgeInsets.symmetric(horizontal: 10),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               foregroundColor: IunaPalette.raritySsrInk,
             ),
-            child: const Text(
+            child: Text(
               'Cancel',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+              style: IunaText.bodySmall.copyWith(fontWeight: FontWeight.w600),
             ),
           ),
         ] else if (!armed) ...[
           const SizedBox(width: 8),
-          const Text('‹ Slide to cancel', style: TextStyle(fontSize: 11, color: IunaPalette.ink3)),
+          Text('‹ Slide to cancel', style: IunaText.caption.copyWith(color: IunaPalette.ink3)),
         ],
       ],
     );

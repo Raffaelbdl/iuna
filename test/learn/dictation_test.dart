@@ -208,7 +208,7 @@ void main() {
     }
 
     await speak();
-    expect(find.text('Your OpenRouter account is out of credits.'), findsOneWidget);
+    expect(find.text('Your OpenRouter account is out of credits. Add some on openrouter.ai, or use another key.'), findsOneWidget);
     await tester.tap(find.text('Retry'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));

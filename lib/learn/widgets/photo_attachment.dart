@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/iuna_theme.dart';
+import '../../widgets/tappable.dart';
 import '../photo/photo.dart';
 
 /// The attached photo above the composer, with the cross that drops it.
@@ -27,10 +28,10 @@ class PhotoAttachmentStrip extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10),
-          const Expanded(
+          Expanded(
             child: Text(
               'Photo attached',
-              style: TextStyle(fontSize: 12, color: IunaPalette.ink3),
+              style: IunaText.caption.copyWith(color: IunaPalette.ink3),
             ),
           ),
           IconButton(
@@ -69,7 +70,8 @@ class PhotoBubbleImage extends StatelessWidget {
     );
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
-      child: GestureDetector(
+      child: Tappable(
+        label: 'Open photo',
         onTap: () => Navigator.of(context).push(PageRouteBuilder<void>(
           opaque: false,
           barrierColor: Colors.black87,

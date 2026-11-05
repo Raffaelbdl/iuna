@@ -15,9 +15,14 @@ import '../widgets/booster_pack.dart';
 import '../widgets/hex_bg.dart';
 import '../widgets/iuna_bottom_nav.dart';
 import '../widgets/iuna_icon_button.dart';
+import '../widgets/mini_card_scroller.dart';
+import '../widgets/notice.dart';
 import '../widgets/section_header.dart';
 import '../widgets/snack.dart';
-import '../widgets/vocab_card.dart';
+import '../widgets/tab_header.dart';
+import '../widgets/tappable.dart';
+import '../widgets/time_words.dart';
+import 'add_card_screen.dart';
 import 'card_detail_screen.dart';
 import 'app_nav.dart';
 import 'collection_screen.dart';
@@ -38,16 +43,17 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with LoadGate {
   late final IunaRepository _repo = IunaRepository(widget.db);
 
-  bool _loading = true;
   ({int packs, int newCards}) _booster = (packs: 0, newCards: 0);
   int _dueCount = 0;
   int _streak = 0;
   int _learned = 0;
   int _wishCount = 0;
-  List<RecentLearned> _recent = const [];
+  int _resetHour = 0;
+  String? _drawFilter;
+  List<CardRow> _recent = const [];
 
   /// Whether a Google account is signed in for Drive backup. The home
   /// screen only exposes pull-to-refresh in that state — signed-out
@@ -78,36 +84,62 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
+  @override
+  Future<void> load() => _refresh();
+
   /// Reloads in place; only the first load shows the spinner, so a
-  /// return from another screen doesn't swap the whole tree out.
+  /// return from another screen doesn't swap the whole tree out. A
+  /// refresh that fails keeps what is on screen.
   Future<void> _refresh() async {
-    final (preview, due, streak, stats, wishCount, recent) = await (
-      _repo.boosterPreview(),
-      _repo.dueCountToday(),
-      _repo.recordStreak(),
-      _repo.collectionStats(),
-      _repo.wishedCount(),
-      _repo.recentlyObtained(limit: 10),
-    ).wait;
-    if (!mounted) return;
-    setState(() {
-      _loading = false;
+    final loaded = await guardLoad(
+      'Home',
+      () async {
+        final r = await (
+          _repo.boosterPreview(),
+          _repo.dueCountToday(),
+          _repo.recordStreak(),
+          _repo.collectionStats(),
+          _repo.wishedCount(),
+          _repo.recentlyObtained(limit: 10),
+          _repo.getResetHour(),
+        ).wait;
+        final preview = r.$1;
+        // Only named once the draw has run dry.
+        final drawFilter = preview.packs > 0 && preview.newCards == 0
+            ? await _repo.drawFilterName()
+            : null;
+        return (r, drawFilter);
+      },
+      keepShown: true,
+    );
+    if (loaded == null || !mounted) return;
+    final (counts, drawFilter) = loaded;
+    final (preview, due, streak, stats, wishCount, recent, resetHour) = counts;
+    publishTodayCount(widget.db, preview.newCards + due);
+    showLoaded(() {
       _booster = preview;
       _dueCount = due;
       _streak = streak;
       _learned = stats.owned;
       _wishCount = wishCount;
-      _recent = [
-        for (final e in recent)
-          RecentLearned(card: e.card, level: e.userCard!.level),
-      ];
+      _resetHour = resetHour;
+      _drawFilter = drawFilter;
+      _recent = [for (final e in recent) e.card];
     });
   }
 
-  Future<void> _openCollection() async {
-    await Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => CollectionScreen(db: widget.db)));
+  Future<void> _openWishlist() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CollectionScreen(db: widget.db, initialWishedOnly: true),
+      ),
+    );
+    if (!mounted) return;
+    await _refresh();
+  }
+
+  Future<void> _openAddCard() async {
+    await openAddToWishlist(context, widget.db);
     if (!mounted) return;
     await _refresh();
   }
@@ -136,7 +168,11 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _openCardDetail(int cardId) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => CardDetailScreen(db: widget.db, cardId: cardId),
+        builder: (_) => CardDetailScreen(
+          db: widget.db,
+          cardId: cardId,
+          from: IunaNavTab.home,
+        ),
       ),
     );
     if (!mounted) return;
@@ -190,9 +226,7 @@ class _HomeScreenState extends State<HomeScreen> {
             const Positioned.fill(child: HexBg()),
             SafeArea(
               bottom: false,
-              child: _loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _buildContent(),
+              child: gated(_buildContent),
             ),
             Positioned(
               left: 0,
@@ -238,16 +272,19 @@ class _HomeScreenState extends State<HomeScreen> {
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.fromLTRB(0, 4, 0, 110),
               children: [
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(18, 4, 18, 8),
-                  child: _Greeting(),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 4, 18, 8),
+                  child: _Greeting(returning: _learned > 0),
                 ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
                   child: _HeroPack(
                     booster: _booster,
                     dueCount: _dueCount,
+                    resetHour: _resetHour,
+                    drawFilter: _drawFilter,
                     onTap: _openTodayFlow,
+                    onWidenDraw: _openSettings,
                     kumaSeed: widget.kumaSeed,
                   ),
                 ),
@@ -256,28 +293,25 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(height: 18),
                 const Padding(
                   padding: EdgeInsets.fromLTRB(18, 0, 18, 6),
-                  child: IunaEyebrow('Recently learned'),
+                  child: IunaEyebrow('Recently collected'),
                 ),
                 if (_recent.isEmpty)
-                  const Padding(
+                  Padding(
                     padding: EdgeInsets.fromLTRB(18, 4, 18, 4),
                     child: Text(
                       'No cards yet — open a pack to start your collection.',
-                      style: TextStyle(fontSize: 13, color: IunaPalette.ink3),
+                      style: IunaText.bodySmall.copyWith(color: IunaPalette.ink3),
                     ),
                   )
                 else
-                  _RecentScroller(
-                    cards: _recent,
-                    onTap: (id) => _openCardDetail(id),
-                  ),
+                  MiniCardScroller(cards: _recent, onTap: _openCardDetail),
                 const SizedBox(height: 14),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
                   child: _LinkPanel(
                     icon: Icons.grid_view_rounded,
                     tint: IunaPalette.rarityCommonInk,
-                    wash: const Color(0x80C7E0CF),
+                    wash: IunaPalette.rarityCommon.withValues(alpha: 0.5),
                     title: 'Games',
                     subtitle: 'Practice the cards you find hard',
                     onTap: _openGames,
@@ -289,14 +323,17 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: _LinkPanel(
                     icon: Icons.bookmark_rounded,
                     tint: IunaPalette.raritySuperRareInk,
-                    wash: const Color(0x59C4B2E0),
-                    title: _wishCount == 0
-                        ? 'Bookmark a kanji to bias future packs'
-                        : '$_wishCount cards in your wishlist',
+                    wash: IunaPalette.lilacWash,
+                    title: switch (_wishCount) {
+                      0 => 'Your wishlist is empty',
+                      1 => '1 card on your wishlist',
+                      final n => '$n cards on your wishlist',
+                    },
                     subtitle: _wishCount == 0
-                        ? 'Open a card detail and tap the bookmark.'
-                        : 'Pin words you want to learn next',
-                    onTap: _openCollection,
+                        ? 'Look up a word to wish for, or tap the bookmark '
+                              'on a card. It shows up in a pack soon.'
+                        : 'They show up in a pack soon.',
+                    onTap: _wishCount == 0 ? _openAddCard : _openWishlist,
                   ),
                 ),
               ],
@@ -315,86 +352,49 @@ class _TopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-      child: Row(
-        children: [
-          Container(
-            width: 30,
-            height: 30,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFFFFD994), Color(0xFFF3A7B5)],
-              ),
-              borderRadius: BorderRadius.circular(10),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color.fromRGBO(120, 40, 60, 0.18),
-                  blurRadius: 0,
-                  offset: Offset(0, 0),
-                  spreadRadius: 0.5,
-                ),
-              ],
-            ),
-            child: const Center(
-              child: Text(
-                'い',
-                style: TextStyle(
-                  color: Color(0xFF5A3210),
-                  fontWeight: FontWeight.w800,
-                  fontSize: 14,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          const Text(
-            'Iuna',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
-              color: IunaPalette.ink,
-              letterSpacing: -0.2,
-            ),
-          ),
-          const Spacer(),
-          IunaIconButton(icon: Icons.show_chart_rounded, onTap: onStats),
-          IunaIconButton(icon: Icons.settings_rounded, onTap: onSettings),
-        ],
-      ),
+    return IunaTabHeader(
+      'Iuna',
+      leading: const IunaLogoMark(),
+      actions: [
+        IunaIconButton(
+          icon: Icons.show_chart_rounded,
+          tooltip: 'Stats',
+          onTap: onStats,
+        ),
+        IunaIconButton(
+          icon: Icons.settings_rounded,
+          tooltip: 'Settings',
+          onTap: onSettings,
+        ),
+      ],
     );
   }
 }
 
 class _Greeting extends StatelessWidget {
-  const _Greeting();
+  const _Greeting({required this.returning});
+
+  /// Whether the learner has cards already; a first visit gets a plain
+  /// welcome rather than a welcome back.
+  final bool returning;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: const [
+      children: [
         Text(
-          'おかえり',
-          style: TextStyle(
-            fontSize: 15,
+          returning ? 'おかえり' : 'ようこそ',
+          style: IunaText.bodyLarge.copyWith(
             fontStyle: FontStyle.italic,
             fontWeight: FontWeight.w500,
             color: IunaPalette.ink3,
           ),
         ),
-        SizedBox(height: 2),
+        const SizedBox(height: 2),
         Text(
-          'Welcome back, kuma.',
-          style: TextStyle(
-            fontSize: 26,
-            fontWeight: FontWeight.w600,
-            height: 1.1,
-            color: IunaPalette.ink,
-            letterSpacing: -0.3,
-          ),
+          returning ? 'Welcome back.' : 'Welcome.',
+          style: IunaText.banner.copyWith(color: IunaPalette.ink),
         ),
       ],
     );
@@ -405,13 +405,24 @@ class _HeroPack extends StatelessWidget {
   const _HeroPack({
     required this.booster,
     required this.dueCount,
+    required this.resetHour,
     required this.onTap,
+    required this.onWidenDraw,
+    this.drawFilter,
     this.kumaSeed,
   });
 
   final ({int packs, int newCards}) booster;
   final int dueCount;
+
+  /// When the day, and the next pack, rolls over.
+  final int resetHour;
   final VoidCallback onTap;
+
+  /// What the draw is narrowed to ("JLPT", a pack), if anything: then
+  /// running out of cards is a setting, not the end of the dictionary.
+  final String? drawFilter;
+  final VoidCallback onWidenDraw;
   final int? kumaSeed;
 
   @override
@@ -422,162 +433,148 @@ class _HeroPack extends StatelessWidget {
     final String title, sub;
     if (available) {
       title = "Today's pack";
-      sub = '${newCards == 1 ? "1 new card" : "$newCards new cards"} · '
-          '$reviews due';
+      sub = '${newCards == 1 ? "1 new card" : "$newCards new cards"}'
+          '${dueCount > 0 ? ' · $reviews due' : ''}';
     } else {
       final outOfCards = booster.packs > 0;
-      title = outOfCards ? 'No new cards left' : 'No pack today';
-      sub = dueCount > 0
-          ? '$reviews due today'
-          : outOfCards
-          ? 'You have every card in the draw pool.'
-          : 'All caught up — come back tomorrow.';
+      title = outOfCards ? 'No new cards left' : "Today's pack is open";
+      final next = !outOfCards
+          ? 'Next pack at ${hourWords(resetHour)}.'
+          : drawFilter != null
+          ? 'Every $drawFilter card is collected. Draw from more in '
+                'Settings.'
+          : "You've collected every card.";
+      sub = dueCount > 0 ? '$reviews due today · $next' : next;
     }
-    final cta = available
+    final widen =
+        !available && booster.packs > 0 && drawFilter != null && dueCount == 0;
+    final String? cta = available
         ? 'Open & review'
-        : (dueCount == 0 ? 'Up to date' : 'Start review');
+        : dueCount > 0
+        ? 'Start review'
+        : widen
+        ? 'Open Settings'
+        : null;
 
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        height: 178,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(IunaRadii.xl),
-          gradient: const LinearGradient(
-            begin: Alignment(-0.4, -1),
-            end: Alignment(0.4, 1),
-            colors: [Color(0xFFFFD994), Color(0xFFF3A7B5)],
-          ),
-          boxShadow: panelShadow(),
+    final hero = Container(
+      // A floor, not a height: larger text grows the hero instead of
+      // overflowing it.
+      constraints: const BoxConstraints(minHeight: 178),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(IunaRadii.xl),
+        gradient: const LinearGradient(
+          begin: Alignment(-0.4, -1),
+          end: Alignment(0.4, 1),
+          colors: [IunaPalette.heroTop, IunaPalette.bowPink],
         ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(IunaRadii.xl),
-          child: Stack(
-            children: [
-              // Soft top-right radial highlight.
-              const Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: RadialGradient(
-                      center: Alignment(0.6, -0.5),
-                      radius: 1.0,
-                      colors: [Color(0x99FFFFFF), Color(0x00FFFFFF)],
-                    ),
+        boxShadow: panelShadow(),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(IunaRadii.xl),
+        child: Stack(
+          children: [
+            // Soft top-right radial highlight.
+            const Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    center: Alignment(0.6, -0.5),
+                    radius: 1.0,
+                    colors: [Color(0x99FFFFFF), Color(0x00FFFFFF)],
                   ),
                 ),
               ),
-              // Mini pack peeking from the right, rotated 8°. Sized so
-              // the "TODAY" eyebrow + Kuma seal + "パック" footer all
-              // read clearly against the hero gradient.
-              Positioned(
-                right: -4,
-                top: 16,
-                bottom: -8,
-                child: Transform.rotate(
-                  angle: 8 * math.pi / 180,
-                  alignment: Alignment.center,
-                  child: SizedBox(
+            ),
+            // Mini pack peeking from the right, rotated 8°. Sized so
+            // the "TODAY" eyebrow + Kuma seal + "パック" footer all
+            // read clearly against the hero gradient.
+            Positioned(
+              right: -4,
+              top: 16,
+              child: Transform.rotate(
+                angle: 8 * math.pi / 180,
+                alignment: Alignment.center,
+                child: SizedBox(
+                  width: 120,
+                  height: 170,
+                  child: BoosterPack(
                     width: 120,
                     height: 158,
-                    child: BoosterPack(
-                      width: 120,
-                      height: 158,
-                      label: 'TODAY',
-                      kumaSize: 60,
-                      elevation: 0.7,
-                      variantSeed: kumaSeed,
-                    ),
+                    label: 'TODAY',
+                    kumaSize: 60,
+                    elevation: 0.7,
+                    variantSeed: kumaSeed,
                   ),
                 ),
               ),
-              // Foreground copy. Reserved width keeps the title clear of
-              // the rotated pack peek on the right.
-              Padding(
-                padding: const EdgeInsets.fromLTRB(22, 18, 122, 18),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
-                        height: 1.1,
-                        color: Color(0xFF3A2510),
-                        letterSpacing: -0.2,
-                      ),
+            ),
+            // Foreground copy. Reserved width keeps the title clear of
+            // the rotated pack peek on the right.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(22, 18, 122, 18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    style: IunaText.headline.copyWith(
+                      height: 1.1,
+                      color: IunaPalette.heroInk,
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      sub,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        height: 1.3,
-                        color: Color(0xCC3A2510),
-                      ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    sub,
+                    style: IunaText.bodySmall.copyWith(
+                      fontWeight: FontWeight.w500,
+                      height: 1.3,
+                      color: IunaPalette.heroInk,
                     ),
+                  ),
+                  if (cta != null) ...[
                     const SizedBox(height: 14),
-                    _HeroPill(label: cta),
+                    _HeroCta(label: cta),
                   ],
-                ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
+    // With nothing to open or review, the hero only tells the time of
+    // the next pack: no tap, and nothing for a screen reader to press.
+    return cta == null
+        ? hero
+        : Tappable(onTap: widen ? onWidenDraw : onTap, child: hero);
   }
 }
 
-class _HeroPill extends StatelessWidget {
-  const _HeroPill({required this.label});
+/// The hero's call to action, drawn as the honey primary button. The
+/// whole hero takes the tap.
+class _HeroCta extends StatelessWidget {
+  const _HeroCta({required this.label});
   final String label;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: const Color(0xD9FFFDF6),
-        borderRadius: BorderRadius.circular(999),
-        boxShadow: const [
-          BoxShadow(
-            color: Color.fromRGBO(74, 53, 32, 0.25),
-            blurRadius: 16,
-            offset: Offset(0, 6),
-            spreadRadius: -8,
-          ),
-        ],
-      ),
+      constraints: const BoxConstraints(minHeight: 44),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+      decoration: ctaDecoration(),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(
-            Icons.card_giftcard_rounded,
-            size: 16,
-            color: IunaPalette.ink,
-          ),
+          const Icon(Icons.card_giftcard_rounded, size: 16, color: kCtaInk),
           const SizedBox(width: 8),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: IunaPalette.ink,
-              height: 1,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Container(
-            width: 6,
-            height: 6,
-            decoration: const BoxDecoration(
-              color: Color(0xFFD97A8C),
-              shape: BoxShape.circle,
+          Flexible(
+            child: Text(
+              label,
+              style: IunaText.label.copyWith(
+                fontWeight: FontWeight.w700,
+                color: kCtaInk,
+              ),
             ),
           ),
         ],
@@ -601,9 +598,8 @@ class _StatsRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      // The streak tile's ring is taller than the plain-digit tiles, so
-      // without IntrinsicHeight + stretch the cream backgrounds end up
-      // mismatched even though the Row reserves the same row height.
+      // IntrinsicHeight + stretch keep the three tiles one height when
+      // large text wraps or shrinks one caption.
       child: IntrinsicHeight(
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -611,11 +607,11 @@ class _StatsRow extends StatelessWidget {
             Expanded(child: _StreakStat(streak: streak)),
             const SizedBox(width: 10),
             Expanded(
-              child: _Stat(value: '$due', label: 'due now'),
+              child: _Stat(value: '$due', label: 'due today'),
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: _Stat(value: '$learned', label: 'learned'),
+              child: _Stat(value: '$learned', label: 'collected'),
             ),
           ],
         ),
@@ -641,36 +637,51 @@ class _Stat extends StatelessWidget {
         children: [
           Text(
             value,
-            style: const TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
+            style: IunaText.headline.copyWith(
               color: IunaPalette.ink,
               height: 1,
             ),
           ),
           const SizedBox(height: 4),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w500,
-              color: IunaPalette.ink3,
-              letterSpacing: 0.4,
-            ),
-          ),
+          _StatLabel(label),
         ],
       ),
     );
   }
 }
 
+/// A stat tile's caption: one line, shrunk rather than broken when the
+/// text is large.
+class _StatLabel extends StatelessWidget {
+  const _StatLabel(this.text);
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.centerLeft,
+      child: Text(
+        text,
+        maxLines: 1,
+        style: IunaText.caption.copyWith(
+          fontWeight: FontWeight.w500,
+          color: IunaPalette.ink3,
+          letterSpacing: 0.4,
+        ),
+      ),
+    );
+  }
+}
+
+/// The streak as a plain count beside a flame, like the tiles next to
+/// it: no ring filling toward a goal nobody set.
 class _StreakStat extends StatelessWidget {
   const _StreakStat({required this.streak});
   final int streak;
 
   @override
   Widget build(BuildContext context) {
-    final pct = (streak / 14).clamp(0.0, 1.0);
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 14),
       decoration: paperPanelDecoration(
@@ -679,206 +690,33 @@ class _StreakStat extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _StreakRing(progress: pct, value: streak),
+          Row(
+            children: [
+              Text(
+                '$streak',
+                style: IunaText.headline.copyWith(
+                  color: IunaPalette.ink,
+                  height: 1,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Icon(
+                Icons.local_fire_department_rounded,
+                size: MediaQuery.textScalerOf(context).scale(20),
+                color: streak > 0 ? IunaPalette.flame : IunaPalette.inkMute,
+              ),
+            ],
+          ),
           const SizedBox(height: 4),
-          const Text(
-            'day streak',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w500,
-              color: IunaPalette.ink3,
-              letterSpacing: 0.4,
-            ),
-          ),
+          const _StatLabel('day streak'),
         ],
       ),
     );
   }
 }
 
-class _StreakRing extends StatelessWidget {
-  const _StreakRing({required this.progress, required this.value});
-  final double progress;
-  final int value;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 36,
-      height: 36,
-      child: CustomPaint(
-        painter: _RingPainter(progress: progress),
-        child: Center(
-          child: Text(
-            '$value',
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: IunaPalette.ink,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _RingPainter extends CustomPainter {
-  _RingPainter({required this.progress});
-  final double progress;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final radius = size.width / 2;
-    canvas.drawCircle(
-      center,
-      radius,
-      Paint()..color = const Color.fromRGBO(74, 53, 32, 0.08),
-    );
-    if (progress > 0) {
-      final sweep = 2 * math.pi * progress;
-      canvas.drawArc(
-        Rect.fromCircle(center: center, radius: radius),
-        -math.pi / 2,
-        sweep,
-        true,
-        Paint()..color = IunaPalette.bellGold,
-      );
-    }
-    canvas.drawCircle(center, radius - 3, Paint()..color = IunaPalette.paper);
-  }
-
-  @override
-  bool shouldRepaint(covariant _RingPainter old) => old.progress != progress;
-}
-
-class RecentLearned {
-  const RecentLearned({required this.card, required this.level});
-  final CardRow card;
-  final int level;
-}
-
-class _RecentScroller extends StatelessWidget {
-  const _RecentScroller({required this.cards, required this.onTap});
-  final List<RecentLearned> cards;
-  final ValueChanged<int> onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 158,
-      child: Stack(
-        children: [
-          ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            itemCount: cards.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 10),
-            itemBuilder: (_, i) {
-              final c = cards[i].card;
-              return GestureDetector(
-                onTap: () => onTap(c.id),
-                child: SizedBox(
-                  width: 120,
-                  height: 150,
-                  child: VocabCard(
-                    rarity: c.rarity,
-                    padding: const EdgeInsets.all(12),
-                    elevation: 0.6,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        RarityChip(
-                          rarity: c.rarity,
-                          size: RarityChipSize.compact,
-                        ),
-                        const Spacer(),
-                        Text(
-                          c.kanji,
-                          textAlign: TextAlign.center,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 30,
-                            fontWeight: FontWeight.w700,
-                            color: IunaPalette.ink,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          c.kana,
-                          textAlign: TextAlign.center,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: IunaPalette.ink3,
-                          ),
-                        ),
-                        const Spacer(),
-                        Text(
-                          c.meaning,
-                          textAlign: TextAlign.center,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w500,
-                            color: IunaPalette.ink3,
-                            height: 1.2,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-          Positioned(
-            top: 0,
-            bottom: 0,
-            left: 0,
-            child: IgnorePointer(
-              child: Container(
-                width: 16,
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                    colors: [IunaPalette.bg, Color(0x00FBF3E2)],
-                    stops: [0.1, 1.0],
-                  ),
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            top: 0,
-            bottom: 0,
-            right: 0,
-            child: IgnorePointer(
-              child: Container(
-                width: 16,
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.centerRight,
-                    end: Alignment.centerLeft,
-                    colors: [IunaPalette.bg, Color(0x00FBF3E2)],
-                    stops: [0.1, 1.0],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// A tappable row on Home: a tinted icon, a title and a line under it.
+/// A row on Home: a tinted icon, a title and a line under it. Without
+/// [onTap] it is a plain tip, with no chevron.
 class _LinkPanel extends StatelessWidget {
   const _LinkPanel({
     required this.icon,
@@ -894,59 +732,56 @@ class _LinkPanel extends StatelessWidget {
   final Color wash;
   final String title;
   final String subtitle;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
-        decoration: paperPanelDecoration(
-          borderRadius: BorderRadius.circular(IunaRadii.md),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                color: wash,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(icon, color: tint, size: 18),
+    final panel = Container(
+      constraints: const BoxConstraints(minHeight: 56),
+      padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+      decoration: paperPanelDecoration(
+        borderRadius: BorderRadius.circular(IunaRadii.md),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: wash,
+              borderRadius: BorderRadius.circular(IunaRadii.sm),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: IunaPalette.ink,
-                      height: 1.2,
-                    ),
+            child: Icon(icon, color: tint, size: 18),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: IunaText.label.copyWith(
+                    color: IunaPalette.ink,
+                    height: 1.2,
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                      color: IunaPalette.ink3,
-                      height: 1.2,
-                    ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: IunaText.caption.copyWith(
+                    fontWeight: FontWeight.w500,
+                    color: IunaPalette.ink3,
+                    height: 1.25,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
+          ),
+          if (onTap != null)
             const Icon(Icons.chevron_right_rounded, color: IunaPalette.ink3),
-          ],
-        ),
+        ],
       ),
     );
+    return onTap == null ? panel : Tappable(onTap: onTap, child: panel);
   }
 }

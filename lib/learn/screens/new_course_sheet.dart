@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/iuna_theme.dart';
+import '../../widgets/snack.dart';
 import '../db/learn_database.dart';
 import '../db/learn_repository.dart';
 
@@ -40,7 +41,16 @@ class _NewCourseSheetState extends State<_NewCourseSheet> {
   Future<void> _create() async {
     if (_title.text.trim().isEmpty || _saving) return;
     setState(() => _saving = true);
-    final course = await widget.repo.createCourse(title: _title.text, goal: _goal.text);
+    final CourseRow course;
+    try {
+      course = await widget.repo.createCourse(title: _title.text, goal: _goal.text);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _saving = false);
+        showErrorSnack(context, "Couldn't create the course.", e);
+      }
+      return;
+    }
     if (!mounted) return;
     Navigator.of(context).pop(course);
   }
@@ -48,7 +58,7 @@ class _NewCourseSheetState extends State<_NewCourseSheet> {
   InputDecoration _field(String label, String hint) => InputDecoration(
         labelText: label,
         hintText: hint,
-        hintStyle: const TextStyle(color: IunaPalette.inkMute),
+        hintStyle: const TextStyle(color: IunaPalette.ink3),
         filled: true,
         fillColor: IunaPalette.paper2,
         border: OutlineInputBorder(
@@ -65,23 +75,23 @@ class _NewCourseSheetState extends State<_NewCourseSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text(
+          Text(
             'New course',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: IunaPalette.ink),
+            style: IunaText.title.copyWith(color: IunaPalette.ink),
           ),
           const SizedBox(height: 6),
-          const Text(
+          Text(
             'Name it after what you want to be able to do. Kuma-sensei pins '
             'down the goal with you in the course room, then checks what you '
             'already know before planning anything.',
-            style: TextStyle(fontSize: 13, height: 1.4, color: IunaPalette.ink3),
+            style: IunaText.bodySmall.copyWith(height: 1.4, color: IunaPalette.ink3),
           ),
           const SizedBox(height: 16),
           TextField(
             controller: _title,
             autofocus: true,
             textCapitalization: TextCapitalization.sentences,
-            decoration: _field('Course', 'e.g. JLPT N1, Business Japanese'),
+            decoration: _field('Course', 'What do you want to be able to do?'),
             onChanged: (_) => setState(() {}),
           ),
           const SizedBox(height: 12),
@@ -92,7 +102,7 @@ class _NewCourseSheetState extends State<_NewCourseSheet> {
             textCapitalization: TextCapitalization.sentences,
             decoration: _field(
               'Anything to add? (optional)',
-              'e.g. "pass N1 in December", "write polite emails to clients"',
+              'A deadline, a reason, how you like to learn…',
             ),
           ),
           const SizedBox(height: 16),

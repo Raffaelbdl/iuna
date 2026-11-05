@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/iuna_theme.dart';
+import '../../widgets/confirm_dialog.dart';
 import '../../widgets/section_header.dart';
 import '../../widgets/snack.dart';
 import '../../widgets/text_input_dialog.dart';
 import '../learn.dart';
 import '../learn_settings.dart';
-import '../llm/model_vision.dart';
 import '../llm/openrouter_client.dart';
 
 /// Settings → AI tutor: the OpenRouter key, whose presence is what shows
@@ -18,13 +18,12 @@ class TutorSettingsSection extends StatefulWidget {
   State<TutorSettingsSection> createState() => _TutorSettingsSectionState();
 }
 
-class _TutorSettingsSectionState extends State<TutorSettingsSection> {
+class _TutorSettingsSectionState extends State<TutorSettingsSection> with BusyGuard {
   LearnSettings get _settings => LearnSettings.instance;
 
   String? _key;
   String _model = kDefaultLearnModel;
   double _spent = 0;
-  bool _busy = false;
 
   @override
   void initState() {
@@ -60,9 +59,19 @@ class _TutorSettingsSectionState extends State<TutorSettingsSection> {
       hint: 'sk-or-v1-…',
       obscure: true,
       removeLabel: _key == null ? null : 'Remove',
+      removeIsDestructive: true,
     );
     if (result == null || !mounted) return;
     if (result.remove) {
+      final sure = await showConfirmDialog(
+        context,
+        title: 'Remove key?',
+        body: 'The Learn tab hides until you add one again. Your courses '
+            'and chats stay on this phone.',
+        confirmLabel: 'Remove',
+        destructive: true,
+      );
+      if (!sure) return;
       await _settings.clearApiKey();
       if (!mounted) return;
       setState(() => _key = null);
@@ -70,20 +79,17 @@ class _TutorSettingsSectionState extends State<TutorSettingsSection> {
       return;
     }
     if (result.text.isEmpty) return;
-    setState(() => _busy = true);
-    final check = await checkOpenRouterKey(result.text);
-    if (!mounted) return;
+    final check = await whileBusy("Couldn't save the key.", () async {
+      final check = await checkOpenRouterKey(result.text);
+      if (check is! KeyRejected) await _settings.setApiKey(result.text);
+      return check;
+    });
+    if (check == null || !mounted) return;
     if (check is KeyRejected) {
-      setState(() => _busy = false);
       showSnack(context, 'OpenRouter rejected that key');
       return;
     }
-    await _settings.setApiKey(result.text);
-    if (!mounted) return;
-    setState(() {
-      _busy = false;
-      _key = result.text;
-    });
+    setState(() => _key = result.text);
     showSnack(context, check is KeyUnverified
         ? "Saved, but OpenRouter couldn't be reached to check it"
         : 'Key saved — Kuma-sensei is in the Learn tab');
@@ -93,8 +99,9 @@ class _TutorSettingsSectionState extends State<TutorSettingsSection> {
     final result = await showTextInputDialog(
       context,
       title: 'Tutor model',
-      message: 'Any OpenRouter model id that supports tool calling. '
-          'Default: $kDefaultLearnModel.',
+      message: 'The AI model Kuma-sensei runs on, named as OpenRouter '
+          'lists it. It has to be one that can use tools, as most recent '
+          'models can. Reset goes back to the default.',
       initial: _model,
       hint: kDefaultLearnModel,
       removeLabel: 'Reset',
@@ -108,11 +115,10 @@ class _TutorSettingsSectionState extends State<TutorSettingsSection> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    return IunaGroup(
+      'AI tutor',
       children: [
-        const IunaSectionHeader('AI tutor'),
-        ListTile(
+        IunaControlTile(
           leading: const Icon(Icons.key_rounded, color: IunaPalette.pawBrown),
           title: const Text('OpenRouter API key'),
           subtitle: Text(
@@ -120,7 +126,7 @@ class _TutorSettingsSectionState extends State<TutorSettingsSection> {
                 ? 'Not set. The Learn tab appears once a key is saved.'
                 : 'In the Android Keystore · ${LearnSettings.mask(_key!)}',
           ),
-          trailing: _busy
+          control: busy
               ? const SizedBox(
                   width: 20,
                   height: 20,
@@ -136,11 +142,11 @@ class _TutorSettingsSectionState extends State<TutorSettingsSection> {
           subtitle: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(_model),
+              Text(_model == kDefaultLearnModel ? 'Default (fast, low cost)' : _model),
               const SizedBox(height: 2),
               Text(
-                'Photos go to $kPhotoFallbackModel when this one cannot read them.',
-                style: const TextStyle(fontSize: 11, color: IunaPalette.ink3),
+                "Photos go to a model that can see when this one can't.",
+                style: IunaText.caption.copyWith(color: IunaPalette.ink3),
               ),
             ],
           ),
@@ -148,13 +154,13 @@ class _TutorSettingsSectionState extends State<TutorSettingsSection> {
           trailing: const Icon(Icons.chevron_right_rounded, color: IunaPalette.ink3),
           onTap: _editModel,
         ),
-        ListTile(
+        IunaControlTile(
           leading: const Icon(Icons.receipt_long_rounded, color: IunaPalette.pawBrown),
           title: const Text('Tutor usage'),
           subtitle: const Text('Spent on this phone, as OpenRouter reports it.'),
-          trailing: Text(
+          control: Text(
             _formatCost(_spent),
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: IunaPalette.ink2),
+            style: IunaText.label.copyWith(fontWeight: FontWeight.w700, color: IunaPalette.ink2),
           ),
         ),
       ],

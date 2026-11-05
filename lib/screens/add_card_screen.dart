@@ -2,18 +2,52 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../core/japanese_text.dart';
 import '../db/database.dart';
 import '../db/jmdict_lookup.dart';
 import '../db/repository.dart';
+import '../services/dict_download.dart';
 import '../theme/iuna_theme.dart';
+import '../widgets/cta_button.dart';
 import '../widgets/hex_bg.dart';
+import '../widgets/iuna_icon_button.dart';
+import '../widgets/iuna_page.dart';
 import '../widgets/paper_sheet.dart';
 import '../widgets/search_field.dart';
 import '../widgets/sense_row.dart';
+import '../widgets/snack.dart';
 import '../widgets/vocab_card.dart';
 import 'card_detail_screen.dart';
+import 'settings/dictionary_section.dart';
 
 enum _SheetAction { cancel, promote, openCard }
+
+/// The wishlist lookup, or, until the dictionary is downloaded, a sheet
+/// that offers it first. Completes once the learner is back.
+Future<void> openAddToWishlist(
+  BuildContext context,
+  AppDatabase db, {
+  String? initialQuery,
+  bool dictInstalled = false,
+}) async {
+  final navigator = Navigator.of(context);
+  if (!dictInstalled && !await DictDownload.isInstalled()) {
+    if (!context.mounted) return;
+    final ready = await showDictionaryOffer(
+      context,
+      title: 'Add any word to your wishlist',
+      body:
+          'Look a word up in the offline dictionary and bookmark it. It '
+          'shows up in a pack soon. The dictionary is a one-time download.',
+    );
+    if (ready != true) return;
+  }
+  await navigator.push(
+    MaterialPageRoute<void>(
+      builder: (_) => AddCardScreen(db: db, initialQuery: initialQuery),
+    ),
+  );
+}
 
 class AddCardScreen extends StatefulWidget {
   const AddCardScreen({super.key, required this.db, this.initialQuery});
@@ -34,6 +68,10 @@ class _AddCardScreenState extends State<AddCardScreen> {
   late String _query = widget.initialQuery ?? '';
   Timer? _debounce;
   List<JmdictHit> _results = const [];
+
+  /// For a query in English: the deck's own cards with it in their
+  /// meaning, as Collection's search finds them.
+  List<CollectionEntry> _byMeaning = const [];
   bool _searching = false;
 
   @override
@@ -68,17 +106,58 @@ class _AddCardScreenState extends State<AddCardScreen> {
       if (!mounted) return;
       setState(() {
         _results = const [];
+        _byMeaning = const [];
+        _searching = false;
+      });
+      return;
+    }
+    if (!japaneseRun.hasMatch(q)) {
+      setState(() {
+        _results = const [];
+        _searching = true;
+      });
+      List<CollectionEntry> matches;
+      try {
+        matches = await _repo.ownedCards(
+          query: q,
+          includeUnowned: true,
+          wholeWordFirst: true,
+          limit: 50,
+        );
+      } catch (e) {
+        if (mounted) showErrorSnack(context, "Couldn't search your cards.", e);
+        matches = const [];
+      }
+      if (!mounted || _query.trim() != q) return;
+      setState(() {
+        _byMeaning = matches;
         _searching = false;
       });
       return;
     }
     setState(() => _searching = true);
-    final hits = await JmdictLookup.instance.search(q, limit: 50);
+    List<JmdictHit> hits;
+    try {
+      hits = await JmdictLookup.instance.search(q, limit: 50);
+    } catch (e) {
+      if (mounted) showErrorSnack(context, "Couldn't search the dictionary.", e);
+      hits = const [];
+    }
     if (!mounted || _query.trim() != q) return;
     setState(() {
       _results = hits;
+      _byMeaning = const [];
       _searching = false;
     });
+  }
+
+  Future<void> _openCard(int cardId) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CardDetailScreen(db: widget.db, cardId: cardId),
+      ),
+    );
+    if (mounted) await _runSearch(_query);
   }
 
   Future<void> _previewAndAdd(JmdictHit hit) async {
@@ -101,14 +180,12 @@ class _AddCardScreenState extends State<AddCardScreen> {
           ),
         );
       case _SheetAction.promote:
-        final result = await _repo.promoteFromJmdict(hit);
+        await _repo.promoteFromJmdict(hit);
         if (!mounted) return;
-        final msg = result.wasNew
-            ? '${hit.kanji} added — keep an eye on your next pack.'
-            : '${hit.kanji} bookmarked — it should turn up soon.';
-        ScaffoldMessenger.of(
+        showSnack(
           context,
-        ).showSnackBar(SnackBar(content: Text(msg)));
+          '${hit.kanji} is on your wishlist — it shows up in a pack soon.',
+        );
       case _SheetAction.cancel:
         break;
     }
@@ -136,28 +213,9 @@ class _AddCardScreenState extends State<AddCardScreen> {
   }
 
   Widget _buildAppBar() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 8, 16, 8),
-      child: Row(
-        children: [
-          IconButton(
-            icon: const Icon(
-              Icons.arrow_back_rounded,
-              color: IunaPalette.pawBrown,
-            ),
-            onPressed: () => Navigator.of(context).pop(),
-          ),
-          const SizedBox(width: 4),
-          const Text(
-            'Add card',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
-              color: IunaPalette.ink,
-            ),
-          ),
-        ],
-      ),
+    return const IunaTopBar(
+      leading: IunaBackButton(),
+      title: IunaTopBarTitle('Add to wishlist'),
     );
   }
 
@@ -177,12 +235,43 @@ class _AddCardScreenState extends State<AddCardScreen> {
       return const _EmptyState(
         icon: Icons.search_rounded,
         text:
-            'Type a kanji or kana headword to search '
-            'the JMdict dictionary.',
+            'Search the dictionary for a word. Add it to your wishlist '
+            'and it shows up in a pack soon.',
       );
     }
-    if (_searching && _results.isEmpty) {
+    if (_searching && _results.isEmpty && _byMeaning.isEmpty) {
       return const Center(child: CircularProgressIndicator());
+    }
+    if (!japaneseRun.hasMatch(_query)) {
+      if (_byMeaning.isEmpty) {
+        return const _EmptyState(
+          icon: Icons.translate_rounded,
+          text:
+              'The dictionary looks words up in Japanese. Type the word in '
+              'kanji or kana.',
+        );
+      }
+      return ListView.separated(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+        itemCount: _byMeaning.length + 1,
+        separatorBuilder: (_, _) => const SizedBox(height: 8),
+        itemBuilder: (_, i) => i == 0
+            ? Padding(
+                padding: const EdgeInsets.fromLTRB(4, 0, 4, 4),
+                child: Text(
+                  'The dictionary looks words up in Japanese. These cards '
+                  'match by meaning:',
+                  style: IunaText.bodySmall.copyWith(
+                    color: IunaPalette.ink3,
+                    height: 1.35,
+                  ),
+                ),
+              )
+            : _WordTile.card(
+                _byMeaning[i - 1],
+                onTap: () => _openCard(_byMeaning[i - 1].card.id),
+              ),
+      );
     }
     if (_results.isEmpty) {
       return const _EmptyState(
@@ -194,8 +283,8 @@ class _AddCardScreenState extends State<AddCardScreen> {
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
       itemCount: _results.length,
       separatorBuilder: (_, _) => const SizedBox(height: 8),
-      itemBuilder: (_, i) => _ResultTile(
-        hit: _results[i],
+      itemBuilder: (_, i) => _WordTile.hit(
+        _results[i],
         onTap: () => _previewAndAdd(_results[i]),
       ),
     );
@@ -220,7 +309,7 @@ class _EmptyState extends StatelessWidget {
             Text(
               text,
               textAlign: TextAlign.center,
-              style: const TextStyle(color: IunaPalette.ink2, fontSize: 14),
+              style: IunaText.body.copyWith(color: IunaPalette.ink2),
             ),
           ],
         ),
@@ -229,15 +318,51 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-class _ResultTile extends StatelessWidget {
-  const _ResultTile({required this.hit, required this.onTap});
-  final JmdictHit hit;
+/// A word in the results: a dictionary entry, or a deck card found by
+/// its meaning (whose own screen offers the wishlist).
+class _WordTile extends StatelessWidget {
+  const _WordTile({
+    required this.kanji,
+    required this.kana,
+    required this.gloss,
+    required this.rarity,
+    required this.onTap,
+    this.below,
+  });
+
+  _WordTile.hit(JmdictHit hit, {required VoidCallback onTap})
+    : this(
+        kanji: hit.kanji,
+        kana: hit.kana,
+        gloss: hit.senses.isEmpty ? '' : hit.senses.first.gloss,
+        rarity: hit.rarity,
+        onTap: onTap,
+      );
+
+  _WordTile.card(CollectionEntry entry, {required VoidCallback onTap})
+    : this(
+        kanji: entry.card.kanji,
+        kana: entry.card.kana,
+        gloss: entry.card.meaning,
+        rarity: entry.card.rarity,
+        onTap: onTap,
+        below: entry.isOwned
+            ? const CardStatusChip(status: CardLookupStatus.owned)
+            : null,
+      );
+
+  final String kanji;
+  final String kana;
+  final String gloss;
+  final Rarity rarity;
   final VoidCallback onTap;
+
+  /// Under the gloss: an owned card's status.
+  final Widget? below;
 
   @override
   Widget build(BuildContext context) {
-    final headline = hit.senses.isEmpty ? '' : hit.senses.first.gloss;
-    final showKana = hit.kanji != hit.kana;
+    final below = this.below;
     return Material(
       color: const Color(0xB3FFFDF6),
       borderRadius: BorderRadius.circular(IunaRadii.md),
@@ -258,7 +383,7 @@ class _ResultTile extends StatelessWidget {
                       children: [
                         Flexible(
                           child: Text(
-                            hit.kanji,
+                            kanji,
                             style: const TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.w700,
@@ -267,13 +392,12 @@ class _ResultTile extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        if (showKana) ...[
+                        if (kanji != kana) ...[
                           const SizedBox(width: 8),
                           Flexible(
                             child: Text(
-                              hit.kana,
-                              style: const TextStyle(
-                                fontSize: 13,
+                              kana,
+                              style: IunaText.bodySmall.copyWith(
                                 color: IunaPalette.ink2,
                               ),
                               overflow: TextOverflow.ellipsis,
@@ -282,23 +406,26 @@ class _ResultTile extends StatelessWidget {
                         ],
                       ],
                     ),
-                    if (headline.isNotEmpty) ...[
+                    if (gloss.isNotEmpty) ...[
                       const SizedBox(height: 2),
                       Text(
-                        headline,
-                        style: const TextStyle(
-                          fontSize: 13,
+                        gloss,
+                        style: IunaText.bodySmall.copyWith(
                           color: IunaPalette.ink2,
                         ),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ],
+                    if (below != null) ...[
+                      const SizedBox(height: 4),
+                      below,
+                    ],
                   ],
                 ),
               ),
               const SizedBox(width: 12),
-              RarityChip(rarity: hit.rarity, size: RarityChipSize.compact),
+              RarityChip(rarity: rarity, size: RarityChipSize.compact),
             ],
           ),
         ),
@@ -343,8 +470,7 @@ class _PreviewSheet extends StatelessWidget {
                           padding: const EdgeInsets.only(top: 2),
                           child: Text(
                             hit.kana,
-                            style: const TextStyle(
-                              fontSize: 16,
+                            style: IunaText.bodyLarge.copyWith(
                               color: IunaPalette.ink2,
                             ),
                           ),
@@ -392,67 +518,30 @@ class _PreviewActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    switch (status) {
-      case CardLookupStatus.notFound:
-      case CardLookupStatus.available:
-        final label = status == CardLookupStatus.notFound
-            ? 'Add to deck'
-            : 'Bookmark for boosters';
-        return Row(
-          children: [
-            Expanded(
-              child: OutlinedButton(
-                onPressed: () => Navigator.of(context).pop(_SheetAction.cancel),
-                child: const Text('Cancel'),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: FilledButton(
-                onPressed: () =>
-                    Navigator.of(context).pop(_SheetAction.promote),
-                child: Text(label),
-              ),
-            ),
-          ],
-        );
-      case CardLookupStatus.wishlisted:
-        return Row(
-          children: [
-            Expanded(
-              child: OutlinedButton(
-                onPressed: () => Navigator.of(context).pop(_SheetAction.cancel),
-                child: const Text('Close'),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: FilledButton(
-                onPressed: null,
-                child: const Text('Already wishlisted'),
-              ),
-            ),
-          ],
-        );
-      case CardLookupStatus.owned:
-        return Row(
-          children: [
-            Expanded(
-              child: OutlinedButton(
-                onPressed: () => Navigator.of(context).pop(_SheetAction.cancel),
-                child: const Text('Close'),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: FilledButton(
-                onPressed: () =>
-                    Navigator.of(context).pop(_SheetAction.openCard),
-                child: const Text('Open card'),
-              ),
-            ),
-          ],
-        );
-    }
+    void pop(_SheetAction action) => Navigator.of(context).pop(action);
+    final (String, _SheetAction)? primary = switch (status) {
+      CardLookupStatus.notFound ||
+      CardLookupStatus.available => ('Add to wishlist', _SheetAction.promote),
+      // The status chip above already says it is wished for.
+      CardLookupStatus.wishlisted => null,
+      CardLookupStatus.owned => ('Open card', _SheetAction.openCard),
+    };
+    final dismiss = IunaGhostButton(
+      label: primary == null || status == CardLookupStatus.owned ? 'Close' : 'Cancel',
+      onTap: () => pop(_SheetAction.cancel),
+    );
+    if (primary == null) return dismiss;
+    return Row(
+      children: [
+        Expanded(child: dismiss),
+        const SizedBox(width: 12),
+        Expanded(
+          child: IunaCtaButton(
+            label: primary.$1,
+            onTap: () => pop(primary.$2),
+          ),
+        ),
+      ],
+    );
   }
 }

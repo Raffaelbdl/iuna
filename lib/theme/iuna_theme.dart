@@ -13,13 +13,74 @@ class IunaPalette {
   // ── Ink (text) ──
   static const ink = Color(0xFF4A3520);
   static const ink2 = Color(0xFF6B4F33);
-  static const ink3 = Color(0xFF9A8068);
+  // ink3 clears 4.5:1 on bg, bg2, paper and paper2; inkMute does not,
+  // so it is for disabled and decorative marks only, never for text.
+  static const ink3 = Color(0xFF766250);
   static const inkMute = Color(0xFFB9A285);
 
   // ── Signal accents ──
   static const bowPink = Color(0xFFF3A7B5);
   static const bowMint = Color(0xFFB8D8C9);
   static const bellGold = Color(0xFFE8B96B);
+  static const bowPinkDeep = Color(0xFFD97A8C);
+  // The deep honey of the Collection progress bar and active chips.
+  static const honey = Color(0xFFF0B66C);
+  // The fill of a picked answer or option.
+  static const optionPicked = Color(0xFFFDE9C9);
+
+  // Status text that must clear 4.5:1 on paper and bg ("Review again",
+  // "Continue", the stats goal line). The pastel accents above do not.
+  static const mintInk = Color(0xFF3F6A52);
+  static const honeyInk = Color(0xFF8A5A14);
+  static const pinkInk = Color(0xFFA8455A);
+  // Destructive actions: "Remove key", "Delete course", "Replace".
+  static const danger = Color(0xFF9E3B33);
+
+  // ── Right / wrong (review grades, swipe tints) ──
+  static const rightFill = Color(0xFFD9EEE2);
+  static const rightFillDeep = Color(0xFFB6DCC6);
+  static const rightInk = Color(0xFF1F5A40);
+  static const rightWash = Color(0x997BC47F);
+  static const wrongFill = Color(0xFFFDE2E7);
+  static const wrongFillDeep = Color(0xFFF7C0CB);
+  static const wrongInk = Color(0xFF7A2A3A);
+  static const wrongWash = Color(0x99E57373);
+
+  // ── Ink washes for borders and rules ──
+  static const hairline = Color.fromRGBO(74, 53, 32, 0.06);
+  static const divider = Color.fromRGBO(74, 53, 32, 0.08);
+  static const outline = Color.fromRGBO(74, 53, 32, 0.12);
+
+  // ── Misc. tints ──
+  static const lilacWash = Color(0x59C4B2E0);
+  static const honeyPale = Color(0xFFFFE9A8);
+  // Paper laid over a tinted ground: a section on a sheet, a
+  // suspended tile.
+  static const paperGlass = Color(0x66FFFDF6);
+  static const flame = Color(0xFFD97A3A);
+
+  // ── Chart fills (Stats) ──
+  static const chartMint = Color(0xFFA9D4C2);
+  static const chartMintDeep = Color(0xFF7FBFA3);
+  static const chartHoney = Color(0xFFF0C168);
+  static const chartHoneyDeep = Color(0xFFD49A3A);
+  static const chartBlue = Color(0xFFBCD3DF);
+  static const chartLilac = Color(0xFFC4B2E0);
+  static const chartLilacDeep = Color(0xFF9A7EC5);
+  static const chartLearning = Color(0xFFDFE8D8);
+  static const chartMatureInk = Color(0xFF4A6F82);
+  static const chartGrid = divider;
+  static const chartGridStrong = Color.fromRGBO(74, 53, 32, 0.14);
+  static const chipBg = hairline;
+  static const heatmap0 = Color.fromRGBO(74, 53, 32, 0.05);
+  static const heatmap1 = chartLearning;
+  static const heatmap2 = Color(0xFFBDD9C4);
+  static const heatmap3 = Color(0xFF92C4A8);
+  static const heatmap4 = Color(0xFF5FA982);
+
+  // ── Hero gradient (Home hero, logo, active chips) ──
+  static const heroTop = Color(0xFFFFD994);
+  static const heroInk = Color(0xFF3A2510);
 
   // ── CTA gradient stops ──
   static const ctaTop = Color(0xFFFFD58A);
@@ -52,6 +113,93 @@ class IunaPalette {
   static const pawBrown = ink;
 }
 
+/// The type scale: seven sizes, 12 to 28. Every text style on screen
+/// starts from one of these and may change its colour or weight, never
+/// its size. They carry no colour, so text keeps the ink it inherits
+/// unless a screen sets one. Japanese shown as content (a card's kanji,
+/// a game's tiles) is sized to its layout instead.
+abstract final class IunaText {
+  /// A screen's one big line: the recap headline, a game's result.
+  static const display = TextStyle(
+    fontSize: 28,
+    fontWeight: FontWeight.w700,
+    letterSpacing: -0.3,
+  );
+
+  /// [display] lighter and set tight, under a [kicker] or a greeting.
+  static const banner = TextStyle(
+    fontSize: 28,
+    fontWeight: FontWeight.w600,
+    letterSpacing: -0.3,
+    height: 1.1,
+  );
+
+  /// Hero titles, tab titles and big numbers.
+  static const headline = TextStyle(
+    fontSize: 22,
+    fontWeight: FontWeight.w700,
+    letterSpacing: -0.2,
+  );
+
+  /// Sheet and panel titles.
+  static const title = TextStyle(fontSize: 18, fontWeight: FontWeight.w700);
+
+  /// Row titles, top-bar titles and primary buttons.
+  static const subtitle = TextStyle(fontSize: 16, fontWeight: FontWeight.w600);
+
+  /// Lead text: a greeting, a lesson's prose.
+  static const bodyLarge = TextStyle(fontSize: 16);
+
+  /// Running text.
+  static const body = TextStyle(fontSize: 14);
+
+  /// Secondary lines under a title, hints and notes.
+  static const bodySmall = TextStyle(fontSize: 13);
+
+  /// Metadata, legends and chart labels: the floor for readable text.
+  static const caption = TextStyle(fontSize: 12);
+
+  /// Button and control labels.
+  static const label = TextStyle(fontSize: 14, fontWeight: FontWeight.w600);
+
+  /// Chips, badges and pills.
+  static const chip = TextStyle(fontSize: 12, fontWeight: FontWeight.w600);
+
+  /// The upper-cased caption over a section.
+  static const eyebrow = TextStyle(
+    fontSize: 12,
+    fontWeight: FontWeight.w700,
+    letterSpacing: 1.2,
+  );
+
+  /// The widely spaced caption over a [banner], such as TODAY'S PACK.
+  static const kicker = TextStyle(
+    fontSize: 12,
+    fontWeight: FontWeight.w500,
+    letterSpacing: 4,
+  );
+}
+
+/// Text-size thresholds for a layout that changes with large text, as
+/// the size 10 px of text scales to.
+abstract final class IunaTextScale {
+  /// Past 120%: the reveal's actions stack and its skip gets a row.
+  static const stack = 12.0;
+
+  /// Past 130%: a settings control moves under its subtitle.
+  static const controlBelow = 13.0;
+}
+
+extension IunaTextScaleOf on BuildContext {
+  /// Whether text scales past [threshold], one of [IunaTextScale].
+  bool textScaledPast(double threshold) =>
+      MediaQuery.textScalerOf(this).scale(10) > threshold;
+
+  /// How far text has grown past 100%: 0 there, 1 from 200%.
+  double get textGrowth =>
+      (MediaQuery.textScalerOf(this).scale(100) / 100 - 1).clamp(0.0, 1.0);
+}
+
 /// Standard panel shadow (light, top-highlighted).
 List<BoxShadow> panelShadow() => const [
   BoxShadow(color: Color(0x0F4A3520), blurRadius: 18, offset: Offset(0, 6)),
@@ -81,15 +229,17 @@ BoxDecoration ctaDecoration() => BoxDecoration(
   boxShadow: ctaShadow(),
 );
 
-/// The frosted pill behind secondary actions (reveal hint, suspend,
-/// "back home" on the recap).
+/// The paper pill behind secondary actions (reveal hint, suspend,
+/// "back home" on the recap). Keep [color] opaque when passing a
+/// [boxShadow]: a see-through fill shows the shadow under it as a grey
+/// slab.
 BoxDecoration ghostPillDecoration({
-  Color color = const Color(0xB3FFFDF6),
+  Color color = IunaPalette.paper,
   List<BoxShadow>? boxShadow,
 }) => BoxDecoration(
   color: color,
   borderRadius: BorderRadius.circular(999),
-  border: Border.all(color: const Color.fromRGBO(74, 53, 32, 0.12), width: 0.5),
+  border: Border.all(color: IunaPalette.outline, width: 0.5),
   boxShadow: boxShadow,
 );
 
@@ -112,7 +262,7 @@ BoxDecoration paperPanelDecoration({
   borderRadius: borderRadius ?? BorderRadius.circular(IunaRadii.lg),
   border:
       border ??
-      Border.all(color: const Color.fromRGBO(74, 53, 32, 0.06), width: 0.5),
+      Border.all(color: IunaPalette.hairline, width: 0.5),
   boxShadow: panelShadow(),
 );
 
@@ -198,9 +348,9 @@ String rarityName(Rarity r) {
     case Rarity.superRare:
       return 'Super Rare';
     case Rarity.ssr:
-      return 'Ultra Rare';
+      return 'Super Super Rare';
     case Rarity.ur:
-      return 'Legendary';
+      return 'Ultra Rare';
   }
 }
 
@@ -216,33 +366,169 @@ ThemeData buildIunaTheme() {
         surface: IunaPalette.bg,
       );
 
+  // Every style below merges an [IunaText] token into the platform
+  // typography so it keeps its font family and fallbacks; a bare
+  // TextStyle on a theme slot (AppBar title, button label) would lose
+  // them.
+  final t = base.textTheme;
+  final textTheme = t
+      .copyWith(
+        headlineSmall: t.headlineSmall
+            ?.merge(IunaText.headline)
+            .copyWith(fontWeight: FontWeight.w600, letterSpacing: -0.3),
+        titleLarge: t.titleLarge?.merge(IunaText.title),
+        titleMedium: t.titleMedium?.merge(IunaText.subtitle),
+        titleSmall: t.titleSmall
+            ?.merge(IunaText.body)
+            .copyWith(fontWeight: FontWeight.w700),
+        bodyLarge: t.bodyLarge?.merge(IunaText.bodyLarge).copyWith(height: 1.35),
+        bodyMedium: t.bodyMedium?.merge(IunaText.body).copyWith(height: 1.35),
+        bodySmall: t.bodySmall?.merge(IunaText.caption).copyWith(height: 1.4),
+        labelLarge: t.labelLarge?.merge(IunaText.label),
+        labelMedium: t.labelMedium?.merge(IunaText.chip),
+        labelSmall: t.labelSmall
+            ?.merge(IunaText.caption)
+            .copyWith(fontWeight: FontWeight.w700),
+      )
+      .apply(bodyColor: IunaPalette.ink, displayColor: IunaPalette.ink);
+  final buttonLabel = textTheme.labelLarge!;
+  const pill = StadiumBorder();
+  final outlineSide = BorderSide(
+    color: IunaPalette.ink.withValues(alpha: 0.18),
+    width: 1,
+  );
+
   return base.copyWith(
     colorScheme: scheme,
     scaffoldBackgroundColor: IunaPalette.bg,
-    appBarTheme: const AppBarTheme(
+    textTheme: textTheme,
+    appBarTheme: AppBarTheme(
       backgroundColor: Colors.transparent,
       foregroundColor: IunaPalette.ink2,
       elevation: 0,
       centerTitle: true,
-      titleTextStyle: TextStyle(
-        fontSize: 15,
+      titleTextStyle: textTheme.titleMedium!.copyWith(
         letterSpacing: 0.6,
-        fontWeight: FontWeight.w600,
         color: IunaPalette.ink2,
       ),
     ),
-    textTheme: base.textTheme.apply(
-      bodyColor: IunaPalette.ink,
-      displayColor: IunaPalette.ink,
+    iconTheme: const IconThemeData(color: IunaPalette.ink2),
+    listTileTheme: ListTileThemeData(
+      iconColor: IunaPalette.ink2,
+      textColor: IunaPalette.ink,
+      titleTextStyle: textTheme.bodyLarge!.copyWith(
+        fontWeight: FontWeight.w600,
+        color: IunaPalette.ink,
+      ),
+      subtitleTextStyle: textTheme.bodyMedium!.copyWith(
+        fontSize: 13,
+        color: IunaPalette.ink3,
+      ),
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
         backgroundColor: IunaPalette.ctaMid,
-        foregroundColor: const Color(0xFF2A1C0D),
+        foregroundColor: kCtaInk,
+        disabledBackgroundColor: IunaPalette.divider,
+        disabledForegroundColor: IunaPalette.ink3,
         padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
-        textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-        shape: const StadiumBorder(),
+        textStyle: buttonLabel,
+        shape: pill,
+        // The same honey as IunaCtaButton, so a compact action in a
+        // list or dialog reads as the screen's primary one does; no
+        // drop shadow at this size.
+        backgroundBuilder: (context, states, child) =>
+            states.contains(WidgetState.disabled)
+            ? child ?? const SizedBox.shrink()
+            : DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: ctaGradient,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: child,
+              ),
       ),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: IunaPalette.ink2,
+        backgroundColor: IunaPalette.paper,
+        side: outlineSide,
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+        textStyle: textTheme.labelLarge,
+        shape: pill,
+      ),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(
+        foregroundColor: IunaPalette.ink2,
+        textStyle: textTheme.labelLarge,
+        shape: pill,
+      ),
+    ),
+    iconButtonTheme: IconButtonThemeData(
+      style: IconButton.styleFrom(foregroundColor: IunaPalette.ink2),
+    ),
+    switchTheme: SwitchThemeData(
+      trackColor: WidgetStateProperty.resolveWith(
+        (s) => s.contains(WidgetState.selected) ? IunaPalette.bellGold : null,
+      ),
+    ),
+    dropdownMenuTheme: DropdownMenuThemeData(textStyle: textTheme.bodyLarge),
+    inputDecorationTheme: InputDecorationTheme(
+      hintStyle: textTheme.bodyMedium!.copyWith(color: IunaPalette.ink3),
+    ),
+    tabBarTheme: TabBarThemeData(
+      labelColor: IunaPalette.ink,
+      unselectedLabelColor: IunaPalette.ink3,
+      labelStyle: textTheme.labelLarge,
+      unselectedLabelStyle: textTheme.labelLarge,
+      indicatorColor: IunaPalette.ctaBottom,
+      indicatorSize: TabBarIndicatorSize.label,
+      dividerColor: IunaPalette.divider,
+    ),
+    popupMenuTheme: PopupMenuThemeData(
+      color: IunaPalette.paper,
+      surfaceTintColor: Colors.transparent,
+      elevation: 6,
+      shadowColor: IunaPalette.ink.withValues(alpha: 0.25),
+      textStyle: textTheme.bodyMedium,
+      labelTextStyle: WidgetStatePropertyAll(textTheme.bodyMedium),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(IunaRadii.md),
+      ),
+    ),
+    dialogTheme: DialogThemeData(
+      backgroundColor: IunaPalette.paper,
+      surfaceTintColor: Colors.transparent,
+      titleTextStyle: textTheme.titleMedium!.copyWith(fontSize: 18),
+      contentTextStyle: textTheme.bodyMedium!.copyWith(
+        color: IunaPalette.ink2,
+      ),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(IunaRadii.lg),
+      ),
+    ),
+    bottomSheetTheme: const BottomSheetThemeData(
+      backgroundColor: IunaPalette.paper,
+      surfaceTintColor: Colors.transparent,
+    ),
+    // Floating and lifted clear of the bottom nav, which every tab
+    // overlays on its content rather than giving to the Scaffold.
+    snackBarTheme: SnackBarThemeData(
+      behavior: SnackBarBehavior.floating,
+      insetPadding: const EdgeInsets.fromLTRB(16, 0, 16, kSnackNavClearance),
+      backgroundColor: IunaPalette.ink,
+      contentTextStyle: textTheme.bodyMedium!.copyWith(
+        color: IunaPalette.paper,
+      ),
+      actionTextColor: IunaPalette.ctaTop,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(IunaRadii.md),
+      ),
+    ),
+    progressIndicatorTheme: const ProgressIndicatorThemeData(
+      color: IunaPalette.ctaBottom,
     ),
     cardTheme: CardThemeData(
       color: IunaPalette.paper,
@@ -264,6 +550,10 @@ ThemeData buildIunaTheme() {
     ),
   );
 }
+
+/// How far a floating snack bar sits above the screen bottom: clear of
+/// the bottom nav pill.
+const double kSnackNavClearance = 92;
 
 /// Page-wide warm-cream backdrop with two soft radial highlights.
 /// Drop behind a `Stack` to give every screen the same "lit cream"

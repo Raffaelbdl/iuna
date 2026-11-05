@@ -190,7 +190,9 @@ hidden per-app folder, using only the `drive.appdata` scope.
 A restore downloads the snapshot as a `.pending` file next to the live
 database, checks it against the database's `SnapshotSpec`, and swaps it
 in on the next launch. "Restore from file" in Settings stages a local
-`.sqlite` the same way.
+`.sqlite` the same way; "Save a backup file" writes one (`vacuumInto` a
+temp copy, then the system save dialog), so a restore works without
+Drive.
 
 ## The Learn tab (`lib/learn/`)
 
@@ -246,9 +248,9 @@ visible to the learner.
 throwaway in-memory chat. Its only tool is `bookmark_words`. Card detail
 carries the same bar while a key is saved; its chats also get the card
 (`FocusCard`: senses, JLPT, owned level and fail count, or wishlisted)
-at the end of the prompt, after the cacheable part. On a card without
-examples the bar folds into two buttons: *Kuma teach* opens it, and *Give
-me examples* makes one call (`LearnEnv.writeExamples`, the
+at the end of the prompt, after the cacheable part; the bar tucks away
+while the card scrolls down. On a card without examples, the Examples
+panel offers *Get examples*, which makes one call (`LearnEnv.writeExamples`, the
 `prompts/examples.md` brief, usage kind `examples`) whose JSON reply the
 screen saves as `generated` examples with translations. *Clear* on the
 Examples panel deletes only those. *Translate* there fills the English of

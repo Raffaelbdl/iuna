@@ -45,6 +45,25 @@ class DictDownload {
     return f.readAsStringSync().trim();
   }
 
+  /// The version the server holds: a few bytes, for checking whether
+  /// an update is worth the download.
+  static Future<String> remoteVersion({http.Client? client}) async {
+    final c = client ?? http.Client();
+    try {
+      return await _fetchVersion(c);
+    } finally {
+      if (client == null) c.close();
+    }
+  }
+
+  static Future<String> _fetchVersion(http.Client c) async {
+    final remote = await c.get(Uri.parse(_versionUrl));
+    if (remote.statusCode != 200) {
+      throw HttpException('version: HTTP ${remote.statusCode}');
+    }
+    return remote.body.trim();
+  }
+
   /// Downloads + verifies + decompresses + installs, or joins the
   /// download already running. The new database is written beside the
   /// live one and renamed over it, so a kill mid-write leaves the old
@@ -52,13 +71,7 @@ class DictDownload {
   static RemoteInstall install({http.Client? client}) {
     return _current ??= RemoteAsset.install<String>(
       url: _gzUrl,
-      fetchHash: (c) async {
-        final remote = await c.get(Uri.parse(_versionUrl));
-        if (remote.statusCode != 200) {
-          throw HttpException('version: HTTP ${remote.statusCode}');
-        }
-        return remote.body.trim();
-      },
+      fetchHash: _fetchVersion,
       client: client,
       decode: documentsFile('$kJmdictFileName.tmp').then((f) => _writeTo(f.path)),
       apply: (tmpPath, version) async {

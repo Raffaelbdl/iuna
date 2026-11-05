@@ -212,30 +212,30 @@ void main() {
     testWidgets('a word not yet collected can be bookmarked', (tester) async {
       final deck = _FakeDeck({});
       await open(tester, deck, '会議');
-      await tester.tap(find.text('Bookmark'));
+      await tester.tap(find.text('Add to wishlist'));
       await tester.pumpAndSettle();
       expect(deck.wished, ['会議/かいぎ']);
-      expect(find.text('Bookmark'), findsNothing);
-      expect(find.text('On wishlist'), findsOneWidget);
+      expect(find.text('Add to wishlist'), findsNothing);
+      expect(find.text('On your wishlist'), findsOneWidget);
     });
 
     testWidgets('an owned or bookmarked word offers no button', (tester) async {
       await open(tester, _FakeDeck({'会議': CardLookupStatus.owned}), '会議');
-      expect(find.text('In collection'), findsOneWidget);
-      expect(find.text('Bookmark'), findsNothing);
+      expect(find.text('In your collection'), findsOneWidget);
+      expect(find.text('Add to wishlist'), findsNothing);
       Navigator.of(tester.element(find.byType(WordSheet))).pop();
       await tester.pumpAndSettle();
 
       await tapWord(tester, '今日');
       await tester.pumpAndSettle();
-      expect(find.text('Bookmark'), findsOneWidget, reason: 'each headword has its own standing');
+      expect(find.text('Add to wishlist'), findsOneWidget, reason: 'each headword has its own standing');
     });
 
     testWidgets('without a deck the sheet only reads the word', (tester) async {
       await open(tester, null, '会議');
       expect(find.byType(WordSheet), findsOneWidget);
-      expect(find.text('Bookmark'), findsNothing);
-      expect(find.text('In collection'), findsNothing);
+      expect(find.text('Add to wishlist'), findsNothing);
+      expect(find.text('In your collection'), findsNothing);
     });
   });
 }

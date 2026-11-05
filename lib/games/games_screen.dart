@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../db/database.dart';
 import '../theme/iuna_theme.dart';
+import '../widgets/tappable.dart';
 import 'game_widgets.dart';
 import 'pairs_screen.dart';
 import 'sentence_screen.dart';
@@ -18,7 +19,7 @@ class GamesScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return GamePage(
       title: 'Games',
-      leadingIcon: Icons.arrow_back_rounded,
+      back: true,
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         children: [
@@ -82,7 +83,7 @@ class _GameTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return Tappable(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.all(16),
@@ -105,17 +106,14 @@ class _GameTile extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
+                    style: IunaText.title.copyWith(
                       color: IunaPalette.ink,
                     ),
                   ),
                   const SizedBox(height: 3),
                   Text(
                     subtitle,
-                    style: const TextStyle(
-                      fontSize: 12,
+                    style: IunaText.caption.copyWith(
                       fontWeight: FontWeight.w500,
                       color: IunaPalette.ink3,
                       height: 1.3,

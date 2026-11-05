@@ -256,7 +256,13 @@ class _WordBuilder extends MarkdownElementBuilder {
     return Text.rich(
       TextSpan(
         text: element.textContent,
-        style: parentStyle,
+        // A faint dotted line says the word opens; it stays light so
+        // the kanji still read cleanly.
+        style: (parentStyle ?? const TextStyle()).copyWith(
+          decoration: TextDecoration.underline,
+          decorationStyle: TextDecorationStyle.dotted,
+          decorationColor: IunaPalette.ink3.withValues(alpha: 0.5),
+        ),
         mouseCursor: SystemMouseCursors.click,
         recognizer: state._recognizer(element.attributes['id']!),
       ),

@@ -29,6 +29,7 @@ class ChatView extends StatefulWidget {
     this.hint = 'Message Kuma-sensei…',
     this.picker,
     this.bookmarks,
+    this.onOpenSettings,
   });
 
   final ChatController controller;
@@ -48,6 +49,9 @@ class ChatView extends StatefulWidget {
 
   /// Where a word tapped in a reply can be wishlisted.
   final WordBookmarks? bookmarks;
+
+  /// Offered beside Retry when the key or the credits failed.
+  final void Function(BuildContext context)? onOpenSettings;
 
   @override
   State<ChatView> createState() => _ChatViewState();
@@ -112,15 +116,32 @@ class _ChatViewState extends State<ChatView> {
         return Column(
           children: [
             Expanded(child: body),
+            if (c.pendingQuiz case final quiz?)
+              Align(
+                alignment: Alignment.centerRight,
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: TextButton(
+                    // The same answer as "I don't know" on every question.
+                    onPressed: () => c.answerQuiz(quiz.spec.skipAll()),
+                    style: TextButton.styleFrom(
+                      minimumSize: const Size(48, 48),
+                    ),
+                    child: const Text('Skip this check'),
+                  ),
+                ),
+              ),
             SafeArea(
               top: false,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(12, 4, 12, 10),
                 child: ChatComposer(
                   controller: _input,
-                  hint: c.pendingQuiz != null ? 'Answer the card above first' : widget.hint,
+                  hint: c.pendingQuiz != null ? 'Answer the quick check above first' : widget.hint,
                   enabled: c.loaded && c.pendingQuiz == null && c.pendingVoice == null,
-                  busy: c.busy,
+                  // A quiz card waits on the learner, not the model:
+                  // nothing to stop.
+                  busy: c.busy && c.pendingQuiz == null,
                   onSend: _send,
                   onStop: c.cancel,
                   recorder: c.dictation?.recorder,
@@ -225,7 +246,16 @@ class _ChatViewState extends State<ChatView> {
       out.add(_Typing(label: c.status ?? 'Kuma-sensei is thinking…'));
     }
     final error = c.error;
-    if (error != null) out.add(_ErrorNote(text: error, onRetry: c.retry));
+    if (error != null) {
+      out.add(_ErrorNote(
+        text: error,
+        onRetry: c.retry,
+        onOpenSettings: switch (widget.onOpenSettings) {
+          final open? when c.errorInSettings => () => open(context),
+          _ => null,
+        },
+      ));
+    }
     return out;
   }
 
@@ -349,34 +379,44 @@ class _ToolChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = failed ? IunaPalette.raritySsrInk : IunaPalette.ink2;
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 3),
-        child: Material(
-          color: failed ? const Color(0x1FF3A7B5) : const Color.fromRGBO(74, 53, 32, 0.05),
-          shape: const StadiumBorder(),
-          child: InkWell(
-            customBorder: const StadiumBorder(),
-            onTap: onTap,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(icon, size: 14, color: color),
-                  const SizedBox(width: 6),
-                  Text(label, style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.w600)),
-                  if (onTap != null) ...[
-                    const SizedBox(width: 2),
-                    Icon(Icons.chevron_right_rounded, size: 14, color: color),
-                  ],
-                ],
-              ),
-            ),
+    final onTap = this.onTap;
+    final chip = Material(
+      color: failed ? const Color(0x1FF3A7B5) : IunaPalette.heatmap0,
+      shape: const StadiumBorder(),
+      child: InkWell(
+        customBorder: const StadiumBorder(),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 14, color: color),
+              const SizedBox(width: 6),
+              Text(label, style: IunaText.chip.copyWith(color: color)),
+              if (onTap != null) ...[
+                const SizedBox(width: 2),
+                Icon(Icons.chevron_right_rounded, size: 14, color: color),
+              ],
+            ],
           ),
         ),
       ),
+    );
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: onTap == null
+          ? Padding(padding: const EdgeInsets.symmetric(vertical: 3), child: chip)
+          // A 48 px tap target around the slim chip.
+          : GestureDetector(
+              onTap: onTap,
+              behavior: HitTestBehavior.opaque,
+              excludeFromSemantics: true,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 48),
+                child: Center(widthFactor: 1, child: chip),
+              ),
+            ),
     );
   }
 }
@@ -395,7 +435,7 @@ class _Caption extends StatelessWidget {
           line,
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 10),
-            child: Text(text, style: const TextStyle(fontSize: 11, color: IunaPalette.ink3)),
+            child: Text(text, style: IunaText.caption.copyWith(color: IunaPalette.ink3)),
           ),
           line,
         ],
@@ -449,7 +489,7 @@ class _TypingState extends State<_Typing> with SingleTickerProviderStateMixin {
           ),
           const SizedBox(width: 8),
           Flexible(
-            child: Text(widget.label, style: const TextStyle(fontSize: 12, color: IunaPalette.ink3)),
+            child: Text(widget.label, style: IunaText.caption.copyWith(color: IunaPalette.ink3)),
           ),
         ],
       ),
@@ -458,9 +498,10 @@ class _TypingState extends State<_Typing> with SingleTickerProviderStateMixin {
 }
 
 class _ErrorNote extends StatelessWidget {
-  const _ErrorNote({required this.text, required this.onRetry});
+  const _ErrorNote({required this.text, required this.onRetry, this.onOpenSettings});
   final String text;
   final VoidCallback onRetry;
+  final VoidCallback? onOpenSettings;
 
   @override
   Widget build(BuildContext context) {
@@ -471,21 +512,34 @@ class _ErrorNote extends StatelessWidget {
         color: const Color(0x26F3A7B5),
         borderRadius: BorderRadius.circular(IunaRadii.md),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          const Icon(Icons.error_outline_rounded, size: 18, color: IunaPalette.raritySsrInk),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(text, style: const TextStyle(fontSize: 13, color: IunaPalette.ink, height: 1.35)),
+          Row(
+            children: [
+              const Icon(Icons.error_outline_rounded, size: 18, color: IunaPalette.raritySsrInk),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(text, style: IunaText.bodySmall.copyWith(color: IunaPalette.ink, height: 1.35)),
+              ),
+              if (onOpenSettings == null) TextButton(onPressed: onRetry, child: const Text('Retry')),
+            ],
           ),
-          TextButton(onPressed: onRetry, child: const Text('Retry')),
+          if (onOpenSettings case final open?)
+            Wrap(
+              alignment: WrapAlignment.end,
+              children: [
+                TextButton(onPressed: open, child: const Text('Open Settings')),
+                TextButton(onPressed: onRetry, child: const Text('Retry')),
+              ],
+            ),
         ],
       ),
     );
   }
 }
 
-const _learnerText = TextStyle(fontSize: 14, height: 1.45, color: IunaPalette.ink);
+final _learnerText = IunaText.body.copyWith(height: 1.45, color: IunaPalette.ink);
 
 class _BubbleFrame extends StatelessWidget {
   const _BubbleFrame({required this.fromLearner, required this.child});
@@ -496,7 +550,7 @@ class _BubbleFrame extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
-    const round = Radius.circular(18);
+    const round = Radius.circular(IunaRadii.md);
     const tight = Radius.circular(6);
     return Align(
       alignment: fromLearner ? Alignment.centerRight : Alignment.centerLeft,
@@ -620,8 +674,7 @@ class _VoiceBubbleState extends State<_VoiceBubble> with SingleTickerProviderSta
             const SizedBox(width: 8),
             Text(
               clockLabel(voice.clip.length),
-              style: const TextStyle(
-                fontSize: 12,
+              style: IunaText.caption.copyWith(
                 color: IunaPalette.ink3,
                 fontFeatures: [FontFeature.tabularFigures()],
               ),
@@ -630,11 +683,11 @@ class _VoiceBubbleState extends State<_VoiceBubble> with SingleTickerProviderSta
         ),
         const SizedBox(height: 4),
         if (error == null)
-          const Text('Transcribing…', style: TextStyle(fontSize: 11, color: IunaPalette.ink3))
+          Text('Transcribing…', style: IunaText.caption.copyWith(color: IunaPalette.ink3))
         else ...[
           Text(
             error,
-            style: const TextStyle(fontSize: 12.5, height: 1.35, color: IunaPalette.raritySsrInk),
+            style: IunaText.caption.copyWith(height: 1.35, color: IunaPalette.raritySsrInk),
           ),
           Row(
             mainAxisSize: MainAxisSize.min,

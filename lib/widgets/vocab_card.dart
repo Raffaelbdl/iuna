@@ -167,54 +167,22 @@ class GradientTranslation extends GradientTransform {
 
 /// Per-size metrics for [RarityChip].
 enum RarityChipSize {
-  regular(
-    padH: 10,
-    padV: 5,
-    codeSize: 11,
-    letterSpacing: 0.6,
-    gap: 5,
-    starSize: 9,
-  ),
-  compact(
-    padH: 8,
-    padV: 4,
-    codeSize: 10,
-    letterSpacing: 0.6,
-    gap: 4,
-    starSize: 8,
-  ),
-  header(
-    padH: 10,
-    padV: 5,
-    codeSize: 10,
-    letterSpacing: null,
-    gap: 4,
-    starSize: 9,
-  ),
-  tiny(
-    padH: 6,
-    padV: 3,
-    codeSize: 9,
-    letterSpacing: 0.4,
-    gap: 3,
-    starSize: 7,
-  );
+  regular(padH: 10, padV: 5, letterSpacing: 0.6, gap: 5),
+  compact(padH: 8, padV: 4, letterSpacing: 0.6, gap: 4),
+  header(padH: 10, padV: 5, letterSpacing: null, gap: 4),
+  tiny(padH: 6, padV: 3, letterSpacing: 0.4, gap: 3);
 
   const RarityChipSize({
     required this.padH,
     required this.padV,
-    required this.codeSize,
     required this.letterSpacing,
     required this.gap,
-    required this.starSize,
   });
 
   final double padH;
   final double padV;
-  final double codeSize;
   final double? letterSpacing;
   final double gap;
-  final double starSize;
 }
 
 /// Gacha-style rarity badge in the redesign style: small letter +
@@ -224,14 +192,22 @@ class RarityChip extends StatelessWidget {
     super.key,
     required this.rarity,
     this.size = RarityChipSize.regular,
+    this.named = false,
+    this.stars = true,
   });
   final Rarity rarity;
   final RarityChipSize size;
 
+  /// Off where the card already shows its stars large, as on the reveal.
+  final bool stars;
+
+  /// Spells the tier out after the stars ("Super Rare").
+  final bool named;
+
   @override
   Widget build(BuildContext context) {
     final ink = rarityInk(rarity);
-    return Container(
+    final chip = Container(
       padding: EdgeInsets.symmetric(horizontal: size.padH, vertical: size.padV),
       decoration: BoxDecoration(
         color: rarityFill(rarity),
@@ -246,23 +222,33 @@ class RarityChip extends StatelessWidget {
         children: [
           Text(
             rarityCode(rarity),
-            style: TextStyle(
-              fontSize: size.codeSize,
+            style: IunaText.chip.copyWith(
               fontWeight: FontWeight.w800,
               color: ink,
               letterSpacing: size.letterSpacing,
             ),
           ),
-          SizedBox(width: size.gap),
-          Text(
-            '★' * rarityStars(rarity),
-            style: TextStyle(
-              fontSize: size.starSize,
-              color: ink.withValues(alpha: 0.7),
+          if (stars) ...[
+            SizedBox(width: size.gap),
+            Text(
+              '★' * rarityStars(rarity),
+              style: TextStyle(fontSize: 10, color: ink),
             ),
-          ),
+          ],
+          if (named) ...[
+            SizedBox(width: size.gap + 2),
+            Text(
+              rarityName(rarity),
+              style: IunaText.chip.copyWith(color: ink),
+            ),
+          ],
         ],
       ),
+    );
+    return Semantics(
+      label: '${rarityName(rarity)} card',
+      excludeSemantics: true,
+      child: chip,
     );
   }
 }
@@ -274,46 +260,63 @@ class MetaChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // The same pill as [CardStatusChip], which often sits beside it.
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: IunaPalette.ink3.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(4),
+        color: IunaPalette.chipBg,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: IunaPalette.hairline, width: 0.5),
       ),
       child: Text(
         label,
-        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: IunaPalette.ink2),
+        style: IunaText.chip.copyWith(color: IunaPalette.ink2),
       ),
     );
   }
 }
 
-/// Where a headword stands in the learner's deck.
+// One wording for where a card stands, wherever it is shown.
+const kNotCollectedLabel = 'Not in your collection yet';
+const kWishlistedLabel = 'On your wishlist';
+const kOwnedLabel = 'In your collection';
+
+/// Where a headword stands in the learner's deck: the one chip for it,
+/// on card detail, Add card and the tutor's word sheet.
 class CardStatusChip extends StatelessWidget {
   const CardStatusChip({super.key, required this.status});
   final CardLookupStatus status;
 
   @override
   Widget build(BuildContext context) {
-    final (label, color) = switch (status) {
-      CardLookupStatus.notFound => ('New card', IunaPalette.pawBrown),
-      CardLookupStatus.available => ('Available', IunaPalette.pawBrown),
-      CardLookupStatus.wishlisted => ('On wishlist', IunaPalette.ink2),
-      CardLookupStatus.owned => ('In collection', IunaPalette.ink2),
+    final (label, icon) = switch (status) {
+      CardLookupStatus.notFound ||
+      CardLookupStatus.available => (
+        kNotCollectedLabel,
+        Icons.lock_outline_rounded,
+      ),
+      CardLookupStatus.wishlisted => (kWishlistedLabel, Icons.bookmark_rounded),
+      CardLookupStatus.owned => (kOwnedLabel, Icons.check_rounded),
     };
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(4),
+        color: IunaPalette.chipBg,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: IunaPalette.hairline, width: 0.5),
       ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          color: color,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: IunaPalette.ink2),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              label,
+              style: IunaText.chip.copyWith(color: IunaPalette.ink2),
+            ),
+          ),
+        ],
       ),
     );
   }

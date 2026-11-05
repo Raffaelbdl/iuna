@@ -199,7 +199,7 @@ Future<int> _seedDetailCard(
         .insert(CardExamplesCompanion.insert(cardId: cardId, exampleId: exId));
   }
   if (owned) {
-    final now = DateTime(2026, 4, 26, 9, 30);
+    final now = _detailNow;
     await db
         .into(db.userCards)
         .insert(
@@ -217,6 +217,9 @@ Future<int> _seedDetailCard(
   }
   return cardId;
 }
+
+/// The clock of the card-detail scenes.
+final _detailNow = DateTime(2026, 4, 26, 9, 30);
 
 /// Four due cards for the review loop; 魔法, which `Random(1)` deals
 /// first, carries three senses so the back has a full list. Returns the
@@ -505,6 +508,7 @@ Future<void> _shoot(
   double pixelRatio = 2.0,
   Duration settle = const Duration(milliseconds: 200),
   Future<void> Function()? act,
+  double textScale = 1,
 }) async {
   tester.view.physicalSize = Size(
     logical.width * pixelRatio,
@@ -518,6 +522,14 @@ Future<void> _shoot(
     MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: buildIunaTheme(),
+      builder: textScale == 1
+          ? null
+          : (context, app) => MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: TextScaler.linear(textScale)),
+              child: app!,
+            ),
       home: child,
     ),
   );
@@ -802,6 +814,66 @@ void main() {
     await _shoot(tester, 'home_pack_opened', HomeScreen(db: db, kumaSeed: 1));
   });
 
+  testWidgets('home — large text (1.5×) grows instead of overflowing', (
+    tester,
+  ) async {
+    final db = await _emptyDb();
+    addTearDown(db.close);
+    final now = DateTime.now();
+    for (final (i, pair) in const [
+      ('猫', 'ねこ', 'cat'),
+      ('犬', 'いぬ', 'dog'),
+      ('熊', 'くま', 'bear'),
+    ].indexed) {
+      final id = await _seedCard(
+        db,
+        kanji: pair.$1,
+        kana: pair.$2,
+        meaning: pair.$3,
+        rarity: Rarity.common,
+      );
+      await db
+          .into(db.userCards)
+          .insert(
+            UserCardsCompanion.insert(
+              cardId: Value(id),
+              nextDue: now.subtract(const Duration(hours: 1)),
+              obtainedAt: now.subtract(Duration(days: i + 1)),
+            ),
+          );
+    }
+    for (var i = 0; i < 8; i++) {
+      await _seedCard(
+        db,
+        kanji: 'k$i',
+        kana: 'kana$i',
+        meaning: 'word $i',
+        rarity: Rarity.common,
+      );
+    }
+    await _shoot(
+      tester,
+      'home_text_scale',
+      HomeScreen(db: db, kumaSeed: 0),
+      logical: const Size(360, 1100),
+      textScale: 1.5,
+    );
+  });
+
+  testWidgets('collection — large text (1.5×)', (tester) async {
+    final db = await _emptyDb();
+    addTearDown(db.close);
+    await _seedCollection(db);
+    await _shoot(
+      tester,
+      'collection_text_scale',
+      CollectionScreen(db: db),
+      logical: const Size(360, 900),
+      settle: const Duration(seconds: 3),
+      textScale: 1.5,
+    );
+  });
+
   testWidgets('settings — sound toggle and JMdict notice', (tester) async {
     await _withLearnSettings();
     useTempDocumentsDir('iuna_settings_shot_');
@@ -830,6 +902,22 @@ void main() {
     );
   });
 
+  testWidgets('settings — larger text (2×)', (tester) async {
+    await _withLearnSettings(apiKey: 'sk-or-v1-golden');
+    useTempDocumentsDir('iuna_settings_2x_shot_');
+    final db = await _emptyDb();
+    addTearDown(db.close);
+    await _seedInstalledPack(db, cards: 931);
+    await _shoot(
+      tester,
+      'settings_text_scale_2x',
+      SettingsScreen(db: db),
+      logical: const Size(360, 5200),
+      settle: const Duration(seconds: 3),
+      textScale: 2,
+    );
+  });
+
   testWidgets('stats — full redesigned screen', (tester) async {
     final db = await _emptyDb();
     addTearDown(db.close);
@@ -837,8 +925,9 @@ void main() {
     await _shoot(
       tester,
       'stats_screen',
-      StatsScreen(db: db, now: DateTime(2026, 4, 26, 12)),
-      logical: const Size(360, 3400),
+      // Unfolded, so every chart is in the shot.
+      StatsScreen(db: db, now: DateTime(2026, 4, 26, 12), detailsOpen: true),
+      logical: const Size(360, 3500),
       settle: const Duration(milliseconds: 500),
     );
   });
@@ -889,12 +978,7 @@ void main() {
     await tester.pump(const Duration(seconds: 3));
 
     // Toggle the "Show missing" chip — picks up unowned cards as silhouettes.
-    // The chip sits at the right end of a horizontal scroll row and is
-    // typically offscreen-right at the default device width, so we
-    // ensureVisible before tapping.
     final chip = find.text('Show missing');
-    await tester.ensureVisible(chip);
-    await tester.pump();
     await tester.tap(chip);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
@@ -912,7 +996,7 @@ void main() {
     await _shoot(
       tester,
       'card_detail',
-      CardDetailScreen(db: db, cardId: cardId),
+      CardDetailScreen(db: db, cardId: cardId, now: _detailNow),
       logical: const Size(360, 900),
       settle: const Duration(milliseconds: 500),
     );
@@ -925,7 +1009,7 @@ void main() {
     await _shoot(
       tester,
       'card_detail_unowned',
-      CardDetailScreen(db: db, cardId: cardId),
+      CardDetailScreen(db: db, cardId: cardId, now: _detailNow),
       logical: const Size(360, 900),
       settle: const Duration(milliseconds: 500),
     );
@@ -944,7 +1028,12 @@ void main() {
     await _shoot(
       tester,
       'card_detail_translate',
-      CardDetailScreen(db: deckDb, cardId: cardId, learn: env),
+      CardDetailScreen(
+        db: deckDb,
+        cardId: cardId,
+        learn: env,
+        now: _detailNow,
+      ),
       logical: const Size(360, 900),
       settle: const Duration(milliseconds: 500),
       act: () async {
@@ -954,29 +1043,38 @@ void main() {
     );
   });
 
-  testWidgets('card detail — tutor on, no examples yet: two buttons', (tester) async {
+  testWidgets('card detail — tutor on, no examples yet: Get examples in the panel', (tester) async {
     final (env, deckDb, cardId) = await tutorCard();
     await _shoot(
       tester,
       'card_detail_tutor',
-      CardDetailScreen(db: deckDb, cardId: cardId, learn: env),
+      CardDetailScreen(
+        db: deckDb,
+        cardId: cardId,
+        learn: env,
+        now: _detailNow,
+      ),
       logical: const Size(360, 900),
       settle: const Duration(milliseconds: 500),
     );
   });
 
-  testWidgets('card detail — Kuma teach opens the chat bar', (tester) async {
+  testWidgets('card detail — scrolling down tucks the chat bar away', (tester) async {
     final (env, deckDb, cardId) = await tutorCard();
     await _shoot(
       tester,
-      'card_detail_tutor_open',
-      CardDetailScreen(db: deckDb, cardId: cardId, learn: env),
+      'card_detail_tutor_scrolled',
+      CardDetailScreen(
+        db: deckDb,
+        cardId: cardId,
+        learn: env,
+        now: _detailNow,
+      ),
       logical: const Size(360, 900),
       settle: const Duration(milliseconds: 500),
       act: () async {
-        await tester.tap(find.text('Kuma teach'));
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 300));
+        await tester.drag(find.byType(ListView).first, const Offset(0, -300));
+        await tester.pump(const Duration(milliseconds: 400));
       },
     );
   });
@@ -993,7 +1091,12 @@ void main() {
     await _shoot(
       tester,
       'card_detail_kuma_examples',
-      CardDetailScreen(db: deckDb, cardId: cardId, learn: env),
+      CardDetailScreen(
+        db: deckDb,
+        cardId: cardId,
+        learn: env,
+        now: _detailNow,
+      ),
       logical: const Size(360, 900),
       settle: const Duration(milliseconds: 500),
     );
@@ -1028,16 +1131,64 @@ void main() {
     );
   });
 
-  testWidgets('review — done', (tester) async {
+  // An earlier session this morning, then this one: three right and
+  // 一瞥 missed, so it is due again in ten minutes.
+  Future<void> shootReviewDone(
+    WidgetTester tester,
+    String name, {
+    double textScale = 1,
+    Size logical = const Size(360, 900),
+  }) async {
     final db = await _emptyDb();
     addTearDown(db.close);
     final ids = await _seedReviewDeck(db);
+    final repo = IunaRepository(db);
+    final now = DateTime(2026, 11, 5, 9, 30);
+    for (final id in ids.take(2)) {
+      await repo.applyReview(
+        cardId: id,
+        correct: true,
+        now: now.subtract(const Duration(hours: 1)),
+      );
+    }
+    for (final id in ids) {
+      await repo.applyReview(cardId: id, correct: id != ids.last, now: now);
+    }
     await _shoot(
       tester,
-      'review_done',
-      ReviewDoneScreen(db: db, correct: 3, total: 4, doneCardIds: ids),
-      logical: const Size(360, 900),
+      name,
+      ReviewDoneScreen(
+        db: db,
+        correct: 3,
+        total: 4,
+        doneCardIds: ids,
+        now: now,
+      ),
+      logical: logical,
       settle: const Duration(seconds: 5),
+      textScale: textScale,
+    );
+  }
+
+  testWidgets('review — done', (tester) async {
+    await shootReviewDone(tester, 'review_done');
+  });
+
+  testWidgets('review — done, large text (1.5×)', (tester) async {
+    await shootReviewDone(
+      tester,
+      'review_done_text_scale',
+      textScale: 1.5,
+      logical: const Size(360, 1300),
+    );
+  });
+
+  testWidgets('review — done, larger text (2×)', (tester) async {
+    await shootReviewDone(
+      tester,
+      'review_done_text_scale_2x',
+      textScale: 2,
+      logical: const Size(360, 1600),
     );
   });
 
@@ -1227,6 +1378,127 @@ void main() {
     );
   });
 
+  testWidgets('booster — card reveal, large text (1.5×), long meaning', (
+    tester,
+  ) async {
+    final db = await _emptyDb();
+    addTearDown(db.close);
+    for (final c in const [
+      ('一瞥', 'いちべつ', Rarity.ur),
+      ('魔法', 'まほう', Rarity.superRare),
+      ('結界', 'けっかい', Rarity.ssr),
+      ('森', 'もり', Rarity.rare),
+      ('猫', 'ねこ', Rarity.common),
+    ]) {
+      await _seedCard(
+        db,
+        kanji: c.$1,
+        kana: c.$2,
+        meaning:
+            'a glance; a glimpse; a quick look at something in passing, '
+            'as one does without stopping',
+        rarity: c.$3,
+      );
+    }
+    await _shoot(
+      tester,
+      'booster_reveal_text_scale',
+      BoosterRevealScreen(db: db, random: Random(1)),
+      settle: const Duration(milliseconds: 500),
+      textScale: 1.5,
+    );
+  });
+
+  testWidgets('booster — three packs chained, larger text (2×)', (tester) async {
+    final db = await _emptyDb();
+    addTearDown(db.close);
+    await IunaRepository(db).setBoostersPerDay(3);
+    const words = [
+      ('一瞥', 'いちべつ'), ('魔法', 'まほう'), ('結界', 'けっかい'),
+      ('森', 'もり'), ('猫', 'ねこ'), ('犬', 'いぬ'), ('山', 'やま'),
+      ('川', 'かわ'), ('空', 'そら'), ('海', 'うみ'), ('花', 'はな'),
+      ('雨', 'あめ'), ('雪', 'ゆき'), ('風', 'かぜ'), ('星', 'ほし'),
+    ];
+    for (var i = 0; i < words.length; i++) {
+      await _seedCard(
+        db,
+        kanji: words[i].$1,
+        kana: words[i].$2,
+        meaning: 'word ${i + 1}',
+        rarity: Rarity.values[i % Rarity.values.length],
+      );
+    }
+    await _shoot(
+      tester,
+      'booster_reveal_text_scale_2x',
+      BoosterRevealScreen(db: db, random: Random(1)),
+      settle: const Duration(milliseconds: 500),
+      textScale: 2,
+    );
+  });
+
+  testWidgets('review — front of card, larger text (2×)', (tester) async {
+    final db = await _emptyDb();
+    addTearDown(db.close);
+    await _seedReviewDeck(db);
+    await _shoot(
+      tester,
+      'review_front_text_scale_2x',
+      ReviewScreen(db: db, random: Random(1)),
+      settle: const Duration(milliseconds: 500),
+      textScale: 2,
+    );
+  });
+
+  testWidgets('review — back of card, large text (1.5×)', (tester) async {
+    final db = await _emptyDb();
+    addTearDown(db.close);
+    await _seedReviewDeck(db);
+    await _shoot(
+      tester,
+      'review_back_text_scale',
+      ReviewScreen(db: db, random: Random(1)),
+      settle: const Duration(milliseconds: 500),
+      textScale: 1.5,
+      act: () async {
+        await tester.tap(find.text('魔法'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+      },
+    );
+  });
+
+  testWidgets('card detail — large text (1.5×)', (tester) async {
+    final db = await _emptyDb();
+    addTearDown(db.close);
+    final cardId = await _seedDetailCard(db);
+    await _shoot(
+      tester,
+      'card_detail_text_scale',
+      CardDetailScreen(db: db, cardId: cardId, now: _detailNow),
+      logical: const Size(360, 900),
+      settle: const Duration(milliseconds: 500),
+      textScale: 1.5,
+    );
+  });
+
+  testWidgets('games — pairs, large text (1.5×)', (tester) async {
+    final db = await _emptyDb();
+    addTearDown(db.close);
+    final ids = await _seedGameDeck(db);
+    await _shoot(
+      tester,
+      'games_pairs_text_scale',
+      PairsScreen(db: db, seed: 7, clock: () => DateTime(2026, 11, 5)),
+      textScale: 1.5,
+      act: () async {
+        final dealt = dealtPairs(ids);
+        await playPair(tester, dealt[0], dealt[1]);
+        await tester.pump(const Duration(milliseconds: 100));
+      },
+    );
+  });
+
   testWidgets('learn — hub with courses', (tester) async {
     await _withLearnSettings(apiKey: 'sk-or-v1-golden');
     final (env, deckDb, learnDb) = await _learnEnv(FakeLlm([]));
@@ -1240,6 +1512,20 @@ void main() {
     );
   });
 
+  testWidgets('learn — hub with four tabs at large text (1.5×)', (tester) async {
+    await _withLearnSettings(apiKey: 'sk-or-v1-golden');
+    final (env, deckDb, learnDb) = await _learnEnv(FakeLlm([]));
+    addTearDown(deckDb.close);
+    addTearDown(learnDb.close);
+    await _seedLearnCourses(env.repo);
+    await _shoot(
+      tester,
+      'learn_hub_text_scale',
+      LearnScreen(db: deckDb, env: env, kumaSeed: 0),
+      textScale: 1.5,
+    );
+  });
+
   testWidgets('learn — course with chapters', (tester) async {
     final (env, deckDb, learnDb) = await _learnEnv(FakeLlm([]));
     addTearDown(deckDb.close);
@@ -1248,7 +1534,12 @@ void main() {
     await _shoot(tester, 'learn_course', CourseScreen(env: env, courseId: id));
   });
 
-  testWidgets('learn — lesson waiting on a quiz card', (tester) async {
+  Future<void> shootLessonQuiz(
+    WidgetTester tester,
+    String name, {
+    double textScale = 1,
+    Size logical = const Size(360, 900),
+  }) async {
     final llm = FakeLlm([
       callTool(
         'course_write',
@@ -1284,15 +1575,29 @@ void main() {
     final id = await _seedLearnCourses(env.repo);
     await _shoot(
       tester,
-      'learn_lesson_quiz',
+      name,
       TutorChatScreen(env: env, courseId: id, chapterKey: 'n1-formal-grammar'),
-      logical: const Size(360, 900),
+      logical: logical,
       settle: const Duration(milliseconds: 500),
+      textScale: textScale,
     );
     // Let the controller wind down (the quiz is cancelled) before the
     // databases close.
     await tester.pumpWidget(const SizedBox());
     await tester.pump();
+  }
+
+  testWidgets('learn — lesson waiting on a quiz card', (tester) async {
+    await shootLessonQuiz(tester, 'learn_lesson_quiz');
+  });
+
+  testWidgets('learn — lesson quiz, larger text (2×)', (tester) async {
+    await shootLessonQuiz(
+      tester,
+      'learn_lesson_quiz_text_scale_2x',
+      textScale: 2,
+      logical: const Size(360, 1800),
+    );
   });
 
   testWidgets('learn — room probing with multiple-choice questions', (
@@ -1396,6 +1701,40 @@ void main() {
             tester.element(find.byType(MaterialApp)),
           ),
         );
+        await tester.pump();
+      },
+    );
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+  });
+
+  testWidgets('learn — words in a reply show they open', (tester) async {
+    final (env, deckDb, learnDb) = await _learnEnv(
+      FakeLlm([]),
+      words: fakeTutorWords(),
+      bookmarks: true,
+    );
+    addTearDown(deckDb.close);
+    addTearDown(learnDb.close);
+    final id = await _seedLearnCourses(env.repo);
+    final room = await env.repo.openSession(id, kRoomSessionKey);
+    await env.repo.addMessage(
+      room.id,
+      role: MessageRole.assistant,
+      content:
+          'Here is how a colleague would put it:\n\n'
+          '> 今日は会議があります。\n\n'
+          '*There is a meeting today.* Note the が after 会議: it brings in '
+          'something new to the conversation.',
+    );
+    await _shoot(
+      tester,
+      'learn_word_taps',
+      TutorChatScreen(env: env, courseId: id),
+      settle: const Duration(milliseconds: 500),
+      act: () async {
+        // Reads go one per frame, so the words land a frame after the bubble.
+        await tester.pump();
         await tester.pump();
       },
     );

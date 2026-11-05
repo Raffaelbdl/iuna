@@ -5,6 +5,7 @@ import '../db/database.dart';
 import '../db/repository.dart';
 import '../learn/screens/tutor_settings_section.dart';
 import '../theme/iuna_theme.dart';
+import '../widgets/iuna_page.dart';
 import '../widgets/section_header.dart';
 import 'settings/about_section.dart';
 import 'settings/backup_section.dart';
@@ -13,9 +14,12 @@ import 'settings/dictionary_section.dart';
 import 'stats_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key, required this.db});
+  const SettingsScreen({super.key, required this.db, this.showTutor = false});
 
   final AppDatabase db;
+
+  /// Opens scrolled to the AI tutor, for a tutor error about the key.
+  final bool showTutor;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -68,7 +72,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _packFilter = packFilter;
       _loading = false;
     });
+    if (widget.showTutor) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final tutor = _tutorKey.currentContext;
+        if (tutor != null && tutor.mounted) {
+          Scrollable.ensureVisible(tutor, alignment: 0.1);
+        }
+      });
+    }
   }
+
+  final _tutorKey = GlobalKey();
 
   Future<void> _setBoostersPerDay(int value) async {
     setState(() => _boostersPerDay = value);
@@ -103,89 +117,94 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+    return IunaPage(
+      title: 'Settings',
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           // Not a lazy list: the sections own installs, sign-in and
           // backups that must not be torn down by scrolling.
           : SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(vertical: 8),
+              padding: const EdgeInsets.only(bottom: 24),
               child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const IunaSectionHeader('Progress'),
-                ListTile(
-                  leading: const Icon(
-                    Icons.insights_rounded,
-                    color: IunaPalette.pawBrown,
-                  ),
-                  title: const Text('Stats'),
-                  subtitle: const Text(
-                    'Activity, retention curve, maturity, and leeches.',
-                  ),
-                  trailing: const Icon(
-                    Icons.chevron_right_rounded,
-                    color: IunaPalette.ink3,
-                  ),
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => StatsScreen(db: widget.db),
+                IunaGroup(
+                  'Progress',
+                  children: [
+                    ListTile(
+                      leading: const Icon(Icons.insights_rounded),
+                      title: const Text('Stats'),
+                      subtitle: const Text(
+                        'Activity, streak, upcoming reviews and the cards '
+                        'you keep missing.',
+                      ),
+                      trailing: const Icon(
+                        Icons.chevron_right_rounded,
+                        color: IunaPalette.ink3,
+                      ),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => StatsScreen(db: widget.db),
+                        ),
+                      ),
                     ),
-                  ),
+                    _Stepper(
+                      icon: Icons.timer_outlined,
+                      title: 'Review time cap',
+                      subtitle:
+                          'Stats count at most this long per answer, so a '
+                          'card left open doesn\'t inflate your time spent.',
+                      value: _reviewTimeCap,
+                      min: kMinReviewTimeCapSeconds,
+                      max: kMaxReviewTimeCapSeconds,
+                      step: 5,
+                      unit: 's',
+                      lessTooltip: 'Shorter cap',
+                      moreTooltip: 'Longer cap',
+                      onChanged: _setReviewTimeCap,
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 16),
-                const IunaSectionHeader('Daily routine'),
-                _Stepper(
-                  icon: Icons.card_giftcard_rounded,
-                  title: 'Booster packs per day',
-                  subtitle: 'How many fresh packs you can claim each day.',
-                  value: _boostersPerDay,
-                  min: kMinBoostersPerDay,
-                  max: kMaxBoostersPerDay,
-                  onChanged: _setBoostersPerDay,
-                ),
-                SwitchListTile.adaptive(
-                  secondary: const Icon(
-                    Icons.school_rounded,
-                    color: IunaPalette.pawBrown,
-                  ),
-                  title: const Text('JLPT only'),
-                  subtitle: const Text(
-                    'Only pull cards tagged with a JLPT level. Applies to '
-                    'booster draws and suspend-and-replace. Wishlisted '
-                    'cards still surface regardless.',
-                  ),
-                  value: _jlptOnly,
-                  activeTrackColor: IunaPalette.bellGold,
-                  onChanged: _setJlptOnly,
-                ),
-                if (_packs.isNotEmpty)
-                  _PackFilterTile(
-                    packs: _packs,
-                    labels: _packLabels,
-                    selected: _packFilter,
-                    onChanged: _setPackFilter,
-                  ),
-                _ResetHourTile(hour: _resetHour, onChanged: _setResetHour),
-                _Stepper(
-                  icon: Icons.timer_outlined,
-                  title: 'Review time cap',
-                  subtitle:
-                      'Max seconds counted toward response-time stats. '
-                      'Reviews longer than this still record — only the '
-                      'duration is clamped.',
-                  value: _reviewTimeCap,
-                  min: kMinReviewTimeCapSeconds,
-                  max: kMaxReviewTimeCapSeconds,
-                  step: 5,
-                  unit: 's',
-                  onChanged: _setReviewTimeCap,
+                IunaGroup(
+                  'Daily routine',
+                  children: [
+                    _Stepper(
+                      icon: Icons.card_giftcard_rounded,
+                      title: 'Packs per day',
+                      subtitle: 'How many fresh packs you can open each day.',
+                      value: _boostersPerDay,
+                      min: kMinBoostersPerDay,
+                      max: kMaxBoostersPerDay,
+                      lessTooltip: 'Fewer packs per day',
+                      moreTooltip: 'More packs per day',
+                      onChanged: _setBoostersPerDay,
+                    ),
+                    SwitchListTile.adaptive(
+                      secondary: const Icon(Icons.school_rounded),
+                      title: const Text('JLPT only'),
+                      subtitle: const Text(
+                        'Only draw cards tagged with a JLPT level, in packs '
+                        'and when a suspended card is swapped out. Wishlist '
+                        'cards still show up.',
+                      ),
+                      value: _jlptOnly,
+                      onChanged: _setJlptOnly,
+                    ),
+                    if (_packs.isNotEmpty)
+                      _PackFilterTile(
+                        packs: _packs,
+                        labels: _packLabels,
+                        selected: _packFilter,
+                        onChanged: _setPackFilter,
+                      ),
+                    _ResetHourTile(hour: _resetHour, onChanged: _setResetHour),
+                  ],
                 ),
                 const SizedBox(height: 16),
                 BackupSection(repo: _repo),
                 const SizedBox(height: 16),
-                const TutorSettingsSection(),
+                TutorSettingsSection(key: _tutorKey),
                 CardPacksSection(repo: _repo, onInstalled: _load),
                 const SizedBox(height: 16),
                 const DictionarySection(),
@@ -194,7 +213,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const SizedBox(height: 16),
                 const IunaSectionHeader('Data sources'),
                 const Padding(
-                  padding: EdgeInsets.fromLTRB(20, 4, 20, 8),
+                  padding: EdgeInsets.fromLTRB(16, 4, 16, 8),
                   child: _Attribution(
                     title: 'JMdict',
                     body:
@@ -208,7 +227,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
                 const Padding(
-                  padding: EdgeInsets.fromLTRB(20, 4, 20, 8),
+                  padding: EdgeInsets.fromLTRB(16, 4, 16, 8),
                   child: _Attribution(
                     title: 'JLPT vocabulary lists',
                     body:
@@ -220,7 +239,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
                 const Padding(
-                  padding: EdgeInsets.fromLTRB(20, 4, 20, 8),
+                  padding: EdgeInsets.fromLTRB(16, 4, 16, 8),
                   child: _Attribution(
                     title: 'Example sentences',
                     body:
@@ -233,7 +252,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
                 const Padding(
-                  padding: EdgeInsets.fromLTRB(20, 4, 20, 16),
+                  padding: EdgeInsets.fromLTRB(16, 4, 16, 16),
                   child: _Attribution(
                     title: 'Word frequency',
                     body:
@@ -262,6 +281,8 @@ class _Stepper extends StatelessWidget {
     required this.min,
     required this.max,
     required this.onChanged,
+    required this.lessTooltip,
+    required this.moreTooltip,
     this.step = 1,
     this.unit = '',
   });
@@ -275,37 +296,52 @@ class _Stepper extends StatelessWidget {
   final int step;
   final String unit;
   final ValueChanged<int> onChanged;
+  final String lessTooltip;
+  final String moreTooltip;
 
   @override
   Widget build(BuildContext context) {
     final atMin = value <= min;
     final atMax = value >= max;
+    // The control sits under the description: beside it, it squeezed
+    // the title into a narrow column.
     return ListTile(
       leading: Icon(icon, color: IunaPalette.pawBrown),
       title: Text(title),
-      subtitle: Text(subtitle),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          IconButton(
-            icon: const Icon(Icons.remove_circle_outline_rounded),
-            color: IunaPalette.pawBrown,
-            onPressed: atMin ? null : () => onChanged(value - step),
-          ),
-          SizedBox(
-            width: 36,
-            child: Text(
-              '$value$unit',
-              textAlign: TextAlign.center,
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.add_circle_outline_rounded),
-            color: IunaPalette.pawBrown,
-            onPressed: atMax ? null : () => onChanged(value + step),
+          Text(subtitle),
+          Row(
+            children: [
+              IconButton(
+                tooltip: lessTooltip,
+                icon: const Icon(Icons.remove_circle_outline_rounded),
+                color: IunaPalette.pawBrown,
+                onPressed: atMin ? null : () => onChanged(value - step),
+              ),
+              // A floor, not a width: large text widens the value
+              // rather than breaking "10 s" over two lines.
+              ConstrainedBox(
+                constraints: const BoxConstraints(minWidth: 44),
+                child: Text(
+                  '$value$unit',
+                  maxLines: 1,
+                  softWrap: false,
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: IunaPalette.ink,
+                  ),
+                ),
+              ),
+              IconButton(
+                tooltip: moreTooltip,
+                icon: const Icon(Icons.add_circle_outline_rounded),
+                color: IunaPalette.pawBrown,
+                onPressed: atMax ? null : () => onChanged(value + step),
+              ),
+            ],
           ),
         ],
       ),
@@ -340,22 +376,28 @@ class _PackFilterTile extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Draw boosters from a single pack instead of the whole deck. '
-            'Clears "JLPT only"; wishlisted cards still surface.',
+            'Draw packs from a single themed pack instead of all cards. '
+            'Turns off "JLPT only"; wishlist cards still show up.',
           ),
-          DropdownButton<String>(
-            value: selected ?? '',
-            isExpanded: true,
-            items: [
-              const DropdownMenuItem(value: '', child: Text('All cards')),
-              for (final pack in packs)
-                DropdownMenuItem(
-                  value: pack,
-                  child: Text(labels[pack] ?? pack),
-                ),
-            ],
-            onChanged: (v) => onChanged((v == null || v.isEmpty) ? null : v),
+          const SizedBox(height: 8),
+          _DropdownBox(
+            child: DropdownButton<String>(
+              value: selected ?? '',
+              isExpanded: true,
+              dropdownColor: IunaPalette.paper,
+              borderRadius: BorderRadius.circular(IunaRadii.sm),
+              items: [
+                const DropdownMenuItem(value: '', child: Text('All cards')),
+                for (final pack in packs)
+                  DropdownMenuItem(
+                    value: pack,
+                    child: Text(labels[pack] ?? pack),
+                  ),
+              ],
+              onChanged: (v) => onChanged((v == null || v.isEmpty) ? null : v),
+            ),
           ),
+          const SizedBox(height: 4),
         ],
       ),
     );
@@ -372,13 +414,11 @@ class _ResetHourTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      leading: const Icon(Icons.schedule_rounded, color: IunaPalette.pawBrown),
-      title: const Text('Daily reset'),
-      subtitle: const Text('When the new-pack timer and streak roll over.'),
-      trailing: DropdownButton<int>(
+    final dropdown = _DropdownBox(
+      child: DropdownButton<int>(
         value: hour,
-        underline: const SizedBox.shrink(),
+        dropdownColor: IunaPalette.paper,
+        borderRadius: BorderRadius.circular(IunaRadii.sm),
         items: [
           for (var h = 0; h < 24; h++)
             DropdownMenuItem(value: h, child: Text(_label(h))),
@@ -387,6 +427,32 @@ class _ResetHourTile extends StatelessWidget {
           if (v != null) onChanged(v);
         },
       ),
+    );
+    return IunaControlTile(
+      leading: const Icon(Icons.schedule_rounded, color: IunaPalette.pawBrown),
+      title: const Text('Daily reset'),
+      subtitle: const Text('When the new-pack timer and streak roll over.'),
+      control: dropdown,
+    );
+  }
+}
+
+/// A dropdown drawn as a rounded field instead of an underline.
+class _DropdownBox extends StatelessWidget {
+  const _DropdownBox({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.only(left: 12, right: 4),
+      decoration: BoxDecoration(
+        color: IunaPalette.paper2,
+        borderRadius: BorderRadius.circular(IunaRadii.sm),
+        border: Border.all(color: IunaPalette.outline),
+      ),
+      child: DropdownButtonHideUnderline(child: child),
     );
   }
 }
@@ -400,15 +466,13 @@ class _Attribution extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bodyStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
-      color: IunaPalette.pawBrown.withValues(alpha: 0.85),
+      color: IunaPalette.ink2,
       height: 1.45,
     );
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: IunaPalette.cream,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: IunaPalette.pawBrown.withValues(alpha: 0.12)),
+      decoration: paperPanelDecoration(
+        borderRadius: BorderRadius.circular(IunaRadii.md),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

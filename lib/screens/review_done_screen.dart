@@ -7,11 +7,17 @@ import '../db/repository.dart';
 import '../theme/iuna_theme.dart';
 import '../widgets/cta_button.dart';
 import '../widgets/hex_bg.dart';
-import '../widgets/iuna_icon_button.dart';
+import '../widgets/iuna_bottom_nav.dart';
+import '../widgets/mini_card_scroller.dart';
+import '../widgets/notice.dart';
 import '../widgets/section_header.dart';
-import '../widgets/vocab_card.dart';
+import '../widgets/time_words.dart';
+import 'app_nav.dart';
 import 'card_detail_screen.dart';
 import 'collection_screen.dart';
+import 'review_screen.dart';
+import 'settings_screen.dart';
+import 'today_flow.dart';
 
 /// End-of-session celebration. Tier copy keys off accuracy:
 /// ≥90% / ≥70% / ≥50% / else, with kicker JP + headline + italic note.
@@ -22,12 +28,21 @@ class ReviewDoneScreen extends StatefulWidget {
     required this.correct,
     required this.total,
     this.doneCardIds = const [],
+    this.canUndo = false,
+    this.now,
   });
 
   final AppDatabase db;
   final int correct;
   final int total;
   final List<int> doneCardIds;
+
+  /// Pushed over a finished review, which takes the last card back when
+  /// this pops with true.
+  final bool canUndo;
+
+  /// The clock for "Coming up"; goldens pin it.
+  final DateTime? now;
 
   @override
   State<ReviewDoneScreen> createState() => _ReviewDoneScreenState();
@@ -53,6 +68,13 @@ class _ReviewDoneScreenState extends State<ReviewDoneScreen>
   int _todayCorrect = 0;
   int _todayTotal = 0;
   List<CardRow> _doneCards = const [];
+  ({DateTime nextDay, DateTime? nextReview})? _upcoming;
+  bool _poolEmpty = false;
+  String? _drawFilter;
+
+  /// Cards due again before the day ends: the ones just missed, back
+  /// after a short gap.
+  int _dueAgain = 0;
 
   @override
   void initState() {
@@ -61,18 +83,56 @@ class _ReviewDoneScreenState extends State<ReviewDoneScreen>
   }
 
   Future<void> _load() async {
-    final (streak, today, cards) = await (
-      _repo.recordStreak(),
-      _repo.todayStats(),
-      _repo.cardsByIds(widget.doneCardIds),
-    ).wait;
-    if (!mounted) return;
-    setState(() {
-      _streak = streak;
-      _todayCorrect = today.correct;
-      _todayTotal = today.total;
-      _doneCards = cards.take(5).toList();
-    });
+    final now = widget.now;
+    try {
+      final (streak, today, cards, upcoming, booster, dueAgain) = await (
+        _repo.recordStreak(now: now),
+        _repo.todayStats(now: now),
+        _repo.cardsByIds(widget.doneCardIds),
+        _repo.upcoming(now: now),
+        _repo.boosterPreview(now: now),
+        _repo.dueCountToday(now: now),
+      ).wait;
+      final poolEmpty = booster.packs > 0 && booster.newCards == 0;
+      final filter = poolEmpty ? await _repo.drawFilterName() : null;
+      if (!mounted) return;
+      // The nav on a card opened from here shows it without a recount.
+      publishTodayCount(widget.db, booster.newCards + dueAgain);
+      setState(() {
+        _streak = streak;
+        _todayCorrect = today.correct;
+        _todayTotal = today.total;
+        _doneCards = cards.take(5).toList();
+        _upcoming = upcoming;
+        _poolEmpty = poolEmpty;
+        _dueAgain = dueAgain;
+        _drawFilter = filter;
+      });
+    } catch (e, s) {
+      // The recap still stands on the session's own numbers.
+      logLoadError('Recap', e, s);
+    }
+  }
+
+  void _leave() => Navigator.of(context).popUntil((r) => r.isFirst);
+
+  /// A fresh session over the cards due again, in place of this recap
+  /// and the review under it.
+  void _reviewAgain() => Navigator.of(context).pushAndRemoveUntil(
+    todayRoute((_) => ReviewScreen(db: widget.db, now: widget.now)),
+    (r) => r.isFirst,
+  );
+
+  void _openSettings() => Navigator.of(context).push(
+    MaterialPageRoute(builder: (_) => SettingsScreen(db: widget.db)),
+  );
+
+  void _openCollection() {
+    final navigator = Navigator.of(context);
+    navigator.popUntil((r) => r.isFirst);
+    navigator.push(
+      MaterialPageRoute(builder: (_) => CollectionScreen(db: widget.db)),
+    );
   }
 
   @override
@@ -85,13 +145,13 @@ class _ReviewDoneScreenState extends State<ReviewDoneScreen>
   List<_ConfettiHex> _buildConfetti() {
     final rng = math.Random(7);
     const cols = [
-      Color(0xFFF3A7B5),
-      Color(0xFFB8D8C9),
-      Color(0xFFFFD58A),
-      Color(0xFFC4B2E0),
+      IunaPalette.bowPink,
+      IunaPalette.bowMint,
+      IunaPalette.ctaTop,
+      IunaPalette.chartLilac,
       Color(0xFFB4D6EA),
       Color(0xFFFFC49E),
-      Color(0xFFE8B96B),
+      IunaPalette.bellGold,
     ];
     return List.generate(18, (i) {
       return _ConfettiHex(
@@ -111,155 +171,201 @@ class _ReviewDoneScreenState extends State<ReviewDoneScreen>
     final sessionPct = hasSession
         ? ((widget.correct / widget.total) * 100).round()
         : 0;
-    final todayPct = _todayTotal == 0
+    // The day's tally includes this session, so it never reads less,
+    // even before it has loaded.
+    final todayBehind = _todayTotal < widget.total;
+    final todayCorrect = todayBehind ? widget.correct : _todayCorrect;
+    final todayTotal = todayBehind ? widget.total : _todayTotal;
+    final todayPct = todayTotal == 0
         ? 0
-        : ((_todayCorrect / _todayTotal) * 100).round();
+        : ((todayCorrect / todayTotal) * 100).round();
     // Today's accuracy drives the tier copy: split-session users don't
     // want their last-batch dip ("Every review counts") to overshadow
     // the day's actual performance. Falls back to session pct on the
     // very first session of the day before the daily_stats bump lands.
-    final tierPct = _todayTotal > 0 ? todayPct : sessionPct;
-    final tier = _tierFor(tierPct);
+    final tierPct = todayTotal > 0 ? todayPct : sessionPct;
+    final perfect = todayTotal > 0
+        ? todayCorrect == todayTotal
+        : hasSession && widget.correct == widget.total;
+    final tier = hasSession
+        ? _tierFor(tierPct, perfect: perfect)
+        : _tallyCopy();
 
-    return Scaffold(
-      backgroundColor: IunaPalette.bg,
-      body: DecoratedBox(
-        decoration: iunaPageBackground(),
-        child: Stack(
-          children: [
-            const Positioned.fill(child: HexBg(seed: 9)),
-            Positioned.fill(
-              child: IgnorePointer(
-                child: AnimatedBuilder(
-                  animation: _confetti,
-                  builder: (_, _) => CustomPaint(
-                    painter: _ConfettiPainter(
-                      hexes: _hexes,
-                      progress: _confetti.value,
+    // Under a finished review, Back leaves both rather than uncovering
+    // it; only the undo arrow goes back to it.
+    return PopScope<Object?>(
+      canPop: !widget.canUndo,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _leave();
+      },
+      child: Scaffold(
+        backgroundColor: IunaPalette.bg,
+        body: DecoratedBox(
+          decoration: iunaPageBackground(),
+          child: Stack(
+            children: [
+              const Positioned.fill(child: HexBg(seed: 9, calmTop: 0.6)),
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: AnimatedBuilder(
+                    animation: _confetti,
+                    builder: (_, _) => CustomPaint(
+                      painter: _ConfettiPainter(
+                        hexes: _hexes,
+                        progress: _confetti.value,
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-            SafeArea(
-              child: Column(
-                children: [
-                  _TopBar(
-                    label: hasSession ? 'Done' : 'Today',
-                    onClose: () =>
-                        Navigator.of(context).popUntil((r) => r.isFirst),
-                  ),
-                  Expanded(
-                    child: ListView(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                      children: [
-                        _HeroMedallion(animation: _float),
-                        const SizedBox(height: 18),
-                        Text(
-                          tier.kicker,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            color: IunaPalette.ink3,
-                            letterSpacing: 4,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          tier.headline,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w600,
-                            color: IunaPalette.ink,
-                            letterSpacing: -0.3,
-                            height: 1.1,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          tier.note,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontStyle: FontStyle.italic,
-                            color: IunaPalette.ink3,
-                          ),
-                        ),
-                        const SizedBox(height: 22),
-                        _StatsPanel(
-                          hasSession: hasSession,
-                          sessionCorrect: widget.correct,
-                          sessionTotal: widget.total,
-                          sessionPct: sessionPct,
-                          todayCorrect: _todayCorrect,
-                          todayTotal: _todayTotal,
-                          todayPct: todayPct,
-                          streak: _streak,
-                        ),
-                        if (_doneCards.isNotEmpty) ...[
-                          const SizedBox(height: 18),
-                          const Padding(
-                            padding: EdgeInsets.only(left: 4, bottom: 10),
-                            child: IunaEyebrow('Added to collection'),
-                          ),
-                          _DoneScroller(
-                            cards: _doneCards,
-                            onTap: (id) async {
-                              await Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => CardDetailScreen(
-                                    db: widget.db,
-                                    cardId: id,
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        ],
-                        const SizedBox(height: 20),
-                        IunaCtaButton(
-                          label: 'See in collection',
-                          leadingIcon: Icons.style_rounded,
-                          onTap: () async {
-                            Navigator.of(context).pushReplacement(
-                              MaterialPageRoute(
-                                builder: (_) => CollectionScreen(db: widget.db),
-                              ),
-                            );
-                          },
-                        ),
-                        const SizedBox(height: 10),
-                        IunaGhostButton(
-                          label: 'Back home',
-                          onTap: () =>
-                              Navigator.of(context).popUntil((r) => r.isFirst),
-                        ),
-                      ],
+              SafeArea(
+                child: Column(
+                  children: [
+                    TodayTopBar(
+                      label: hasSession ? 'Session done' : 'Recap',
+                      closeTooltip: 'Close',
+                      onClose: _leave,
+                      onUndo: widget.canUndo
+                          ? () => Navigator.of(context).pop(true)
+                          : null,
                     ),
-                  ),
-                ],
+                    Expanded(
+                      child: ListView(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                        children: [
+                          _HeroMedallion(animation: _float),
+                          const SizedBox(height: 18),
+                          Text(
+                            tier.kicker,
+                            textAlign: TextAlign.center,
+                            style: IunaText.kicker.copyWith(
+                              color: IunaPalette.ink3,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            tier.headline,
+                            textAlign: TextAlign.center,
+                            style: IunaText.banner.copyWith(
+                              color: IunaPalette.ink,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            tier.note,
+                            textAlign: TextAlign.center,
+                            style: IunaText.body.copyWith(
+                              fontStyle: FontStyle.italic,
+                              color: IunaPalette.ink3,
+                            ),
+                          ),
+                          const SizedBox(height: 22),
+                          _StatsPanel(
+                            hasSession: hasSession,
+                            sessionCorrect: widget.correct,
+                            sessionTotal: widget.total,
+                            todayCorrect: todayCorrect,
+                            todayTotal: todayTotal,
+                            streak: _streak,
+                          ),
+                          if (_upcoming case final upcoming?) ...[
+                            const SizedBox(height: 12),
+                            _ComingUp(
+                              nextDay: upcoming.nextDay,
+                              nextReview: upcoming.nextReview,
+                              poolEmpty: _poolEmpty,
+                              drawFilter: _drawFilter,
+                              onWidenDraw: _openSettings,
+                              now: widget.now ?? DateTime.now(),
+                            ),
+                          ],
+                          if (_doneCards.isNotEmpty) ...[
+                            const SizedBox(height: 18),
+                            const Padding(
+                              padding: EdgeInsets.only(left: 4, bottom: 10),
+                              child: IunaEyebrow('Reviewed this session'),
+                            ),
+                            MiniCardScroller(
+                              compact: true,
+                              cards: _doneCards,
+                              onTap: (id) async {
+                                await Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => CardDetailScreen(
+                                      db: widget.db,
+                                      cardId: id,
+                                      from: IunaNavTab.today,
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+                          const SizedBox(height: 20),
+                          if (_dueAgain > 0) ...[
+                            IunaCtaButton(
+                              label: _dueAgain == 1
+                                  ? 'Review again · 1 card'
+                                  : 'Review again · $_dueAgain cards',
+                              trailingIcon: Icons.arrow_forward_rounded,
+                              onTap: _reviewAgain,
+                            ),
+                            const SizedBox(height: 10),
+                            IunaGhostButton(label: 'Back home', onTap: _leave),
+                          ] else ...[
+                            IunaCtaButton(label: 'Back home', onTap: _leave),
+                            const SizedBox(height: 10),
+                            IunaGhostButton(
+                              label: 'See in collection',
+                              leadingIcon: Icons.style_rounded,
+                              onTap: _openCollection,
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
-  _TierCopy _tierFor(int pct) {
-    if (pct >= 90) {
+  /// Opened from Today with no session behind it: about the day, not a
+  /// run of cards.
+  _TierCopy _tallyCopy() => _todayTotal == 0
+      ? const _TierCopy(
+          kicker: 'ひとやすみ',
+          headline: 'Nothing to review yet.',
+          note: 'Your next cards are on their way.',
+        )
+      : const _TierCopy(
+          kicker: 'おつかれさま',
+          headline: 'All done for today.',
+          note: 'Kuma will have more for you soon.',
+        );
+
+  _TierCopy _tierFor(int pct, {required bool perfect}) {
+    if (perfect) {
       return const _TierCopy(
         kicker: 'くまくま！',
         headline: "That's a perfect run.",
-        note: 'Iuna is proud of you.',
+        note: 'Kuma is proud of you.',
+      );
+    } else if (pct >= 90) {
+      return const _TierCopy(
+        kicker: 'すごい！',
+        headline: 'Excellent session.',
+        note: 'Only a slip or two — Kuma is proud of you.',
       );
     } else if (pct >= 70) {
       return const _TierCopy(
         kicker: 'よくできました',
         headline: 'Great session.',
-        note: 'A few tricky ones — they\'ll come back tomorrow.',
+        note: 'A few tricky ones — they\'ll come back soon.',
       );
     } else if (pct >= 50) {
       return const _TierCopy(
@@ -288,23 +394,103 @@ class _TierCopy {
   final String note;
 }
 
-class _TopBar extends StatelessWidget {
-  const _TopBar({required this.label, required this.onClose});
-  final String label;
-  final VoidCallback onClose;
+/// When the next pack and the next review come, so a finished day
+/// doesn't end on a guess.
+class _ComingUp extends StatelessWidget {
+  const _ComingUp({
+    required this.nextDay,
+    required this.nextReview,
+    required this.poolEmpty,
+    required this.drawFilter,
+    required this.onWidenDraw,
+    required this.now,
+  });
+
+  final DateTime nextDay;
+  final DateTime? nextReview;
+
+  /// Every card in the draw pool is collected: no pack is coming.
+  final bool poolEmpty;
+
+  /// What the draw is narrowed to, which Settings can widen.
+  final String? drawFilter;
+  final VoidCallback onWidenDraw;
+  final DateTime now;
+
   @override
   Widget build(BuildContext context) {
-    return IunaTopBar(
-      title: Text(
-        label,
-        style: const TextStyle(
-          fontSize: 15,
-          fontWeight: FontWeight.w600,
-          color: IunaPalette.ink2,
-          letterSpacing: 0.6,
-        ),
+    final nextReview = this.nextReview;
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 18),
+      decoration: paperPanelDecoration(),
+      child: Column(
+        children: [
+          _ComingRow(
+            icon: Icons.card_giftcard_rounded,
+            label: 'Next pack',
+            value: !poolEmpty
+                ? whenWords(nextDay, now, capitalized: true)
+                : drawFilter != null
+                ? 'Every $drawFilter card is collected'
+                : 'Every card is collected',
+          ),
+          if (poolEmpty && drawFilter != null)
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: onWidenDraw,
+                style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+                child: const Text('Draw from more in Settings'),
+              ),
+            ),
+          if (nextReview != null)
+            _ComingRow(
+              icon: Icons.schedule_rounded,
+              label: 'Next review',
+              value: whenWords(nextReview, now, capitalized: true),
+            ),
+        ],
       ),
-      trailing: IunaIconButton(icon: Icons.close_rounded, onTap: onClose),
+    );
+  }
+}
+
+class _ComingRow extends StatelessWidget {
+  const _ComingRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: IunaPalette.ink3),
+          const SizedBox(width: 10),
+          Text(
+            label,
+            style: IunaText.bodySmall.copyWith(color: IunaPalette.ink3),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: IunaText.bodySmall.copyWith(
+                fontWeight: FontWeight.w600,
+                color: IunaPalette.ink,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -371,7 +557,7 @@ class _MedallionPainter extends CustomPainter {
         ..shader = const RadialGradient(
           center: Alignment(-0.3, -0.4),
           radius: 0.9,
-          colors: [Color(0xFFFFE9A8), Color(0xFFF3C97A), Color(0xFFC87A3A)],
+          colors: [IunaPalette.honeyPale, Color(0xFFF3C97A), Color(0xFFC87A3A)],
           stops: [0.0, 0.5, 1.0],
         ).createShader(Rect.fromCircle(center: c, radius: r)),
     );
@@ -386,132 +572,57 @@ class _StatsPanel extends StatelessWidget {
     required this.hasSession,
     required this.sessionCorrect,
     required this.sessionTotal,
-    required this.sessionPct,
     required this.todayCorrect,
     required this.todayTotal,
-    required this.todayPct,
     required this.streak,
   });
 
   final bool hasSession;
   final int sessionCorrect;
   final int sessionTotal;
-  final int sessionPct;
   final int todayCorrect;
   final int todayTotal;
-  final int todayPct;
   final int streak;
 
-  @override
-  Widget build(BuildContext context) {
-    final divider = Container(
-      height: 1,
-      margin: const EdgeInsets.symmetric(vertical: 10),
-      color: IunaPalette.ink.withValues(alpha: 0.1),
-    );
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 18),
-      decoration: paperPanelDecoration(),
-      child: Column(
-        children: [
-          if (hasSession) ...[
-            _StatsRow(
-              label: 'SESSION',
-              correct: sessionCorrect,
-              total: sessionTotal,
-              pct: sessionPct,
-            ),
-            divider,
-          ],
-          _StatsRow(
-            label: 'TODAY',
-            correct: todayCorrect,
-            total: todayTotal,
-            pct: todayPct,
-          ),
-          divider,
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(
-                Icons.local_fire_department_rounded,
-                size: 20,
-                color: Color(0xFFD97A3A),
-              ),
-              const SizedBox(width: 6),
-              Text(
-                '$streak',
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                  color: IunaPalette.ink,
-                  height: 1,
-                ),
-              ),
-              const SizedBox(width: 6),
-              const Text(
-                'DAY STREAK',
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  color: IunaPalette.ink3,
-                  letterSpacing: 1.2,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
+  static const _divider = BorderSide(color: Color.fromRGBO(74, 53, 32, 0.1));
 
-class _StatsRow extends StatelessWidget {
-  const _StatsRow({
-    required this.label,
-    required this.correct,
-    required this.total,
-    required this.pct,
-  });
-  final String label;
-  final int correct;
-  final int total;
-  final int pct;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
+  TableRow _tallyRow(
+    String label,
+    int correct,
+    int total, {
+    bool first = false,
+  }) {
+    final pct = total == 0 ? 0 : ((correct / total) * 100).round();
+    final pad = EdgeInsets.only(top: first ? 0 : 10, bottom: 10);
+    return TableRow(
+      decoration: const BoxDecoration(border: Border(bottom: _divider)),
       children: [
-        SizedBox(
-          width: 70,
+        Padding(
+          padding: pad,
           child: Text(
             label,
-            style: const TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              color: IunaPalette.ink3,
-              letterSpacing: 1.2,
-            ),
+            maxLines: 1,
+            softWrap: false,
+            style: IunaText.eyebrow.copyWith(color: IunaPalette.ink3),
           ),
         ),
-        Expanded(
-          child: Center(
+        Padding(
+          padding: pad.add(const EdgeInsets.symmetric(horizontal: 8)),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
             child: Text.rich(
               TextSpan(
                 text: '$correct',
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w700,
+                style: IunaText.headline.copyWith(
                   color: IunaPalette.ink,
                   height: 1,
                 ),
                 children: [
                   TextSpan(
                     text: '/$total',
-                    style: const TextStyle(
-                      fontSize: 16,
+                    style: IunaText.bodyLarge.copyWith(
                       fontWeight: FontWeight.w500,
-                      color: IunaPalette.inkMute,
+                      color: IunaPalette.ink3,
                     ),
                   ),
                 ],
@@ -519,14 +630,14 @@ class _StatsRow extends StatelessWidget {
             ),
           ),
         ),
-        SizedBox(
-          width: 70,
+        Padding(
+          padding: pad,
           child: Text(
             '$pct%',
+            maxLines: 1,
+            softWrap: false,
             textAlign: TextAlign.right,
-            style: const TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
+            style: IunaText.headline.copyWith(
               color: IunaPalette.ink,
               height: 1,
             ),
@@ -535,76 +646,70 @@ class _StatsRow extends StatelessWidget {
       ],
     );
   }
-}
 
-class _DoneScroller extends StatelessWidget {
-  const _DoneScroller({required this.cards, required this.onTap});
-  final List<CardRow> cards;
-  final ValueChanged<int> onTap;
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 150,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: cards.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 10),
-        itemBuilder: (_, i) {
-          final c = cards[i];
-          return GestureDetector(
-            onTap: () => onTap(c.id),
-            child: SizedBox(
-              width: 110,
-              height: 140,
-              child: VocabCard(
-                rarity: c.rarity,
-                padding: const EdgeInsets.all(10),
-                elevation: 0.6,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    RarityChip(rarity: c.rarity, size: RarityChipSize.compact),
-                    const Spacer(),
-                    Text(
-                      c.kanji,
-                      textAlign: TextAlign.center,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.w700,
-                        color: IunaPalette.ink,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      c.kana,
-                      textAlign: TextAlign.center,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 10,
-                        color: IunaPalette.ink3,
-                      ),
-                    ),
-                    const Spacer(),
-                    Text(
-                      c.meaning,
-                      textAlign: TextAlign.center,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w500,
-                        color: IunaPalette.ink3,
-                      ),
-                    ),
-                  ],
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 18),
+      decoration: paperPanelDecoration(),
+      child: Column(
+        children: [
+          // A table, so the labels and percentages line up across rows
+          // and their columns grow with the text instead of breaking a
+          // word.
+          Table(
+            columnWidths: const {
+              0: IntrinsicColumnWidth(),
+              1: FlexColumnWidth(),
+              2: IntrinsicColumnWidth(),
+            },
+            defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+            children: [
+              if (hasSession)
+                _tallyRow(
+                  'SESSION',
+                  sessionCorrect,
+                  sessionTotal,
+                  first: true,
+                ),
+              // The day's first session would repeat itself as Today.
+              if (!hasSession || todayTotal > sessionTotal)
+                _tallyRow(
+                  'TODAY',
+                  todayCorrect,
+                  todayTotal,
+                  first: !hasSession,
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.local_fire_department_rounded,
+                size: 20,
+                color: IunaPalette.flame,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                '$streak',
+                style: IunaText.headline.copyWith(
+                  color: IunaPalette.ink,
+                  height: 1,
                 ),
               ),
-            ),
-          );
-        },
+              const SizedBox(width: 6),
+              Text(
+                'DAY STREAK',
+                style: IunaText.eyebrow.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: IunaPalette.ink3,
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

@@ -18,14 +18,14 @@ class ExampleLine extends StatelessWidget {
         children: [
           Text(
             '・${example.sentence}',
-            style: const TextStyle(fontSize: 14, color: IunaPalette.ink2, height: 1.6),
+            style: IunaText.body.copyWith(color: IunaPalette.ink2, height: 1.6),
           ),
           if (example.translation case final translation?)
             Padding(
               padding: const EdgeInsets.only(left: 14),
               child: Text(
                 translation,
-                style: const TextStyle(fontSize: 12, color: IunaPalette.ink3, height: 1.4),
+                style: IunaText.caption.copyWith(color: IunaPalette.ink3, height: 1.4),
               ),
             ),
         ],

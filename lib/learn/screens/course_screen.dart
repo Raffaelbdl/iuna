@@ -4,9 +4,12 @@ import 'package:flutter/material.dart';
 
 import '../../theme/iuna_theme.dart';
 import '../../widgets/confirm_dialog.dart';
+import '../../widgets/iuna_page.dart';
+import '../../widgets/notice.dart';
 import '../../widgets/section_header.dart';
+import '../../widgets/snack.dart';
 import '../../widgets/text_input_dialog.dart';
-import '../agent/tutor_prompt.dart' show isoDay;
+import '../../widgets/time_words.dart';
 import '../db/learn_database.dart';
 import '../learn.dart';
 import '../widgets/tutor_markdown.dart';
@@ -32,16 +35,16 @@ class CourseScreen extends StatefulWidget {
   State<CourseScreen> createState() => _CourseScreenState();
 }
 
-class _CourseScreenState extends State<CourseScreen> {
+class _CourseScreenState extends State<CourseScreen> with LoadGate {
   CourseRow? _course;
   List<ChapterRow> _chapters = const [];
-  bool _loading = true;
+  bool _leaving = false;
   StreamSubscription<int>? _changes;
 
   @override
   void initState() {
     super.initState();
-    _load().then((_) {
+    load().then((_) {
       if (widget.openRoomOnStart && mounted && _course != null) _openRoom();
     });
     _changes = widget.env.repo.changes
@@ -52,7 +55,7 @@ class _CourseScreenState extends State<CourseScreen> {
   /// Under a lesson the tutor writes at every step; [_open] reloads once
   /// it pops instead.
   void _loadIfShown() {
-    if (mounted && (ModalRoute.isCurrentOf(context) ?? true)) _load();
+    if (mounted && !_leaving && (ModalRoute.isCurrentOf(context) ?? true)) load();
   }
 
   @override
@@ -61,16 +64,31 @@ class _CourseScreenState extends State<CourseScreen> {
     super.dispose();
   }
 
-  Future<void> _load() async {
+  @override
+  Future<void> load() async {
     final repo = widget.env.repo;
-    final course = await repo.course(widget.courseId);
-    final chapters = await repo.chapters(widget.courseId);
-    if (!mounted) return;
-    setState(() {
+    final loaded = await guardLoad('Course', () async {
+      final course = await repo.course(widget.courseId);
+      return (course, course == null ? const <ChapterRow>[] : await repo.chapters(widget.courseId));
+    });
+    if (loaded == null || !mounted) return;
+    final (course, chapters) = loaded;
+    if (course == null) {
+      _gone();
+      return;
+    }
+    showLoaded(() {
       _course = course;
       _chapters = chapters;
-      _loading = false;
     });
+  }
+
+  /// The course went away under us (a Drive restore, say).
+  void _gone() {
+    if (_leaving) return;
+    _leaving = true;
+    showSnack(context, 'That course no longer exists.');
+    Navigator.of(context).pop();
   }
 
   Future<void> _open(String? chapterKey) async {
@@ -81,7 +99,7 @@ class _CourseScreenState extends State<CourseScreen> {
         chapterKey: chapterKey,
       ),
     ));
-    if (mounted) await _load();
+    if (mounted) await load();
   }
 
   void _openRoom() => _open(null);
@@ -105,14 +123,28 @@ class _CourseScreenState extends State<CourseScreen> {
           'Its chapters, theory, chats and Kuma-sensei’s notes are removed '
           'from this phone. Drive backups keep their own copy.',
       confirmLabel: 'Delete',
+      destructive: true,
     );
     if (!ok) return;
-    await widget.env.repo.deleteCourse(widget.courseId);
+    _leaving = true;
+    try {
+      await widget.env.repo.deleteCourse(widget.courseId);
+    } catch (e) {
+      _leaving = false;
+      if (mounted) showErrorSnack(context, "Couldn't delete this course.", e);
+      return;
+    }
     if (mounted) Navigator.of(context).pop();
   }
 
   Future<void> _showNotes() async {
-    final prefs = await widget.env.repo.preferences();
+    final String prefs;
+    try {
+      prefs = await widget.env.repo.preferences();
+    } catch (e) {
+      if (mounted) showErrorSnack(context, "Couldn't load Kuma-sensei's notes.", e);
+      return;
+    }
     if (!mounted) return;
     final course = _course!;
     await showModalBottomSheet<void>(
@@ -127,16 +159,16 @@ class _CourseScreenState extends State<CourseScreen> {
           controller: scroll,
           padding: const EdgeInsets.fromLTRB(16, 20, 16, 32),
           children: [
-            const Text(
+            Text(
               'What Kuma-sensei knows',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: IunaPalette.ink),
+              style: IunaText.title.copyWith(color: IunaPalette.ink),
             ),
             const SizedBox(height: 4),
             Text(
               course.stateUpdatedAt == null
                   ? 'Nothing saved for this course yet.'
-                  : 'Notes for this course, last saved ${isoDay(course.stateUpdatedAt!.toLocal())}.',
-              style: const TextStyle(fontSize: 12, color: IunaPalette.ink3),
+                  : 'Notes for this course, last saved ${dayWords(course.stateUpdatedAt!.toLocal())}.',
+              style: IunaText.caption.copyWith(color: IunaPalette.ink3),
             ),
             if (course.stateMarkdown.trim().isNotEmpty) ...[
               const SizedBox(height: 12),
@@ -154,9 +186,9 @@ class _CourseScreenState extends State<CourseScreen> {
             ),
             LearnPanel(
               child: prefs.trim().isEmpty
-                  ? const Text(
+                  ? Text(
                       'None yet. Kuma-sensei notes how you like to be taught as it learns.',
-                      style: TextStyle(fontSize: 13, color: IunaPalette.ink3),
+                      style: IunaText.bodySmall.copyWith(color: IunaPalette.ink3),
                     )
                   : TutorMarkdown(prefs, fontSize: 13, bookmarks: widget.env.bookmarks),
             ),
@@ -166,22 +198,19 @@ class _CourseScreenState extends State<CourseScreen> {
     );
   }
 
-  void _lockedSnack() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Locked — pass the current chapter first.')),
-    );
-  }
+  void _lockedSnack() =>
+      showSnack(context, 'Locked — pass the current chapter first.');
 
   @override
   Widget build(BuildContext context) {
     final course = _course;
-    return Scaffold(
-      backgroundColor: IunaPalette.bg,
-      appBar: AppBar(
-        title: Text(course?.title ?? ''),
-        actions: [
-          if (course != null)
-            PopupMenuButton<String>(
+    return IunaPage(
+      title: course?.title ?? '',
+      trailing: course == null
+          ? null
+          : PopupMenuButton<String>(
+              tooltip: 'Course options',
+              icon: const Icon(Icons.more_vert_rounded),
               onSelected: (v) => switch (v) {
                 'notes' => _showNotes(),
                 'rename' => _rename(),
@@ -194,53 +223,50 @@ class _CourseScreenState extends State<CourseScreen> {
                 PopupMenuItem(value: 'delete', child: Text('Delete course')),
               ],
             ),
-        ],
-      ),
-      body: DecoratedBox(
-        decoration: iunaPageBackground(),
-        child: _loading || course == null
-            ? const Center(child: CircularProgressIndicator())
-            : ListView(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-                children: [
-                  _Header(course: course, chapters: _chapters),
-                  const SizedBox(height: 12),
-                  LearnPanel(
-                    onTap: _openRoom,
-                    child: _RowTile(
-                      icon: Icons.forum_rounded,
-                      iconColor: IunaPalette.ctaBottom,
-                      title: 'Course room',
-                      subtitle: _chapters.isEmpty
-                          ? 'Start here: Kuma-sensei checks what you already know, then proposes a plan.'
-                          : 'Re-plan, questions across chapters, homework.',
+      body: loading
+          ? const Center(child: CircularProgressIndicator())
+          : failed || course == null
+          ? LoadErrorNotice(onRetry: retry)
+          : ListView(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+              children: [
+                _Header(course: course, chapters: _chapters),
+                const SizedBox(height: 12),
+                LearnPanel(
+                  onTap: _openRoom,
+                  child: _RowTile(
+                    icon: Icons.forum_rounded,
+                    iconColor: IunaPalette.honeyInk,
+                    title: 'Course room',
+                    subtitle: _chapters.isEmpty
+                        ? 'Start here: Kuma-sensei checks what you already know, then proposes a plan.'
+                        : 'Re-plan, questions across chapters, homework.',
+                  ),
+                ),
+                const IunaSectionHeader(
+                  'Chapters',
+                  padding: EdgeInsets.fromLTRB(4, 18, 0, 8),
+                ),
+                if (_chapters.isEmpty)
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(4, 0, 4, 0),
+                    child: Text(
+                      'No chapters yet. They appear here once you agree on a plan in the room.',
+                      style: IunaText.bodySmall.copyWith(height: 1.4, color: IunaPalette.ink3),
                     ),
                   ),
-                  const IunaSectionHeader(
-                    'Chapters',
-                    padding: EdgeInsets.fromLTRB(4, 18, 0, 8),
+                for (var i = 0; i < _chapters.length; i++) ...[
+                  _ChapterTile(
+                    index: i,
+                    chapter: _chapters[i],
+                    onTap: _chapters[i].status == ChapterStatus.locked
+                        ? _lockedSnack
+                        : () => _open(_chapters[i].key),
                   ),
-                  if (_chapters.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.fromLTRB(4, 0, 4, 0),
-                      child: Text(
-                        'No chapters yet. They appear here once you agree on a plan in the room.',
-                        style: TextStyle(fontSize: 13, height: 1.4, color: IunaPalette.ink3),
-                      ),
-                    ),
-                  for (var i = 0; i < _chapters.length; i++) ...[
-                    _ChapterTile(
-                      index: i,
-                      chapter: _chapters[i],
-                      onTap: _chapters[i].status == ChapterStatus.locked
-                          ? _lockedSnack
-                          : () => _open(_chapters[i].key),
-                    ),
-                    const SizedBox(height: 8),
-                  ],
+                  const SizedBox(height: 8),
                 ],
-              ),
-      ),
+              ],
+            ),
     );
   }
 }
@@ -261,7 +287,7 @@ class _Header extends StatelessWidget {
           if (course.goal.isNotEmpty) ...[
             Text(
               course.goal,
-              style: const TextStyle(fontSize: 14, height: 1.4, color: IunaPalette.ink2),
+              style: IunaText.body.copyWith(height: 1.4, color: IunaPalette.ink2),
             ),
             const SizedBox(height: 12),
           ],
@@ -273,7 +299,7 @@ class _Header extends StatelessWidget {
                 : passed == chapters.length
                     ? 'All $passed chapters passed 完'
                     : '$passed of ${chapters.length} chapters passed',
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: IunaPalette.ink),
+            style: IunaText.chip.copyWith(fontWeight: FontWeight.w700, color: IunaPalette.ink),
           ),
         ],
       ),
@@ -308,13 +334,13 @@ class _RowTile extends StatelessWidget {
             children: [
               Text(
                 title,
-                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: IunaPalette.ink),
+                style: IunaText.subtitle.copyWith(fontWeight: FontWeight.w700, color: IunaPalette.ink),
               ),
               if (subtitle.isNotEmpty) ...[
                 const SizedBox(height: 2),
                 Text(
                   subtitle,
-                  style: const TextStyle(fontSize: 12, height: 1.35, color: IunaPalette.ink3),
+                  style: IunaText.caption.copyWith(height: 1.35, color: IunaPalette.ink3),
                 ),
               ],
             ],
@@ -335,28 +361,37 @@ class _ChapterTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (icon, color, trailing) = switch (chapter.status) {
-      ChapterStatus.passed => (Icons.check_circle_rounded, const Color(0xFF7FBFA3), 'Revise'),
-      ChapterStatus.unlocked => (Icons.play_circle_fill_rounded, IunaPalette.ctaBottom, 'Continue'),
-      ChapterStatus.locked => (Icons.lock_rounded, IunaPalette.inkMute, ''),
+    final (icon, iconColor, trailing, ink) = switch (chapter.status) {
+      ChapterStatus.passed => (
+        Icons.check_circle_rounded,
+        IunaPalette.mintInk,
+        'Revisit',
+        IunaPalette.mintInk,
+      ),
+      ChapterStatus.unlocked => (
+        Icons.play_circle_fill_rounded,
+        IunaPalette.honeyInk,
+        'Continue',
+        IunaPalette.honeyInk,
+      ),
+      ChapterStatus.locked => (
+        Icons.lock_rounded,
+        IunaPalette.ink3,
+        'Locked',
+        IunaPalette.ink3,
+      ),
     };
-    final locked = chapter.status == ChapterStatus.locked;
-    return Opacity(
-      opacity: locked ? 0.6 : 1,
-      child: LearnPanel(
-        onTap: onTap,
-        padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
-        child: _RowTile(
-          icon: icon,
-          iconColor: color,
-          title: '${index + 1}. ${chapter.title}',
-          subtitle: chapter.summary,
-          trailing: trailing.isEmpty
-              ? const SizedBox.shrink()
-              : Text(
-                  trailing,
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: color),
-                ),
+    return LearnPanel(
+      onTap: onTap,
+      padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+      child: _RowTile(
+        icon: icon,
+        iconColor: iconColor,
+        title: '${index + 1}. ${chapter.title}',
+        subtitle: chapter.summary,
+        trailing: Text(
+          trailing,
+          style: IunaText.chip.copyWith(fontWeight: FontWeight.w700, color: ink),
         ),
       ),
     );

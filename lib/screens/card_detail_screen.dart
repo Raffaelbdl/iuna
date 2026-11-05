@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+import 'package:flutter/rendering.dart';
 
 import '../db/database.dart';
 import '../db/repository.dart';
@@ -10,13 +10,18 @@ import '../learn/learn_settings.dart';
 import '../learn/widgets/ask_bar.dart';
 import '../services/tts.dart';
 import '../theme/iuna_theme.dart';
+import '../widgets/cta_button.dart';
 import '../widgets/example_line.dart';
 import '../widgets/hex_bg.dart';
 import '../widgets/iuna_bottom_nav.dart';
 import '../widgets/iuna_icon_button.dart';
+import '../widgets/iuna_page.dart';
+import '../widgets/notice.dart';
 import '../widgets/section_header.dart';
 import '../widgets/sense_row.dart';
 import '../widgets/snack.dart';
+import '../widgets/tappable.dart';
+import '../widgets/time_words.dart';
 import '../widgets/vocab_card.dart';
 import 'app_nav.dart';
 
@@ -25,24 +30,32 @@ class CardDetailScreen extends StatefulWidget {
     super.key,
     required this.db,
     required this.cardId,
+    this.from = IunaNavTab.collection,
     this.learn,
+    this.now,
   });
 
   final AppDatabase db;
   final int cardId;
 
+  /// The tab the card was opened from, which the nav keeps highlighted.
+  final IunaNavTab from;
+
   /// The tutor behind the card's chat bar, which shows only while
   /// [LearnSettings.available]; tests pass their own.
   final LearnEnv? learn;
+
+  /// The clock for "Next review"; goldens pin it.
+  final DateTime? now;
 
   @override
   State<CardDetailScreen> createState() => _CardDetailScreenState();
 }
 
-class _CardDetailScreenState extends State<CardDetailScreen> {
+class _CardDetailScreenState extends State<CardDetailScreen>
+    with LoadGate, BusyGuard {
   late final IunaRepository _repo = IunaRepository(widget.db);
 
-  bool _loading = true;
   CardRow? _card;
   UserCardRow? _userCard;
   List<CardSenseRow> _senses = const [];
@@ -56,46 +69,66 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
   /// some, so one at a time is all there is.
   _TutorJob? _job;
 
+  bool _barTucked = false;
+
   @override
   void initState() {
     super.initState();
     _load();
   }
 
+  @override
+  Future<void> load() => _load();
+
+  /// A reload that fails keeps the card on screen.
   Future<void> _load() async {
-    final (entry, senses, examples, wished) = await (
-      _repo.cardWithState(widget.cardId),
-      _repo.sensesForCard(widget.cardId),
-      _repo.examplesForCard(widget.cardId),
-      _repo.isWished(widget.cardId),
-    ).wait;
-    if (!mounted) return;
-    setState(() {
+    final loaded = await guardLoad(
+      'Card detail',
+      () => (
+        _repo.cardWithState(widget.cardId),
+        _repo.sensesForCard(widget.cardId),
+        _repo.examplesForCard(widget.cardId),
+        _repo.isWished(widget.cardId),
+      ).wait,
+      keepShown: true,
+    );
+    if (loaded == null || !mounted) return;
+    final (entry, senses, examples, wished) = loaded;
+    showLoaded(() {
       _card = entry?.card;
       _userCard = entry?.userCard;
       _senses = senses;
       _examples = examples;
       _wished = wished;
-      _loading = false;
     });
   }
 
+  /// Snack bars clear the ask bar while it shows.
+  void _snack(String text, {SnackBarAction? action, int seconds = 4}) {
+    final tutor = LearnSettings.instance.available.value && _card != null;
+    showSnack(
+      context,
+      text,
+      action: action,
+      duration: Duration(seconds: seconds),
+      bottom: tutor ? AskBar.snackInset : null,
+    );
+  }
+
   Future<void> _onWishlistTap() async {
-    final next = await _repo.toggleWishlist(widget.cardId);
-    if (!mounted) return;
+    if (busy) return;
+    final next = await whileBusy(
+      "Couldn't update your wishlist.",
+      () => _repo.toggleWishlist(widget.cardId),
+    );
+    if (next == null || !mounted) return;
     setState(() => _wished = next);
-    final card = _card;
-    final messenger = ScaffoldMessenger.of(context);
-    messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(
-      SnackBar(
-        duration: const Duration(seconds: 2),
-        content: Text(
-          next
-              ? 'Added ${card?.kanji ?? "card"} to your wishlist'
-              : 'Removed from wishlist',
-        ),
-      ),
+    _snack(
+      next
+          ? 'Added ${_card?.kanji ?? "card"} to your wishlist. It shows '
+                'up in a pack soon.'
+          : 'Removed from your wishlist.',
+      seconds: 3,
     );
   }
 
@@ -106,29 +139,22 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
     await _repo.setSuspended(widget.cardId, next);
     if (!mounted) return;
     setState(() => _userCard = user.copyWith(suspended: next));
-    final messenger = ScaffoldMessenger.of(context);
-    messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(
-      SnackBar(
-        duration: const Duration(seconds: 3),
-        content: Text(
-          next
-              ? 'Suspended — this card won\'t appear in review.'
-              : 'Unsuspended — back in your review queue.',
-        ),
-        action: SnackBarAction(
-          label: 'Undo',
-          onPressed: () async {
-            await _repo.setSuspended(widget.cardId, !next);
-            if (!mounted) return;
-            setState(() {
-              final current = _userCard;
-              if (current != null) {
-                _userCard = current.copyWith(suspended: !next);
-              }
-            });
-          },
-        ),
+    _snack(
+      next
+          ? 'Suspended — this card won\'t appear in review.'
+          : 'Unsuspended — back in your review queue.',
+      action: SnackBarAction(
+        label: 'Undo',
+        onPressed: () async {
+          await _repo.setSuspended(widget.cardId, !next);
+          if (!mounted) return;
+          setState(() {
+            final current = _userCard;
+            if (current != null) {
+              _userCard = current.copyWith(suspended: !next);
+            }
+          });
+        },
       ),
     );
   }
@@ -143,7 +169,7 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
       await work(_focusCard(card));
       if (mounted) await _load();
     } on ExampleWriterError catch (e) {
-      if (mounted) showSnack(context, e.message);
+      if (mounted) _snack(e.message);
     } finally {
       if (mounted) setState(() => _job = null);
     }
@@ -165,19 +191,14 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
     final removed = await _repo.clearGeneratedExamples(widget.cardId);
     await _load();
     if (!mounted) return;
-    final messenger = ScaffoldMessenger.of(context);
-    messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(
-      SnackBar(
-        duration: const Duration(seconds: 4),
-        content: const Text("Cleared Kuma-sensei's examples"),
-        action: SnackBarAction(
-          label: 'Undo',
-          onPressed: () async {
-            await _repo.addGeneratedExamples(widget.cardId, removed);
-            await _load();
-          },
-        ),
+    _snack(
+      "Cleared Kuma-sensei's examples.",
+      action: SnackBarAction(
+        label: 'Undo',
+        onPressed: () async {
+          await _repo.addGeneratedExamples(widget.cardId, removed);
+          await _load();
+        },
       ),
     );
   }
@@ -185,39 +206,28 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
   FocusCard _focusCard(CardRow card) =>
       FocusCard.fromDeck(card, _senses, userCard: _userCard, wished: _wished);
 
-  Widget _examplesButton({bool round = false}) {
-    final writing = _job == _TutorJob.write;
-    return AskBarButton(
-        icon: Icons.auto_awesome_rounded,
-        label: round ? null : (writing ? 'Writing examples…' : 'Give me examples'),
-        tooltip: round ? 'Give me examples' : null,
-        busy: writing,
-        onTap: _writeExamples,
-      );
-  }
-
-  /// On a card without examples, two buttons until Kuma teach opens the
-  /// chat bar; on one with examples, the plain chat bar.
   Widget _askBar(CardRow card, Widget nav) {
-    final missing = _examples.isEmpty;
     return AskBar(
       env: _learn,
-      hint: missing ? 'Ask about ${card.kanji}…' : 'Ask Kuma-sensei about ${card.kanji}…',
+      hint: 'Ask Kuma-sensei about ${card.kanji}…',
       nav: nav,
       card: () => _focusCard(card),
       // The tutor may have bookmarked this very card.
       onReturn: _load,
-      leading: missing ? _examplesButton(round: true) : null,
-      folded: missing
-          ? (open) => Row(
-                children: [
-                  Expanded(child: _examplesButton()),
-                  const SizedBox(width: 8),
-                  AskBarButton(icon: Icons.school_rounded, label: 'Kuma teach', onTap: open),
-                ],
-              )
-          : null,
+      collapsed: _barTucked,
     );
+  }
+
+  /// Scrolling down to read tucks the chat bar away; scrolling back up
+  /// brings it back.
+  bool _onScroll(UserScrollNotification n) {
+    final tuck = switch (n.direction) {
+      ScrollDirection.reverse => true,
+      ScrollDirection.forward => false,
+      ScrollDirection.idle => _barTucked,
+    };
+    if (tuck != _barTucked) setState(() => _barTucked = tuck);
+    return false;
   }
 
   void _onSpeakerTap() {
@@ -226,12 +236,6 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
     TtsService.instance.speak(card.kana);
   }
 
-  /// Today-tab from the bottom nav. Routes in priority order:
-  /// 1. `PackIntroScreen` if any packs remain unclaimed,
-  /// 2. `ReviewScreen` if any cards are due,
-  /// 3. `ReviewDoneScreen` (no-session mode) if today already has
-  ///    reviews logged,
-  /// 4. snackbar otherwise.
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<bool>(
@@ -243,11 +247,10 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
   Widget _buildPage(BuildContext context, {required bool tutor}) {
     final nav = AppBottomNav(
       db: widget.db,
-      // Detail is reached from Collection, so the Collection tab stays
-      // highlighted.
-      active: IunaNavTab.collection,
+      active: widget.from,
       atTabRoot: false,
     );
+    final card = _card;
     return Scaffold(
       backgroundColor: IunaPalette.bg,
       body: DecoratedBox(
@@ -257,28 +260,45 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
             const Positioned.fill(child: HexBg(seed: 13)),
             SafeArea(
               bottom: false,
-              child: _loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _card == null
-                  ? const Center(
-                      child: Text(
-                        'Card not found.',
-                        style: TextStyle(color: IunaPalette.ink3),
-                      ),
-                    )
-                  : _buildBody(_card!, tutor: tutor),
+              child: Column(
+                children: [
+                  _TopBar(
+                    // Only to take a card off: the hero adds one, and
+                    // an owned card can't be wished for.
+                    onUnwish: card == null || !_wished || busy
+                        ? null
+                        : _onWishlistTap,
+                  ),
+                  Expanded(
+                    child: gated(
+                      () => card == null
+                          ? const Center(
+                              child: Text(
+                                'This card is no longer in Iuna.',
+                                style: TextStyle(color: IunaPalette.ink3),
+                              ),
+                            )
+                          : _buildBody(card, tutor: tutor),
+                    ),
+                  ),
+                ],
+              ),
             ),
             Positioned(
               left: 0,
               right: 0,
               bottom: 0,
-              child: IgnorePointer(child: IunaNavFade(height: tutor ? AskBar.inset : 120)),
+              child: IgnorePointer(
+                child: IunaNavFade(
+                  height: tutor && !_barTucked ? AskBar.inset : 120,
+                ),
+              ),
             ),
             Positioned(
               left: 0,
               right: 0,
               bottom: 0,
-              child: tutor ? _askBar(_card!, nav) : nav,
+              child: tutor ? _askBar(card!, nav) : nav,
             ),
           ],
         ),
@@ -288,185 +308,186 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
 
   Widget _buildBody(CardRow card, {required bool tutor}) {
     final untranslated = tutor && _examples.any((e) => e.translation == null);
-    return Column(
-      children: [
-        _TopBar(
-          onBack: () => Navigator.of(context).maybePop(),
-          wished: _wished,
-          onWishlistTap: _onWishlistTap,
-        ),
-        Expanded(
-          child: ListView(
-            padding: EdgeInsets.fromLTRB(0, 4, 0, tutor ? AskBar.inset : 110),
-            children: [
-              _Hero(card: card, onSpeak: _onSpeakerTap),
-              const SizedBox(height: 14),
-              _Section(
-                title: 'Senses',
-                child: _senses.isEmpty
-                    ? Text(
-                        card.meaning,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: IunaPalette.ink,
-                        ),
-                      )
-                    : Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          for (var i = 0; i < _senses.length; i++)
-                            SenseRow(
-                              ordinal: _senses[i].ordinal,
-                              gloss: _senses[i].gloss,
-                              pos: _senses[i].pos,
-                              definition: _senses[i].definition,
-                              showDivider: i > 0,
-                            ),
-                        ],
-                      ),
-              ),
-              if (_examples.isNotEmpty || _job == _TutorJob.write) ...[
-                const SizedBox(height: 14),
-                _Section(
-                  title: 'Examples',
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (untranslated)
-                        _PanelAction(
-                          label: _job == _TutorJob.translate ? 'Translating…' : 'Translate',
-                          onPressed: _job == null ? _translateExamples : null,
-                        ),
-                      if (_examples.any((e) => e.generated))
-                        _PanelAction(label: 'Clear', onPressed: _clearExamples),
-                    ],
-                  ),
-                  child: _examples.isEmpty
-                      ? const Row(
-                          children: [
-                            SizedBox.square(
-                              dimension: 14,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                            SizedBox(width: 10),
-                            Text(
-                              'Kuma-sensei is writing some…',
-                              style: TextStyle(fontSize: 13, color: IunaPalette.ink3),
-                            ),
-                          ],
-                        )
-                      : Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            for (final ex in _examples) ExampleLine(example: ex),
-                          ],
-                        ),
-                ),
-              ],
-              if (_userCard != null) ...[
-                const SizedBox(height: 14),
-                _Section(
-                  title: 'Review state',
-                  child: Column(
-                    children: [
-                      _Kv(label: 'Level', value: 'Lv ${_userCard!.level}'),
-                      _Kv(
-                        label: 'Interval',
-                        value: _formatInterval(_userCard!.intervalMinutes),
-                      ),
-                      _Kv(
-                        label: 'Ease',
-                        value: _userCard!.ease.toStringAsFixed(2),
-                      ),
-                      _Kv(
-                        label: 'Last reviewed',
-                        value: _formatDate(_userCard!.lastReviewed) ?? 'Never',
-                      ),
-                      _Kv(
-                        label: 'Next due',
-                        value: _formatDate(_userCard!.nextDue) ?? '—',
-                      ),
-                      _Kv(
-                        label: 'Obtained',
-                        value: _formatDate(_userCard!.obtainedAt) ?? '—',
-                      ),
-                      _SuspendRow(
-                        suspended: _userCard!.suspended,
-                        onTap: _onSuspendTap,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ],
+    return NotificationListener<UserScrollNotification>(
+      onNotification: tutor ? _onScroll : null,
+      child: ListView(
+        padding: EdgeInsets.fromLTRB(0, 4, 0, tutor ? AskBar.inset : 110),
+        children: [
+          _Hero(
+            card: card,
+            owned: _userCard != null,
+            wished: _wished,
+            onSpeak: _onSpeakerTap,
+            onWish: busy ? null : _onWishlistTap,
           ),
-        ),
-      ],
+          const SizedBox(height: 14),
+          _Section(
+            title: 'Senses',
+            child: _senses.isEmpty
+                ? Text(
+                    card.meaning,
+                    style: IunaText.body.copyWith(
+                      color: IunaPalette.ink,
+                    ),
+                  )
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      for (var i = 0; i < _senses.length; i++)
+                        SenseRow(
+                          ordinal: _senses[i].ordinal,
+                          gloss: _senses[i].gloss,
+                          pos: _senses[i].pos,
+                          definition: _senses[i].definition,
+                          showDivider: i > 0,
+                        ),
+                    ],
+                  ),
+          ),
+          if (_examples.isNotEmpty || tutor) ...[
+            const SizedBox(height: 14),
+            _Section(
+              title: 'Examples',
+              trailing: !untranslated && !_examples.any((e) => e.generated)
+                  ? null
+                  : Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (untranslated)
+                          _PanelAction(
+                            label: _job == _TutorJob.translate
+                                ? 'Translating…'
+                                : 'Translate',
+                            onPressed: _job == null ? _translateExamples : null,
+                          ),
+                        if (_examples.any((e) => e.generated))
+                          _PanelAction(
+                            label: "Clear Kuma's examples",
+                            onPressed: _clearExamples,
+                          ),
+                      ],
+                    ),
+              child: _examples.isEmpty && _job != _TutorJob.write
+                  ? _NoExamples(onWrite: _writeExamples)
+                  : _examples.isEmpty
+                  ? Row(
+                      children: [
+                        SizedBox.square(
+                          dimension: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        SizedBox(width: 10),
+                        Text(
+                          'Kuma-sensei is writing some…',
+                          style: IunaText.bodySmall.copyWith(color: IunaPalette.ink3),
+                        ),
+                      ],
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        for (final ex in _examples) ExampleLine(example: ex),
+                      ],
+                    ),
+            ),
+          ],
+          if (_userCard case final user?) ...[
+            const SizedBox(height: 14),
+            _Section(
+              title: 'Review state',
+              child: Column(
+                children: [
+                  _Kv(
+                    label: 'Memory level',
+                    value: user.intervalMinutes <= 0
+                        ? memoryLevelLabel(user.level)
+                        : '${memoryLevelLabel(user.level)} · '
+                              '${MemoryStage.ofInterval(user.intervalMinutes).label}',
+                  ),
+                  _Kv(
+                    label: 'Time between reviews',
+                    value: _formatInterval(user.intervalMinutes),
+                  ),
+                  _Kv(
+                    label: 'Last reviewed',
+                    value: user.lastReviewed == null
+                        ? 'Never'
+                        : dayWords(user.lastReviewed!),
+                  ),
+                  _Kv(
+                    label: 'Next review',
+                    value: whenWords(
+                      user.nextDue,
+                      widget.now ?? DateTime.now(),
+                      capitalized: true,
+                    ),
+                  ),
+                  _Kv(label: 'Collected', value: dayWords(user.obtainedAt)),
+                  _SuspendRow(
+                    suspended: user.suspended,
+                    onTap: _onSuspendTap,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
   static String _formatInterval(int minutes) {
+    String plural(int n, String unit) => n == 1 ? '1 $unit' : '$n ${unit}s';
     if (minutes <= 0) return 'Not yet scheduled';
-    if (minutes < 60) return '${minutes}m';
-    if (minutes < 60 * 24) {
-      final hours = (minutes / 60).round();
-      return '${hours}h';
-    }
-    final days = (minutes / (60 * 24)).round();
-    return '${days}d';
-  }
-
-  static String? _formatDate(DateTime? dt) {
-    if (dt == null) return null;
-    return DateFormat('MMM d, y · HH:mm').format(dt);
+    if (minutes < 60) return plural(minutes, 'minute');
+    if (minutes < 60 * 24) return plural((minutes / 60).round(), 'hour');
+    return plural((minutes / (60 * 24)).round(), 'day');
   }
 }
 
 class _TopBar extends StatelessWidget {
-  const _TopBar({
-    required this.onBack,
-    required this.wished,
-    required this.onWishlistTap,
-  });
-  final VoidCallback onBack;
-  final bool wished;
-  final VoidCallback onWishlistTap;
+  const _TopBar({required this.onUnwish});
+
+  /// Shows the filled bookmark while the card is on the wishlist.
+  final VoidCallback? onUnwish;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-      child: Row(
-        children: [
-          IunaIconButton(icon: Icons.chevron_left_rounded, onTap: onBack),
-          const Spacer(),
-          const Text(
-            'Card detail',
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-              color: IunaPalette.ink2,
-              letterSpacing: 0.6,
-            ),
-          ),
-          const Spacer(),
-          IunaIconButton(
-            icon: wished
-                ? Icons.bookmark_rounded
-                : Icons.bookmark_outline_rounded,
-            onTap: onWishlistTap,
-            tint: wished ? IunaPalette.bellGold : null,
-          ),
-        ],
+    return IunaTopBar(
+      leading: const IunaBackButton(),
+      title: Text(
+        'Card detail',
+        style: IunaText.subtitle.copyWith(
+          color: IunaPalette.ink2,
+          letterSpacing: 0.6,
+        ),
       ),
+      trailing: onUnwish == null
+          ? null
+          : IunaIconButton(
+              icon: Icons.bookmark_rounded,
+              tooltip: 'Remove from wishlist',
+              selected: true,
+              onTap: onUnwish,
+              tint: IunaPalette.honeyInk,
+            ),
     );
   }
 }
 
 class _Hero extends StatelessWidget {
-  const _Hero({required this.card, required this.onSpeak});
+  const _Hero({
+    required this.card,
+    required this.owned,
+    required this.wished,
+    required this.onSpeak,
+    required this.onWish,
+  });
   final CardRow card;
+  final bool owned;
+  final bool wished;
   final VoidCallback onSpeak;
+  final VoidCallback? onWish;
 
   @override
   Widget build(BuildContext context) {
@@ -481,7 +502,7 @@ class _Hero extends StatelessWidget {
             end: const Alignment(0.3, 1),
             colors: [IunaPalette.paper, tint],
           ),
-          borderRadius: BorderRadius.circular(26),
+          borderRadius: BorderRadius.circular(IunaRadii.xl),
           boxShadow: const [
             BoxShadow(
               color: Color.fromRGBO(74, 53, 32, 0.25),
@@ -505,14 +526,21 @@ class _Hero extends StatelessWidget {
                         tag: 'card-kanji-${card.id}',
                         child: Material(
                           color: Colors.transparent,
-                          child: Text(
-                            card.kanji,
-                            style: const TextStyle(
-                              fontSize: 54,
-                              fontWeight: FontWeight.w700,
-                              height: 1,
-                              color: IunaPalette.ink,
-                              letterSpacing: -0.5,
+                          // A word shrinks to one line rather than
+                          // breaking between its characters.
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              card.kanji,
+                              maxLines: 1,
+                              style: const TextStyle(
+                                fontSize: 54,
+                                fontWeight: FontWeight.w700,
+                                height: 1,
+                                color: IunaPalette.ink,
+                                letterSpacing: -0.5,
+                              ),
                             ),
                           ),
                         ),
@@ -534,26 +562,13 @@ class _Hero extends StatelessWidget {
                     RarityChip(
                       rarity: card.rarity,
                       size: RarityChipSize.header,
+                      named: true,
                     ),
-                    const SizedBox(height: 6),
-                    InkResponse(
+                    IunaIconButton(
+                      icon: Icons.volume_up_rounded,
+                      tooltip: 'Play pronunciation',
                       onTap: onSpeak,
-                      radius: 22,
-                      child: Container(
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          color: const Color(0x99FFFDF6),
-                          shape: BoxShape.circle,
-                          boxShadow: panelShadow(),
-                        ),
-                        alignment: Alignment.center,
-                        child: const Icon(
-                          Icons.volume_up_rounded,
-                          size: 16,
-                          color: IunaPalette.ink2,
-                        ),
-                      ),
+                      disc: true,
                     ),
                   ],
                 ),
@@ -562,8 +577,7 @@ class _Hero extends StatelessWidget {
             const SizedBox(height: 14),
             Text(
               card.meaning,
-              style: const TextStyle(
-                fontSize: 14,
+              style: IunaText.body.copyWith(
                 fontWeight: FontWeight.w500,
                 color: IunaPalette.ink2,
                 height: 1.4,
@@ -573,41 +587,26 @@ class _Hero extends StatelessWidget {
             Wrap(
               spacing: 6,
               runSpacing: 6,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
+                if (!owned)
+                  CardStatusChip(
+                    status: wished
+                        ? CardLookupStatus.wishlisted
+                        : CardLookupStatus.available,
+                  ),
                 if (card.jlptLevel != null)
-                  _BasicChip(label: 'JLPT N${card.jlptLevel}'),
-                _BasicChip(label: rarityName(card.rarity)),
+                  MetaChip(label: 'JLPT N${card.jlptLevel}'),
+                if (!owned && !wished)
+                  IunaGhostButton(
+                    label: 'Add to wishlist',
+                    leadingIcon: Icons.bookmark_add_outlined,
+                    shrinkWrap: true,
+                    onTap: onWish,
+                  ),
               ],
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _BasicChip extends StatelessWidget {
-  const _BasicChip({required this.label});
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: const Color(0x0F4A3520),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: const Color.fromRGBO(74, 53, 32, 0.06),
-          width: 0.5,
-        ),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w600,
-          color: IunaPalette.ink2,
         ),
       ),
     );
@@ -622,25 +621,45 @@ class _Section extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final trailing = this.trailing;
+    final panel = Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: paperPanelDecoration(
+        borderRadius: BorderRadius.circular(IunaRadii.md),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          IunaPanelTitle(title),
+          const SizedBox(height: 8),
+          child,
+        ],
+      ),
+    );
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-        decoration: paperPanelDecoration(
-          borderRadius: BorderRadius.circular(18),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (trailing == null)
-              IunaEyebrow(title)
-            else
-              Row(children: [Expanded(child: IunaEyebrow(title)), trailing!]),
-            const SizedBox(height: 8),
-            child,
-          ],
-        ),
-      ),
+      // The actions float over the panel's corner, centred on the
+      // title, so a panel with them starts its content where one
+      // without does.
+      child: trailing == null
+          ? panel
+          : Stack(
+              fit: StackFit.passthrough,
+              children: [
+                panel,
+                Positioned(
+                  top: 0,
+                  right: 6,
+                  // Clear of the title, however large the text.
+                  left: MediaQuery.textScalerOf(context).scale(96),
+                  height: IunaIconButton.size,
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: FittedBox(fit: BoxFit.scaleDown, child: trailing),
+                  ),
+                ),
+              ],
+            ),
     );
   }
 }
@@ -667,13 +686,12 @@ class _Kv extends StatelessWidget {
           Expanded(
             child: Text(
               label,
-              style: const TextStyle(fontSize: 13, color: IunaPalette.ink3),
+              style: IunaText.bodySmall.copyWith(color: IunaPalette.ink3),
             ),
           ),
           Text(
             value,
-            style: const TextStyle(
-              fontSize: 13,
+            style: IunaText.bodySmall.copyWith(
               fontWeight: FontWeight.w600,
               color: IunaPalette.ink,
             ),
@@ -691,11 +709,11 @@ class _SuspendRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
+    return Tappable(
       onTap: onTap,
+      selected: suspended,
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10),
+        padding: const EdgeInsets.symmetric(vertical: 4),
         decoration: BoxDecoration(
           border: Border(
             top: BorderSide(
@@ -712,16 +730,17 @@ class _SuspendRow extends StatelessWidget {
               color: IunaPalette.ink3,
             ),
             const SizedBox(width: 8),
-            const Expanded(
+            Expanded(
               child: Text(
                 'Suspended',
-                style: TextStyle(fontSize: 13, color: IunaPalette.ink3),
+                style: IunaText.bodySmall.copyWith(color: IunaPalette.ink3),
               ),
             ),
-            Switch.adaptive(
-              value: suspended,
-              onChanged: (_) => onTap(),
-              activeTrackColor: IunaPalette.bellGold,
+            ExcludeSemantics(
+              child: Switch.adaptive(
+                value: suspended,
+                onChanged: (_) => onTap(),
+              ),
             ),
           ],
         ),
@@ -739,12 +758,38 @@ class _PanelAction extends StatelessWidget {
   Widget build(BuildContext context) => TextButton(
         onPressed: onPressed,
         style: TextButton.styleFrom(
-          foregroundColor: IunaPalette.ink3,
-          visualDensity: VisualDensity.compact,
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          minimumSize: const Size(48, 48),
+          padding: const EdgeInsets.symmetric(horizontal: 10),
         ),
-        child: Text(label, style: const TextStyle(fontSize: 12)),
+        child: Text(label, style: IunaText.bodySmall),
       );
+}
+
+/// The Examples panel of a card without any, while the tutor is on.
+class _NoExamples extends StatelessWidget {
+  const _NoExamples({required this.onWrite});
+  final VoidCallback onWrite;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'No example sentences yet. Kuma-sensei can write a few at your '
+          'level.',
+          style: IunaText.bodySmall.copyWith(height: 1.4, color: IunaPalette.ink3),
+        ),
+        const SizedBox(height: 10),
+        IunaGhostButton(
+          label: 'Get examples',
+          leadingIcon: Icons.auto_awesome_rounded,
+          shrinkWrap: true,
+          onTap: onWrite,
+        ),
+      ],
+    );
+  }
 }
 
 enum _TutorJob { write, translate }

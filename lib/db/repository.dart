@@ -169,6 +169,24 @@ class CollectionStats {
       totalByRarity.values.fold(0, (sum, value) => sum + value);
 }
 
+/// What [IunaRepository.suspendAndReplace] did, enough for
+/// [IunaRepository.undoSwap] to take it back.
+class BoosterSwap {
+  const BoosterSwap({
+    required this.suspended,
+    required this.replacements,
+    required this.wishlisted,
+  });
+
+  final List<int> suspended;
+
+  /// The freshly-minted cards, in draw order.
+  final List<CardRow> replacements;
+
+  /// The wishlist entries minting the replacements removed.
+  final List<WishlistRow> wishlisted;
+}
+
 class BoosterClaim {
   BoosterClaim({required this.cards});
 
@@ -348,6 +366,18 @@ class IunaRepository with MetaTimestamps {
     return (raw == null || raw.isEmpty) ? null : raw;
   }
 
+  /// What the draw is narrowed to, as a learner reads it ("JLPT", a
+  /// pack's label), or null for the whole dictionary.
+  Future<String?> drawFilterName() async {
+    final (jlptOnly, pack) =
+        await (getJlptOnly(), getBoosterPackFilter()).wait;
+    if (jlptOnly) return 'JLPT';
+    if (pack == null) return null;
+    final row = await (db.select(db.packs)..where((p) => p.name.equals(pack)))
+        .getSingleOrNull();
+    return row?.label ?? pack;
+  }
+
   /// The two draw filters would intersect to almost nothing — pack
   /// cards are specialist vocabulary that JLPT doesn't rank — so
   /// turning one on clears the other rather than silently emptying the
@@ -496,15 +526,21 @@ class IunaRepository with MetaTimestamps {
   // ---------- wishlist ----------
 
   /// Toggles a card's wishlist state. Returns the new value (`true`
-  /// for wishlisted, `false` for not). Idempotent.
+  /// for wishlisted, `false` for not). An owned card can only come
+  /// off: packs never draw it, so wishing for it would promise nothing.
   Future<bool> toggleWishlist(int cardId, {DateTime? now}) async {
-    final wished = await isWished(cardId);
+    final (wished, owned) = await (
+      isWished(cardId),
+      (db.select(db.userCards)..where((u) => u.cardId.equals(cardId)))
+          .getSingleOrNull(),
+    ).wait;
     if (wished) {
       await (db.delete(db.wishlist)
             ..where((w) => w.cardId.equals(cardId)))
           .go();
       return false;
     }
+    if (owned != null) return false;
     await db.into(db.wishlist).insert(
           WishlistCompanion.insert(
             cardId: Value(cardId),
@@ -864,6 +900,30 @@ class IunaRepository with MetaTimestamps {
     return entries;
   }
 
+  /// What comes once today's work is done: the next day rollover, which
+  /// brings the next pack, and the soonest review still scheduled (null
+  /// with no unsuspended card owned).
+  Future<({DateTime nextDay, DateTime? nextReview})> upcoming({
+    DateTime? now,
+  }) async {
+    final day = await _day(now);
+    final start = day.start;
+    // Built from the calendar, not start + 24h, so a DST change can't
+    // shift the hour.
+    final nextDay = DateTime(
+      start.year,
+      start.month,
+      start.day + 1,
+      day.resetHour,
+    );
+    final soonest = db.userCards.nextDue.min();
+    final row = await (db.selectOnly(db.userCards)
+          ..addColumns([soonest])
+          ..where(db.userCards.suspended.equals(false)))
+        .getSingle();
+    return (nextDay: nextDay, nextReview: row.read(soonest));
+  }
+
   Future<int> dueCountToday({DateTime? now}) async {
     final dayEnd = (await _day(now)).end;
     final count = db.userCards.cardId.count();
@@ -1074,21 +1134,24 @@ class IunaRepository with MetaTimestamps {
   /// [includeUnowned] to surface every card in existence — unowned
   /// ones come back with [CollectionEntry.userCard] null so the UI can
   /// render them as silhouettes (the in-app "Show missing" toggle).
-  /// Pass [wishedOnly] to intersect with the wishlist (forces
-  /// [includeUnowned] effectively, since wishlisted-but-unowned cards
-  /// are the whole point of the bookmark). Filters stack: free-text
+  /// Pass [wishedOnly] for the wishlist: the cards still to collect,
+  /// so owned ones are left out. Filters stack: free-text
   /// [query] (kanji / kana / meaning, case-insensitive) AND a
   /// [rarities] set. Ordered by rarity desc then kanji asc so rarer
-  /// cards surface first.
+  /// cards surface first; with [wholeWordFirst], cards whose meaning
+  /// has [query] as a whole word ("cat", not "category") lead. At most
+  /// [limit] cards when given.
   Future<List<CollectionEntry>> ownedCards({
     String query = '',
     Set<Rarity> rarities = const {},
     bool includeUnowned = false,
     bool wishedOnly = false,
     bool suspendedOnly = false,
+    bool wholeWordFirst = false,
+    int? limit,
   }) async {
-    // Wishlist mode always wants unowned + owned wishlisted cards.
-    // Suspended mode forces an inner join so we never widen to unowned
+    // Wishlist mode wants the unowned wishlisted cards. Suspended
+    // mode forces an inner join so we never widen to unowned
     // cards (you can't suspend something you don't own).
     final pickUnowned = (includeUnowned || wishedOnly) && !suspendedOnly;
     final joins = <Join>[
@@ -1105,6 +1168,7 @@ class IunaRepository with MetaTimestamps {
     if (suspendedOnly) {
       select.where(db.userCards.suspended.equals(true));
     }
+    if (wishedOnly) select.where(db.userCards.cardId.isNull());
 
     final trimmed = query.trim();
     if (trimmed.isNotEmpty) {
@@ -1122,9 +1186,17 @@ class IunaRepository with MetaTimestamps {
     }
 
     select.orderBy([
+      if (wholeWordFirst && trimmed.isNotEmpty)
+        OrderingTerm.desc(
+          db.cards.meaning.regexp(
+            '\\b${RegExp.escape(trimmed)}\\b',
+            caseSensitive: false,
+          ),
+        ),
       OrderingTerm.desc(db.cards.rarity),
       OrderingTerm.asc(db.cards.kanji),
     ]);
+    if (limit != null) select.limit(limit);
 
     final rows = await select.get();
     return rows
@@ -1135,11 +1207,19 @@ class IunaRepository with MetaTimestamps {
         .toList();
   }
 
-  /// Number of cards currently on the wishlist. Cheap read so the
+  /// Number of wishlisted cards still to collect. Cheap read so the
   /// collection chip can render a live count badge.
   Future<int> wishedCount() async {
     final count = db.wishlist.cardId.count();
-    final row = await (db.selectOnly(db.wishlist)..addColumns([count]))
+    final row = await (db.selectOnly(db.wishlist).join([
+      leftOuterJoin(
+        db.userCards,
+        db.userCards.cardId.equalsExp(db.wishlist.cardId),
+        useColumns: false,
+      ),
+    ])
+          ..addColumns([count])
+          ..where(db.userCards.cardId.isNull()))
         .getSingle();
     return row.read(count) ?? 0;
   }
@@ -1306,25 +1386,63 @@ class IunaRepository with MetaTimestamps {
   /// during the reveal. Done in one transaction so a crash mid-flow
   /// can't leave a card "suspended without a replacement."
   ///
-  /// Returns the freshly-minted replacement card rows in draw order.
-  /// May return fewer entries than requested if the unseen pool runs
-  /// dry — the caller should treat the difference as a session shrink
-  /// rather than a retry.
-  Future<List<CardRow>> suspendAndReplace({
+  /// Returns what it did, for [undoSwap]: the replacements come in
+  /// draw order, and may be fewer than requested if the unseen pool
+  /// runs dry — the caller should treat the difference as a session
+  /// shrink rather than a retry.
+  Future<BoosterSwap> suspendAndReplace({
     required List<int> suspendCardIds,
     DateTime? now,
   }) async {
-    if (suspendCardIds.isEmpty) return const [];
+    if (suspendCardIds.isEmpty) {
+      return const BoosterSwap(suspended: [], replacements: [], wishlisted: []);
+    }
     return db.transaction(() async {
       await (db.update(db.userCards)
             ..where((u) => u.cardId.isIn(suspendCardIds)))
           .write(const UserCardsCompanion(suspended: Value(true)));
 
       final picked = (await _loadDrawPool()).draw(suspendCardIds.length);
-      if (picked.isEmpty) return const <CardRow>[];
+      if (picked.isEmpty) {
+        return BoosterSwap(
+          suspended: suspendCardIds,
+          replacements: const [],
+          wishlisted: const [],
+        );
+      }
+      final wishlisted = await (db.select(db.wishlist)
+            ..where((w) => w.cardId.isIn(picked)))
+          .get();
       await _mintOwned(picked, now ?? DateTime.now());
-      // Draw order, so the caller can reason about pack boundaries.
-      return cardsByIds(picked);
+      return BoosterSwap(
+        suspended: suspendCardIds,
+        // Draw order, so the caller can reason about pack boundaries.
+        replacements: await cardsByIds(picked),
+        wishlisted: wishlisted,
+      );
+    });
+  }
+
+  /// Takes back a [suspendAndReplace] straight after it: the suspended
+  /// cards return to review, and the replacements, never reviewed,
+  /// leave the collection and go back on the wishlist if they were on
+  /// it.
+  Future<void> undoSwap(BoosterSwap swap) async {
+    await db.transaction(() async {
+      await (db.update(db.userCards)
+            ..where((u) => u.cardId.isIn(swap.suspended)))
+          .write(const UserCardsCompanion(suspended: Value(false)));
+      final drawn = [for (final c in swap.replacements) c.id];
+      if (drawn.isEmpty) return;
+      await (db.delete(db.userCards)..where((u) => u.cardId.isIn(drawn)))
+          .go();
+      await db.batch((b) {
+        b.insertAll(
+          db.wishlist,
+          swap.wishlisted,
+          mode: InsertMode.insertOrIgnore,
+        );
+      });
     });
   }
 

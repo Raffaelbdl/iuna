@@ -9,7 +9,7 @@ Future<T?> showPaperSheet<T>(BuildContext context, WidgetBuilder builder) {
     context: context,
     backgroundColor: IunaPalette.paper,
     shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      borderRadius: BorderRadius.vertical(top: Radius.circular(IunaRadii.lg)),
     ),
     isScrollControlled: true,
     builder: builder,

@@ -35,8 +35,10 @@ void main() {
     );
     await _settle(tester);
 
-    // Right: the tiles in the sentence's own order.
+    // Right: the tiles in the sentence's own order. Until they are all
+    // placed, Check says why it waits.
     expect(find.text('1 / 5'), findsOneWidget);
+    expect(find.text('Place every tile to check'), findsOneWidget);
     var n = bankTileCount();
     await placeTiles(tester, [for (var i = 0; i < n; i++) i]);
     await tester.tap(find.text('Check'));
@@ -75,6 +77,8 @@ void main() {
     // Four cards with a sentence: the round ends early, three played.
     expect(find.text('2 / 3'), findsOneWidget);
     expect(find.text('WORTH ANOTHER LOOK'), findsOneWidget);
+    // A missed word opens its card.
+    expect(find.byIcon(Icons.chevron_right_rounded), findsOneWidget);
 
     final raw = await tester.runAsync(() => IunaRepository(db).getGameMemory());
     final memory = GameMemory.parse(raw);
@@ -95,14 +99,19 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('without the dictionary, a way to Settings', (tester) async {
+  testWidgets('without the dictionary, the download right there', (
+    tester,
+  ) async {
     useTempDocumentsDir('iuna_sentences_');
     final (db, _) = await sentenceDeck();
     addTearDown(db.close);
     await tester.pumpWidget(MaterialApp(home: SentenceScreen(db: db)));
     await _settle(tester);
     expect(find.textContaining('offline dictionary'), findsOneWidget);
-    expect(find.text('Open Settings'), findsOneWidget);
+    await tester.tap(find.text('Get the dictionary'));
+    await _settle(tester);
+    expect(find.text('Download the dictionary'), findsOneWidget);
+    expect(find.text('Download'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
 }

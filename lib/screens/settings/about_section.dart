@@ -54,7 +54,14 @@ class _AboutSectionState extends State<AboutSection> {
     try {
       release = await AppUpdate.check(local, client: widget.client);
     } catch (e) {
-      if (mounted) showSnack(context, 'Update check failed: $e');
+      if (mounted) {
+        showErrorSnack(
+          context,
+          "Couldn't reach GitHub to check for updates.",
+          e,
+          action: SnackBarAction(label: 'Retry', onPressed: _check),
+        );
+      }
       return;
     } finally {
       if (mounted) setState(() => _checking = false);
@@ -85,7 +92,9 @@ class _AboutSectionState extends State<AboutSection> {
     final error = await install.result;
     if (!mounted) return;
     setState(() => _install = null);
-    if (error != null) showSnack(context, 'Update failed: $error');
+    if (error != null) {
+      showErrorSnack(context, 'The update didn\'t download. Try again later.', error);
+    }
   }
 
   Widget _updateTile() {
@@ -112,10 +121,9 @@ class _AboutSectionState extends State<AboutSection> {
   @override
   Widget build(BuildContext context) {
     final version = _version;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    return IunaGroup(
+      'About',
       children: [
-        const IunaSectionHeader('About'),
         ListTile(
           leading: const Icon(
             Icons.info_outline_rounded,

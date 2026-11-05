@@ -1,9 +1,13 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:iuna/db/database.dart';
 import 'package:iuna/db/repository.dart';
+import 'package:iuna/learn/agent/ask_quiz_tool.dart';
 import 'package:iuna/learn/agent/chat_controller.dart';
 import 'package:iuna/learn/agent/chat_store.dart';
 import 'package:iuna/learn/agent/tutor_prompt.dart';
@@ -12,7 +16,9 @@ import 'package:iuna/learn/learn_settings.dart';
 import 'package:iuna/learn/llm/model_vision.dart';
 import 'package:iuna/learn/photo/photo_picker.dart';
 import 'package:iuna/learn/screens/ask_screen.dart';
+import 'package:iuna/learn/screens/course_screen.dart';
 import 'package:iuna/learn/screens/learn_screen.dart';
+import 'package:iuna/learn/screens/tutor_chat_screen.dart';
 import 'package:iuna/learn/widgets/chat_view.dart';
 import 'package:iuna/learn/widgets/choice_buttons.dart';
 import 'package:iuna/screens/app_nav.dart';
@@ -106,7 +112,7 @@ void main() {
     expect(tapped, IunaNavTab.learn);
   });
 
-  testWidgets('each question from the hub chat bar opens a fresh Ask chat', (tester) async {
+  testWidgets('each question from the hub chat bar opens a fresh Ask chat, and the last one is kept', (tester) async {
     final db = AppDatabase.forTesting(NativeDatabase.memory());
     addTearDown(db.close);
     final llm = FakeLlm([say('First answer.'), say('Second answer.')]);
@@ -129,19 +135,102 @@ void main() {
       ];
     }
 
+    expect(find.text('Back to your last question'), findsNothing);
     expect(await ask('は or が?'), ['は or が?']);
 
-    await tester.pageBack();
-    await tester.pump();
-    await tester.pump(const Duration(seconds: 1));
+    await _leaveAsk(tester);
     expect(find.byType(AskScreen), findsNothing);
     expect(tester.widget<TextField>(find.byType(TextField)).controller!.text, isEmpty);
 
+    // Leaving kept the chat: the hub leads back to it.
+    expect(find.text('Back to your last question'), findsOneWidget);
+    await tester.tap(find.text('は or が?'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('First answer.'), findsOneWidget);
+    expect(llm.requests, hasLength(1), reason: 'reopening asks nothing');
+    await _leaveAsk(tester);
+
     expect(await ask('What is 敬語?'), ['What is 敬語?']);
     expect(llm.requests, hasLength(2));
+    await _leaveAsk(tester);
+    expect(find.text('What is 敬語?'), findsOneWidget, reason: 'the newest chat replaces it');
 
     await tester.pumpWidget(const SizedBox());
     await tester.pump();
+  });
+
+  testWidgets('New chat drops the kept Ask chat for an empty one', (tester) async {
+    final llm = FakeLlm([say('First answer.'), say('Fresh answer.')]);
+    final env = testLearnEnv(llm, settings: settings);
+
+    await tester.pumpWidget(MaterialApp(home: AskScreen(env: env, question: 'は or が?')));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('First answer.'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('New chat'));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('First answer.'), findsNothing);
+    expect(find.byTooltip('New chat'), findsNothing, reason: 'nothing to drop yet');
+    expect(LastAskChat.of(env)?.preview, isNull);
+
+    await tester.enterText(find.byType(TextField), 'What is 敬語?');
+    await tester.pump();
+    await tester.tap(find.byTooltip('Send'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('Fresh answer.'), findsOneWidget);
+    expect([
+      for (final m in llm.requests.last.messages)
+        if (m['role'] != 'system') m['content'],
+    ], ['What is 敬語?']);
+    expect(LastAskChat.of(env)?.preview, 'What is 敬語?');
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+  });
+
+  testWidgets('a course that no longer exists closes with a note', (tester) async {
+    final env = testLearnEnv(FakeLlm([]), settings: settings);
+    await tester.pumpWidget(MaterialApp(
+      home: Builder(
+        builder: (context) => Scaffold(
+          body: TextButton(
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(
+              builder: (_) => CourseScreen(env: env, courseId: 404),
+            )),
+            child: const Text('open'),
+          ),
+        ),
+      ),
+    ));
+    await tester.tap(find.text('open'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.byType(CourseScreen), findsNothing);
+    expect(find.text('That course no longer exists.'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 5));
+  });
+
+  testWidgets('Wrap up says why it cannot run yet', (tester) async {
+    final llm = FakeLlm([say('Welcome! What do you know already?')]);
+    final env = testLearnEnv(llm, settings: settings);
+    final course = await env.repo.createCourse(title: 'JLPT N1', goal: '');
+    await tester.pumpWidget(MaterialApp(home: TutorChatScreen(env: env, courseId: course.id)));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+
+    await tester.tap(find.byTooltip('Wrap up the session'));
+    await tester.pump();
+    expect(find.text('Say something to Kuma-sensei first, then wrap up.'), findsOneWidget);
+    expect(find.text('Wrap up the session?'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 5));
   });
 
   testWidgets('a word from an Ask chat can be bookmarked into the deck', (tester) async {
@@ -194,15 +283,12 @@ void main() {
 
     await tester.pumpWidget(MaterialApp(home: CardDetailScreen(db: db, cardId: id, learn: env)));
     await tester.pump();
-    expect(find.text('Kuma teach'), findsNothing, reason: 'no key, no tutor');
+    expect(find.byType(TextField), findsNothing, reason: 'no key, no tutor');
 
     await settings.setApiKey('sk-or-v1-abc');
     await tester.pump();
-    expect(find.byType(TextField), findsNothing, reason: 'folded until asked');
-    await tester.tap(find.text('Kuma teach'));
-    await tester.pump();
-    expect(find.text('Ask about 会議…'), findsOneWidget);
-    expect(find.byIcon(Icons.bookmark_outline_rounded), findsOneWidget);
+    expect(find.text('Ask Kuma-sensei about 会議…'), findsOneWidget);
+    expect(find.text('Add to wishlist'), findsOneWidget);
 
     await tester.enterText(find.byType(TextField), 'Keep this one for me');
     await tester.pump();
@@ -216,11 +302,10 @@ void main() {
     expect(messages.first['content'], contains('- Card: not in their collection'));
     expect(messages[1]['content'], 'Keep this one for me');
 
-    await tester.pageBack();
-    await tester.pump();
-    await tester.pump(const Duration(seconds: 1));
-    expect(find.byIcon(Icons.bookmark_rounded), findsOneWidget,
+    await _leaveAsk(tester);
+    expect(find.byTooltip('Remove from wishlist'), findsOneWidget,
         reason: 'the card shows the bookmark the tutor made');
+    expect(find.text('On your wishlist'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
     await tester.pump();
@@ -244,7 +329,9 @@ void main() {
 
     await tester.pumpWidget(MaterialApp(home: CardDetailScreen(db: db, cardId: id, learn: env)));
     await tester.pump();
-    await tester.tap(find.text('Give me examples'));
+    await tester.ensureVisible(find.text('Get examples'));
+    await tester.pump();
+    await tester.tap(find.text('Get examples'));
     await tester.pump();
     await tester.pump(const Duration(seconds: 1));
 
@@ -254,18 +341,17 @@ void main() {
     expect(request.messages.last['content'], 'Word: 会議（かいぎ）\nJLPT: N3\nSenses:\n1. meeting');
     expect(find.text('・会議は三時からです。'), findsOneWidget);
     expect(find.text('The meeting ran long.'), findsOneWidget);
-    expect(find.text('Give me examples'), findsNothing, reason: 'the card has examples now');
-    expect(find.text('Kuma teach'), findsNothing);
-    expect(find.text('Ask Kuma-sensei about 会議…'), findsOneWidget, reason: 'the plain chat bar');
+    expect(find.text('Get examples'), findsNothing, reason: 'the card has examples now');
+    expect(find.text('Ask Kuma-sensei about 会議…'), findsOneWidget);
     final kinds = await env.repo.db.select(env.repo.db.usageLog).get();
     expect([for (final u in kinds) u.kind], ['examples']);
 
-    await tester.tap(find.text('Clear'));
+    await tester.tap(find.text("Clear Kuma's examples"));
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
+    // Long enough for the floating snack bar to slide in.
+    await tester.pump(const Duration(milliseconds: 400));
     expect(await deck.examplesForCard(id), isEmpty);
-    expect(find.text('Give me examples'), findsOneWidget);
-    expect(find.text('Kuma teach'), findsOneWidget, reason: 'folded again');
+    expect(find.text('Get examples'), findsOneWidget);
 
     await tester.tap(find.text('Undo'));
     await tester.pump();
@@ -395,13 +481,55 @@ void main() {
     final content = llm.requests.single.messages.last['content'] as List;
     expect(content.single['type'], 'image_url');
 
-    await tester.pageBack();
-    await tester.pump();
-    await tester.pump(const Duration(seconds: 1));
+    await _leaveAsk(tester);
     expect(find.text('Photo attached'), findsNothing);
 
     await tester.pumpWidget(const SizedBox());
     await tester.pump();
+  });
+
+  testWidgets('a quick check says what Submit waits for, and can be skipped whole', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(400, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final llm = FakeLlm([
+      callTool('ask_quiz', {
+        'questions': [
+          {'prompt': '食べる → て-form?', 'options': ['食べて', '食べって']},
+          {'prompt': 'Translate: I went.'},
+        ],
+      }),
+      say('No problem, let us go over both.'),
+    ]);
+    final chat = ChatController(
+      llm: llm,
+      store: MemoryChatStore(),
+      systemPrompt: () async => 'SYSTEM',
+      model: () async => 'test/model',
+      tools: const [AskQuizTool()],
+    );
+    addTearDown(chat.dispose);
+    await chat.open();
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: ChatView(controller: chat))));
+    unawaited(chat.send('quiz me'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Answer every question to submit'), findsOneWidget);
+    await tester.tap(find.text('食べて'));
+    await tester.pump();
+    expect(find.text('1 left to answer'), findsOneWidget);
+
+    await tester.tap(find.text('Skip this check'));
+    await tester.pumpAndSettle();
+    final toolResult = jsonDecode(llm.requests[1].messages.last['content'] as String);
+    expect(toolResult, {
+      'status': 'answered',
+      'values': <String, Object>{},
+      'skipped': ['q0', 'q1'],
+    });
+    expect(find.text('Skip this check'), findsNothing);
+    expect(find.text('No problem, let us go over both.'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
   });
 
   testWidgets('a multiple-choice question is answered with a tap', (tester) async {
@@ -436,7 +564,9 @@ void main() {
     await tester.tap(option('は'));
     await tester.pumpAndSettle();
     expect(lastSent(), {'role': 'user', 'content': 'は'});
-    expect(find.byIcon(Icons.check_rounded), findsOneWidget);
+    expect(find.text('Your answer'), findsOneWidget);
+    expect(find.byIcon(Icons.check_rounded), findsNothing,
+        reason: 'the pick is marked as the learner\'s, not as right');
 
     await tester.tap(option('が'));
     await tester.pumpAndSettle();
@@ -446,7 +576,7 @@ void main() {
     await tester.tap(find.descendant(of: second, matching: find.text("I don't know")));
     await tester.pumpAndSettle();
     expect(lastSent(), {'role': 'user', 'content': "I don't know"});
-    expect(find.byIcon(Icons.check_rounded), findsNWidgets(2));
+    expect(find.text('Your answer'), findsNWidgets(2));
 
     await tester.pumpWidget(const SizedBox());
   });
@@ -463,7 +593,7 @@ void main() {
     await tester.ensureVisible(model);
     await tester.pumpAndSettle();
     expect(find.text('Not set. The Learn tab appears once a key is saved.'), findsOneWidget);
-    expect(find.text(kDefaultLearnModel), findsOneWidget);
+    expect(find.text('Default (fast, low cost)'), findsOneWidget);
 
     await tester.tap(model);
     await tester.pumpAndSettle();
@@ -480,6 +610,41 @@ void main() {
     await tester.tap(find.text('Reset'));
     await tester.pumpAndSettle();
     expect(await store.read('openrouter_model'), isNull);
-    expect(find.text(kDefaultLearnModel), findsOneWidget);
+    expect(find.text('Default (fast, low cost)'), findsOneWidget);
   });
+
+  testWidgets('settings: removing the key asks first', (tester) async {
+    final db = AppDatabase.forTesting(NativeDatabase.memory());
+    addTearDown(db.close);
+    await settings.setApiKey('sk-or-v1-abc');
+
+    await tester.pumpWidget(MaterialApp(home: SettingsScreen(db: db)));
+    await tester.pumpAndSettle();
+    Future<void> remove() async {
+      await tester.ensureVisible(find.text('Change'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Change'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Remove'));
+      await tester.pumpAndSettle();
+      expect(find.text('Remove key?'), findsOneWidget);
+    }
+
+    await remove();
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(settings.available.value, isTrue, reason: 'kept');
+
+    await remove();
+    await tester.tap(find.widgetWithText(FilledButton, 'Remove'));
+    await tester.pumpAndSettle();
+    expect(settings.available.value, isFalse);
+  });
+}
+
+/// Backs out of an Ask chat.
+Future<void> _leaveAsk(WidgetTester tester) async {
+  await tester.pageBack();
+  await tester.pump();
+  await tester.pump(const Duration(seconds: 1));
 }

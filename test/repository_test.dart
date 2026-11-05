@@ -137,7 +137,7 @@ void main() {
     }
   });
 
-  test('ownedCards wishedOnly returns wishlisted cards regardless of ownership',
+  test('ownedCards wishedOnly returns the wishlisted cards still to collect',
       () async {
     final ownedWished = await _seedCard(db, 'a', 'a', Rarity.common);
     final unownedWished =
@@ -152,13 +152,34 @@ void main() {
             obtainedAt: DateTime.now(),
           ));
     }
-    await repo.toggleWishlist(ownedWished);
+    // A row from before owned cards were kept off the wishlist.
+    await db.into(db.wishlist).insert(WishlistCompanion.insert(
+          cardId: Value(ownedWished),
+          addedAt: DateTime.now(),
+        ));
     await repo.toggleWishlist(unownedWished);
 
     final wished = await repo.ownedCards(wishedOnly: true);
     final ids = wished.map((e) => e.card.id).toSet();
-    expect(ids, {ownedWished, unownedWished});
-    expect(await repo.wishedCount(), 2);
+    expect(ids, {unownedWished});
+    expect(await repo.wishedCount(), 1);
+  });
+
+  test('an owned card can come off the wishlist but not go on', () async {
+    final id = await _seedCard(db, 'a', 'a', Rarity.common);
+    await db.into(db.userCards).insert(UserCardsCompanion.insert(
+          cardId: Value(id),
+          nextDue: DateTime(2026),
+          obtainedAt: DateTime(2026),
+        ));
+    expect(await repo.toggleWishlist(id), isFalse);
+    expect(await repo.isWished(id), isFalse);
+
+    await db.into(db.wishlist).insert(
+          WishlistCompanion.insert(cardId: Value(id), addedAt: DateTime(2026)),
+        );
+    expect(await repo.toggleWishlist(id), isFalse);
+    expect(await repo.isWished(id), isFalse);
   });
 
   test('toggleWishlist round-trips and isWished reflects state',
@@ -606,6 +627,35 @@ void main() {
       rarities: const {Rarity.ssr, Rarity.common},
     );
     expect(combined.map((e) => e.card.kanji).toList(), ['結界']);
+  });
+
+  test('ownedCards puts a whole-word meaning first and caps at limit',
+      () async {
+    Future<void> card(String kanji, String meaning, Rarity r) =>
+        db.into(db.cards).insert(CardsCompanion.insert(
+              kanji: kanji,
+              kana: kanji,
+              meaning: meaning,
+              rarity: Value(r),
+            ));
+    await card('a', 'category', Rarity.ur);
+    await card('b', 'to educate', Rarity.ssr);
+    await card('c', 'cat; feline', Rarity.common);
+    await card('d', 'Cat (animal)', Rarity.rare);
+    await card('e', 'dog', Rarity.ur);
+
+    Future<List<String>> search({int? limit}) async => [
+          for (final e in await repo.ownedCards(
+            query: 'cat',
+            includeUnowned: true,
+            wholeWordFirst: true,
+            limit: limit,
+          ))
+            e.card.kanji,
+        ];
+    expect(await search(), ['d', 'c', 'a', 'b'],
+        reason: 'whole words first, each part rarer first');
+    expect(await search(limit: 3), ['d', 'c', 'a']);
   });
 
   test('ownedCards includeUnowned: returns silhouettes for missing cards',
@@ -1546,10 +1596,10 @@ void main() {
         b.trueRetention,
         count(rows.where((r) => r.prevIntervalMinutes >= 60 * 24)),
       );
-      expect(b.byKind, {
-        for (final k in ReviewKind.values)
-          k: count(rows.where((r) => r.kind == k)),
-      });
+      expect(
+        b.newRetention,
+        count(rows.where((r) => r.prevIntervalMinutes < 60 * 24)),
+      );
       expect(b.byRarity, {
         for (final r in Rarity.values)
           r: count(rows.where((row) => row.rarity == r.index)),
@@ -1618,5 +1668,26 @@ void main() {
     final senses = await repo.sensesForCards([a, b]);
     expect([for (final s in senses[a]!) s.ordinal], [1, 2]);
     expect(senses[b], isEmpty);
+  });
+
+  test('undoSwap puts back the suspended card and takes the replacement '
+      'off the collection, back onto the wishlist', () async {
+    final kept = await _seedCard(db, 'a', 'あ', Rarity.common);
+    final spare = await _seedCard(db, 'b', 'い', Rarity.common);
+    await repo.claimToday(packSize: 1);
+    // The draw is random: whichever card it took is the one to swap.
+    final owned = (await db.select(db.userCards).get()).single.cardId;
+    final other = owned == kept ? spare : kept;
+    await repo.addToWishlist(other);
+
+    final swap = await repo.suspendAndReplace(suspendCardIds: [owned]);
+    expect(swap.replacements.map((c) => c.id), [other]);
+    expect(await repo.isWished(other), isFalse, reason: 'minted');
+
+    await repo.undoSwap(swap);
+    final rows = await db.select(db.userCards).get();
+    expect(rows.map((r) => r.cardId), [owned]);
+    expect(rows.single.suspended, isFalse);
+    expect(await repo.isWished(other), isTrue);
   });
 }

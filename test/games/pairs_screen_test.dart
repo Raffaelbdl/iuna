@@ -55,7 +55,11 @@ void main() {
     // The first round asks readings, and has room for all six words.
     expect(find.text('KANJI ↔ READING'), findsOneWidget);
     await playPair(tester, ids['猫']!, ids['犬']!);
-    await tester.pump(const Duration(milliseconds: 500));
+    // Both tiles of a miss carry a mark, not just a colour, beside the
+    // top bar's Close.
+    expect(find.byIcon(Icons.close_rounded), findsNWidgets(3));
+    await tester.pump(const Duration(milliseconds: 800));
+    expect(find.byIcon(Icons.close_rounded), findsOneWidget);
 
     t = t.add(const Duration(seconds: 42));
     await clearRound(tester, ids.values);
@@ -94,7 +98,7 @@ void main() {
     await tester.tap(find.byTooltip('Skip round'));
     await tester.pump();
     expect(find.text('WORD ↔ MEANING'), findsOneWidget);
-    expect(find.text('0 / ${_words.length}'), findsOneWidget);
+    expect(find.text('0 of ${_words.length} matched'), findsOneWidget);
 
     final raw = await tester.runAsync(() => IunaRepository(db).getGameMemory());
     final memory = GameMemory.parse(raw);

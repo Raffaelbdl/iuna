@@ -70,7 +70,8 @@ class LlmException implements Exception {
   /// The line the learner sees.
   String get friendly => switch (status) {
         401 => 'OpenRouter rejected the API key. Check it in Settings.',
-        402 => 'Your OpenRouter account is out of credits.',
+        402 => 'Your OpenRouter account is out of credits. Add some on '
+            'openrouter.ai, or use another key.',
         429 => 'OpenRouter is rate-limiting requests. Try again in a moment.',
         _ => message,
       };
