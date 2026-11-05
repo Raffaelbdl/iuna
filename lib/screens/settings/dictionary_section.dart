@@ -59,7 +59,8 @@ class _DictionarySectionState extends State<DictionarySection> {
       body:
           'About 17 MB to download, ~45 MB stored locally after '
           'decompression. Wi-Fi recommended. Used by the experimental '
-          '"Add card" flow to look up any JMdict entry.',
+          '"Add card" flow to look up any JMdict entry, by tapping words in '
+          'the tutor, and by the sentence games.',
       confirmLabel: _installed ? 'Update' : 'Download',
     );
     if (!confirmed || !mounted) return;
@@ -85,9 +86,9 @@ class _DictionarySectionState extends State<DictionarySection> {
       context,
       title: 'Clear dictionary cache?',
       body:
-          'Removes the offline JMdict lookup. The "Add card" flow will '
-          'be unavailable until you download it again. Your collection '
-          'is not affected.',
+          'Removes the offline JMdict lookup. The "Add card" flow, word '
+          'taps in the tutor and the sentence games will be unavailable '
+          'until you download it again. Your collection is not affected.',
       confirmLabel: 'Clear',
     );
     if (!confirmed) return;
@@ -105,8 +106,8 @@ class _DictionarySectionState extends State<DictionarySection> {
         leading: const Icon(icon, color: IunaPalette.pawBrown),
         title: const Text('Download dictionary'),
         subtitle: const Text(
-          '~17 MB · enables looking up any JMdict entry to add to '
-          'your collection.',
+          '~17 MB · look up any JMdict entry to add to your collection, '
+          'and play the sentence games.',
         ),
         trailing: FilledButton(
           onPressed: _startInstall,

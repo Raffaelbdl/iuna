@@ -53,3 +53,41 @@ class IunaCtaButton extends StatelessWidget {
     );
   }
 }
+
+/// Frosted pill for a screen's secondary action, full width under an
+/// [IunaCtaButton] ("Back home", "Done").
+class IunaGhostButton extends StatelessWidget {
+  const IunaGhostButton({super.key, required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: ghostPillDecoration(
+          boxShadow: const [
+            BoxShadow(
+              color: Color.fromRGBO(74, 53, 32, 0.25),
+              blurRadius: 14,
+              offset: Offset(0, 6),
+              spreadRadius: -10,
+            ),
+          ],
+        ),
+        child: Center(
+          child: Text(
+            label,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: IunaPalette.ink2,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

@@ -1,16 +1,17 @@
 # Iuna — agent notes
 
 A gacha-style Japanese vocabulary app in Flutter: daily booster packs,
-a rarity-tiered collection, spaced-repetition reviews and stats, plus an
-optional Learn tab where Kuma-sensei, an on-device AI tutor, runs
-courses against OpenRouter with the learner's own key. There is no Iuna
-server. Two SQLite files hold everything: `iuna.sqlite`, the deck (Drift,
+a rarity-tiered collection, spaced-repetition reviews and stats,
+practice mini-games, plus an optional Learn tab where Kuma-sensei, an
+on-device AI tutor, runs courses against OpenRouter with the learner's
+own key. There is no Iuna server. Two SQLite files hold everything: `iuna.sqlite`, the deck (Drift,
 schema v8), and `learn.sqlite`, the tutor (schema v3).
 
 Read before changing things:
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): schemas, module layout,
-  booster/SRS rules, card packs, downloads, Drive backup, the Learn tab.
+  booster/SRS rules, card packs, downloads, Drive backup, the Learn tab,
+  the games.
 - `CLAUDE.local.md` (gitignored, if present): machine-specific notes.
 
 ## Commands
@@ -83,6 +84,8 @@ flutter test --update-goldens test/screenshots_test.dart   # after visual change
   "Collection", "Show missing", "all cards". Never use another game's
   name for the collection, in UI strings or commit messages.
 - **No canned course ideas or example questions in the Learn tab.**
+- **Games are practice only.** They never log a review, move a due
+  date or mint a card, and they live on Home, not the Learn tab.
 
 ## Roadmap
 
@@ -91,5 +94,8 @@ flutter test --update-goldens test/screenshots_test.dart   # after visual change
 - Direct tests for `examplesForCard` and the booster-date rollover.
 - A rarity long-tail fix: some common cultural words land too rare
   (お守り → UR).
-- Learn: mini-games on the hub, homework files, background memory
-  review, deck-aware tutoring, a monthly cost cap.
+- Games: sound-alike rounds in Pairs; make the segmenter prefer a
+  written particle over a kana reading of a kanji word (の as 野), for
+  the tutor's word taps too.
+- Learn: homework files, background memory review, deck-aware
+  tutoring, a monthly cost cap.

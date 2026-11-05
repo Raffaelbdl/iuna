@@ -61,6 +61,12 @@ class JmdictHit {
 class JmdictLookup {
   JmdictLookup._();
 
+  /// A read-only handle of its own on the sidecar at [path], for a
+  /// background isolate: there [instance] can't resolve the documents
+  /// directory. The caller [dispose]s it.
+  JmdictLookup.openFile(String path)
+    : _db = sqlite3.open(path, mode: OpenMode.readOnly);
+
   static final JmdictLookup instance = JmdictLookup._();
 
   Database? _db;
