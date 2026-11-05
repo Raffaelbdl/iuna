@@ -62,8 +62,7 @@ class _LeechRow extends StatelessWidget {
               children: [
                 Text(
                   c.kana,
-                  style: const TextStyle(
-                    fontSize: 12,
+                  style: IunaText.caption.copyWith(
                     fontWeight: FontWeight.w500,
                     color: IunaPalette.ink2,
                     height: 1.1,
@@ -74,8 +73,7 @@ class _LeechRow extends StatelessWidget {
                   c.meaning,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 12,
+                  style: IunaText.caption.copyWith(
                     fontWeight: FontWeight.w500,
                     color: IunaPalette.ink3,
                     height: 1.2,
@@ -95,7 +93,7 @@ class _LeechRow extends StatelessWidget {
                   Container(color: const Color.fromRGBO(74, 53, 32, 0.07)),
                   FractionallySizedBox(
                     widthFactor: pct,
-                    child: Container(color: _SP.pinkDeep),
+                    child: Container(color: IunaPalette.bowPinkDeep),
                   ),
                 ],
               ),
@@ -107,10 +105,9 @@ class _LeechRow extends StatelessWidget {
             child: Text(
               '${entry.failCount}× wrong',
               textAlign: TextAlign.right,
-              style: const TextStyle(
-                fontSize: 12,
+              style: IunaText.chip.copyWith(
                 fontWeight: FontWeight.w700,
-                color: _SP.pinkDeep,
+                color: IunaPalette.bowPinkDeep,
               ),
             ),
           ),

@@ -193,9 +193,9 @@ class _StatsScreenState extends State<StatsScreen> {
                 ),
                 const SizedBox(height: 14),
                 _StatCard(
-                  title: 'Leeches',
+                  title: 'Tricky cards',
                   subtitle: _leeches.isEmpty
-                      ? "No stubborn cards yet — they'll show up here once you miss the same word a few times."
+                      ? "No tricky cards yet — they'll show up here once you miss the same word a few times."
                       : 'Cards you keep missing. Worth a closer look.',
                   child: _LeechList(entries: _leeches),
                 ),
@@ -268,8 +268,8 @@ class _StatsScreenState extends State<StatsScreen> {
     ),
     const SizedBox(height: 14),
     _StatCard(
-      title: 'Maturity',
-      subtitle: 'How settled each card is, from new to well known.',
+      title: 'How well you know them',
+      subtitle: 'How settled each card is, from still learning to well known.',
       child: _MaturityChart(bins: _maturity),
     ),
     const SizedBox(height: 14),
@@ -307,8 +307,7 @@ class _MoreToggle extends StatelessWidget {
           children: [
             Text(
               open ? 'Fewer stats' : 'More stats',
-              style: const TextStyle(
-                fontSize: 14,
+              style: IunaText.label.copyWith(
                 fontWeight: FontWeight.w700,
                 color: IunaPalette.ink2,
               ),
@@ -320,13 +319,13 @@ class _MoreToggle extends StatelessWidget {
             ),
             const SizedBox(width: 12),
             if (!open)
-              const Expanded(
+              Expanded(
                 child: Text(
                   'Retention, accuracy, timing…',
                   textAlign: TextAlign.right,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 12, color: IunaPalette.ink3),
+                  style: IunaText.caption.copyWith(color: IunaPalette.ink3),
                 ),
               ),
           ],

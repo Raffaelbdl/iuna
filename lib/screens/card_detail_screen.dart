@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:intl/intl.dart';
 
 import '../db/database.dart';
@@ -10,6 +11,7 @@ import '../learn/learn_settings.dart';
 import '../learn/widgets/ask_bar.dart';
 import '../services/tts.dart';
 import '../theme/iuna_theme.dart';
+import '../widgets/cta_button.dart';
 import '../widgets/example_line.dart';
 import '../widgets/hex_bg.dart';
 import '../widgets/iuna_bottom_nav.dart';
@@ -60,6 +62,8 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
   /// only on a card without examples and translating only on one with
   /// some, so one at a time is all there is.
   _TutorJob? _job;
+
+  bool _barTucked = false;
 
   @override
   void initState() {
@@ -188,39 +192,28 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
   FocusCard _focusCard(CardRow card) =>
       FocusCard.fromDeck(card, _senses, userCard: _userCard, wished: _wished);
 
-  Widget _examplesButton({bool round = false}) {
-    final writing = _job == _TutorJob.write;
-    return AskBarButton(
-        icon: Icons.auto_awesome_rounded,
-        label: round ? null : (writing ? 'Writing…' : 'Get examples'),
-        tooltip: round ? 'Give me examples' : null,
-        busy: writing,
-        onTap: _writeExamples,
-      );
-  }
-
-  /// On a card without examples, two buttons until "Ask Kuma-sensei"
-  /// opens the chat bar; on one with examples, the plain chat bar.
   Widget _askBar(CardRow card, Widget nav) {
-    final missing = _examples.isEmpty;
     return AskBar(
       env: _learn,
-      hint: missing ? 'Ask about ${card.kanji}…' : 'Ask Kuma-sensei about ${card.kanji}…',
+      hint: 'Ask Kuma-sensei about ${card.kanji}…',
       nav: nav,
       card: () => _focusCard(card),
       // The tutor may have bookmarked this very card.
       onReturn: _load,
-      leading: missing ? _examplesButton(round: true) : null,
-      folded: missing
-          ? (open) => Row(
-                children: [
-                  Expanded(child: _examplesButton()),
-                  const SizedBox(width: 8),
-                  AskBarButton(icon: Icons.school_rounded, label: 'Ask Kuma-sensei', onTap: open),
-                ],
-              )
-          : null,
+      collapsed: _barTucked,
     );
+  }
+
+  /// Scrolling down to read tucks the chat bar away; scrolling back up
+  /// brings it back.
+  bool _onScroll(UserScrollNotification n) {
+    final tuck = switch (n.direction) {
+      ScrollDirection.reverse => true,
+      ScrollDirection.forward => false,
+      ScrollDirection.idle => _barTucked,
+    };
+    if (tuck != _barTucked) setState(() => _barTucked = tuck);
+    return false;
   }
 
   void _onSpeakerTap() {
@@ -243,6 +236,7 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
       active: widget.from,
       atTabRoot: false,
     );
+    final card = _card;
     return Scaffold(
       backgroundColor: IunaPalette.bg,
       body: DecoratedBox(
@@ -252,28 +246,43 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
             const Positioned.fill(child: HexBg(seed: 13)),
             SafeArea(
               bottom: false,
-              child: _loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _card == null
-                  ? const Center(
-                      child: Text(
-                        'Card not found.',
-                        style: TextStyle(color: IunaPalette.ink3),
-                      ),
-                    )
-                  : _buildBody(_card!, tutor: tutor),
+              child: Column(
+                children: [
+                  _TopBar(
+                    onBack: () => Navigator.of(context).maybePop(),
+                    wished: _wished,
+                    onWishlistTap: card == null ? null : _onWishlistTap,
+                  ),
+                  Expanded(
+                    child: _loading
+                        ? const Center(child: CircularProgressIndicator())
+                        : card == null
+                        ? const Center(
+                            child: Text(
+                              'This card is no longer in Iuna.',
+                              style: TextStyle(color: IunaPalette.ink3),
+                            ),
+                          )
+                        : _buildBody(card, tutor: tutor),
+                  ),
+                ],
+              ),
             ),
             Positioned(
               left: 0,
               right: 0,
               bottom: 0,
-              child: IgnorePointer(child: IunaNavFade(height: tutor ? AskBar.inset : 120)),
+              child: IgnorePointer(
+                child: IunaNavFade(
+                  height: tutor && !_barTucked ? AskBar.inset : 120,
+                ),
+              ),
             ),
             Positioned(
               left: 0,
               right: 0,
               bottom: 0,
-              child: tutor ? _askBar(_card!, nav) : nav,
+              child: tutor ? _askBar(card!, nav) : nav,
             ),
           ],
         ),
@@ -283,132 +292,125 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
 
   Widget _buildBody(CardRow card, {required bool tutor}) {
     final untranslated = tutor && _examples.any((e) => e.translation == null);
-    return Column(
-      children: [
-        _TopBar(
-          onBack: () => Navigator.of(context).maybePop(),
-          wished: _wished,
-          onWishlistTap: _onWishlistTap,
-        ),
-        Expanded(
-          child: ListView(
-            padding: EdgeInsets.fromLTRB(0, 4, 0, tutor ? AskBar.inset : 110),
-            children: [
-              _Hero(
-                card: card,
-                owned: _userCard != null,
-                onSpeak: _onSpeakerTap,
-              ),
-              const SizedBox(height: 14),
-              _Section(
-                title: 'Senses',
-                child: _senses.isEmpty
-                    ? Text(
-                        card.meaning,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: IunaPalette.ink,
-                        ),
-                      )
-                    : Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          for (var i = 0; i < _senses.length; i++)
-                            SenseRow(
-                              ordinal: _senses[i].ordinal,
-                              gloss: _senses[i].gloss,
-                              pos: _senses[i].pos,
-                              definition: _senses[i].definition,
-                              showDivider: i > 0,
-                            ),
-                        ],
-                      ),
-              ),
-              if (_examples.isNotEmpty || _job == _TutorJob.write) ...[
-                const SizedBox(height: 14),
-                _Section(
-                  title: 'Examples',
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (untranslated)
-                        _PanelAction(
-                          label: _job == _TutorJob.translate ? 'Translating…' : 'Translate',
-                          onPressed: _job == null ? _translateExamples : null,
-                        ),
-                      if (_examples.any((e) => e.generated))
-                        _PanelAction(label: 'Clear', onPressed: _clearExamples),
-                    ],
-                  ),
-                  child: _examples.isEmpty
-                      ? const Row(
-                          children: [
-                            SizedBox.square(
-                              dimension: 14,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                            SizedBox(width: 10),
-                            Text(
-                              'Kuma-sensei is writing some…',
-                              style: TextStyle(fontSize: 13, color: IunaPalette.ink3),
-                            ),
-                          ],
-                        )
-                      : Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            for (final ex in _examples) ExampleLine(example: ex),
-                          ],
-                        ),
-                ),
-              ],
-              if (_userCard != null) ...[
-                const SizedBox(height: 14),
-                _Section(
-                  title: 'Review state',
-                  child: Column(
-                    children: [
-                      _Kv(label: 'Level', value: 'Lv ${_userCard!.level}'),
-                      _Kv(
-                        label: 'Interval',
-                        value: _formatInterval(_userCard!.intervalMinutes),
-                      ),
-                      _Kv(
-                        label: 'Last reviewed',
-                        value: _formatDate(_userCard!.lastReviewed) ?? 'Never',
-                      ),
-                      _Kv(
-                        label: 'Next due',
-                        value: _formatDate(_userCard!.nextDue) ?? '—',
-                      ),
-                      _Kv(
-                        label: 'Collected',
-                        value: _formatDate(_userCard!.obtainedAt) ?? '—',
-                      ),
-                      _SuspendRow(
-                        suspended: _userCard!.suspended,
-                        onTap: _onSuspendTap,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ],
+    return NotificationListener<UserScrollNotification>(
+      onNotification: tutor ? _onScroll : null,
+      child: ListView(
+        padding: EdgeInsets.fromLTRB(0, 4, 0, tutor ? AskBar.inset : 110),
+        children: [
+          _Hero(
+            card: card,
+            owned: _userCard != null,
+            onSpeak: _onSpeakerTap,
           ),
-        ),
-      ],
+          const SizedBox(height: 14),
+          _Section(
+            title: 'Senses',
+            child: _senses.isEmpty
+                ? Text(
+                    card.meaning,
+                    style: IunaText.body.copyWith(
+                      color: IunaPalette.ink,
+                    ),
+                  )
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      for (var i = 0; i < _senses.length; i++)
+                        SenseRow(
+                          ordinal: _senses[i].ordinal,
+                          gloss: _senses[i].gloss,
+                          pos: _senses[i].pos,
+                          definition: _senses[i].definition,
+                          showDivider: i > 0,
+                        ),
+                    ],
+                  ),
+          ),
+          if (_examples.isNotEmpty || tutor) ...[
+            const SizedBox(height: 14),
+            _Section(
+              title: 'Examples',
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (untranslated)
+                    _PanelAction(
+                      label: _job == _TutorJob.translate ? 'Translating…' : 'Translate',
+                      onPressed: _job == null ? _translateExamples : null,
+                    ),
+                  if (_examples.any((e) => e.generated))
+                    _PanelAction(label: 'Clear', onPressed: _clearExamples),
+                ],
+              ),
+              child: _examples.isEmpty && _job != _TutorJob.write
+                  ? _NoExamples(onWrite: _writeExamples)
+                  : _examples.isEmpty
+                  ? Row(
+                      children: [
+                        SizedBox.square(
+                          dimension: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        SizedBox(width: 10),
+                        Text(
+                          'Kuma-sensei is writing some…',
+                          style: IunaText.bodySmall.copyWith(color: IunaPalette.ink3),
+                        ),
+                      ],
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        for (final ex in _examples) ExampleLine(example: ex),
+                      ],
+                    ),
+            ),
+          ],
+          if (_userCard != null) ...[
+            const SizedBox(height: 14),
+            _Section(
+              title: 'Review state',
+              child: Column(
+                children: [
+                  _Kv(
+                    label: 'Memory level',
+                    value: '${_userCard!.level}',
+                  ),
+                  _Kv(
+                    label: 'Time between reviews',
+                    value: _formatInterval(_userCard!.intervalMinutes),
+                  ),
+                  _Kv(
+                    label: 'Last reviewed',
+                    value: _formatDate(_userCard!.lastReviewed) ?? 'Never',
+                  ),
+                  _Kv(
+                    label: 'Next review',
+                    value: _formatDate(_userCard!.nextDue) ?? '—',
+                  ),
+                  _Kv(
+                    label: 'Collected',
+                    value: _formatDate(_userCard!.obtainedAt) ?? '—',
+                  ),
+                  _SuspendRow(
+                    suspended: _userCard!.suspended,
+                    onTap: _onSuspendTap,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
   static String _formatInterval(int minutes) {
+    String plural(int n, String unit) => n == 1 ? '1 $unit' : '$n ${unit}s';
     if (minutes <= 0) return 'Not yet scheduled';
-    if (minutes < 60) return '${minutes}m';
-    if (minutes < 60 * 24) {
-      final hours = (minutes / 60).round();
-      return '${hours}h';
-    }
-    final days = (minutes / (60 * 24)).round();
-    return '${days}d';
+    if (minutes < 60) return plural(minutes, 'minute');
+    if (minutes < 60 * 24) return plural((minutes / 60).round(), 'hour');
+    return plural((minutes / (60 * 24)).round(), 'day');
   }
 
   static String? _formatDate(DateTime? dt) {
@@ -425,7 +427,9 @@ class _TopBar extends StatelessWidget {
   });
   final VoidCallback onBack;
   final bool wished;
-  final VoidCallback onWishlistTap;
+
+  /// Null while there is no card to wish for.
+  final VoidCallback? onWishlistTap;
 
   @override
   Widget build(BuildContext context) {
@@ -435,22 +439,24 @@ class _TopBar extends StatelessWidget {
         tooltip: 'Back',
         onTap: onBack,
       ),
-      title: const Text(
+      title: Text(
         'Card detail',
-        style: TextStyle(
-          fontSize: 15,
-          fontWeight: FontWeight.w600,
+        style: IunaText.subtitle.copyWith(
           color: IunaPalette.ink2,
           letterSpacing: 0.6,
         ),
       ),
-      trailing: IunaIconButton(
-        icon: wished ? Icons.bookmark_rounded : Icons.bookmark_outline_rounded,
-        tooltip: wished ? 'Remove from wishlist' : 'Add to wishlist',
-        selected: wished,
-        onTap: onWishlistTap,
-        tint: wished ? IunaPalette.bellGold : null,
-      ),
+      trailing: onWishlistTap == null
+          ? null
+          : IunaIconButton(
+              icon: wished
+                  ? Icons.bookmark_rounded
+                  : Icons.bookmark_outline_rounded,
+              tooltip: wished ? 'Remove from wishlist' : 'Add to wishlist',
+              selected: wished,
+              onTap: onWishlistTap,
+              tint: wished ? IunaPalette.bellGold : null,
+            ),
     );
   }
 }
@@ -474,7 +480,7 @@ class _Hero extends StatelessWidget {
             end: const Alignment(0.3, 1),
             colors: [IunaPalette.paper, tint],
           ),
-          borderRadius: BorderRadius.circular(26),
+          borderRadius: BorderRadius.circular(IunaRadii.xl),
           boxShadow: const [
             BoxShadow(
               color: Color.fromRGBO(74, 53, 32, 0.25),
@@ -527,6 +533,7 @@ class _Hero extends StatelessWidget {
                     RarityChip(
                       rarity: card.rarity,
                       size: RarityChipSize.header,
+                      named: true,
                     ),
                     Semantics(
                       button: true,
@@ -567,8 +574,7 @@ class _Hero extends StatelessWidget {
             const SizedBox(height: 14),
             Text(
               card.meaning,
-              style: const TextStyle(
-                fontSize: 14,
+              style: IunaText.body.copyWith(
                 fontWeight: FontWeight.w500,
                 color: IunaPalette.ink2,
                 height: 1.4,
@@ -581,12 +587,11 @@ class _Hero extends StatelessWidget {
               children: [
                 if (!owned)
                   const _BasicChip(
-                    label: 'Not in your collection yet',
+                    label: kNotCollectedLabel,
                     icon: Icons.lock_outline_rounded,
                   ),
                 if (card.jlptLevel != null)
                   _BasicChip(label: 'JLPT N${card.jlptLevel}'),
-                _BasicChip(label: rarityName(card.rarity)),
               ],
             ),
           ],
@@ -622,9 +627,7 @@ class _BasicChip extends StatelessWidget {
           ],
           Text(
             label,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
+            style: IunaText.chip.copyWith(
               color: IunaPalette.ink2,
             ),
           ),
@@ -647,7 +650,7 @@ class _Section extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
         decoration: paperPanelDecoration(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(IunaRadii.md),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -687,13 +690,12 @@ class _Kv extends StatelessWidget {
           Expanded(
             child: Text(
               label,
-              style: const TextStyle(fontSize: 13, color: IunaPalette.ink3),
+              style: IunaText.bodySmall.copyWith(color: IunaPalette.ink3),
             ),
           ),
           Text(
             value,
-            style: const TextStyle(
-              fontSize: 13,
+            style: IunaText.bodySmall.copyWith(
               fontWeight: FontWeight.w600,
               color: IunaPalette.ink,
             ),
@@ -732,10 +734,10 @@ class _SuspendRow extends StatelessWidget {
               color: IunaPalette.ink3,
             ),
             const SizedBox(width: 8),
-            const Expanded(
+            Expanded(
               child: Text(
                 'Suspended',
-                style: TextStyle(fontSize: 13, color: IunaPalette.ink3),
+                style: IunaText.bodySmall.copyWith(color: IunaPalette.ink3),
               ),
             ),
             ExcludeSemantics(
@@ -765,8 +767,35 @@ class _PanelAction extends StatelessWidget {
           minimumSize: const Size(48, 48),
           padding: const EdgeInsets.symmetric(horizontal: 10),
         ),
-        child: Text(label, style: const TextStyle(fontSize: 13)),
+        child: Text(label, style: IunaText.bodySmall),
       );
+}
+
+/// The Examples panel of a card without any, while the tutor is on.
+class _NoExamples extends StatelessWidget {
+  const _NoExamples({required this.onWrite});
+  final VoidCallback onWrite;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'No example sentences yet. Kuma-sensei can write a few at your '
+          'level.',
+          style: IunaText.bodySmall.copyWith(height: 1.4, color: IunaPalette.ink3),
+        ),
+        const SizedBox(height: 10),
+        IunaGhostButton(
+          label: 'Get examples',
+          leadingIcon: Icons.auto_awesome_rounded,
+          shrinkWrap: true,
+          onTap: onWrite,
+        ),
+      ],
+    );
+  }
 }
 
 enum _TutorJob { write, translate }

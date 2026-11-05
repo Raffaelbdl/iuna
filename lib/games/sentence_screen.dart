@@ -263,10 +263,9 @@ class _SentenceScreenState extends State<SentenceScreen> {
                 onTap: _next,
               )
             : task is SentenceBoard
-            ? AnimatedOpacity(
-                duration: const Duration(milliseconds: 160),
-                opacity: task.complete ? 1 : 0.4,
-                child: IunaCtaButton(label: 'Check', onTap: _check),
+            ? IunaCtaButton(
+                label: 'Check',
+                onTap: task.complete ? _check : null,
               )
             : null,
       );
@@ -316,9 +315,7 @@ class _Frame extends StatelessWidget {
                   const Spacer(),
                   Text(
                     '$number / $kSentencesPerRound',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
+                    style: IunaText.chip.copyWith(
                       color: IunaPalette.ink3,
                     ),
                   ),
@@ -330,8 +327,7 @@ class _Frame extends StatelessWidget {
                 decoration: paperPanelDecoration(),
                 child: Text(
                   english,
-                  style: const TextStyle(
-                    fontSize: 18,
+                  style: IunaText.title.copyWith(
                     fontWeight: FontWeight.w600,
                     height: 1.35,
                     color: IunaPalette.ink,
@@ -369,11 +365,10 @@ class _Order extends StatelessWidget {
       children: [
         _Well(
           child: board.placed.isEmpty
-              ? const Center(
+              ? Center(
                   child: Text(
                     'Tap the tiles in order',
-                    style: TextStyle(
-                      fontSize: 13,
+                    style: IunaText.bodySmall.copyWith(
                       fontStyle: FontStyle.italic,
                       color: IunaPalette.ink3,
                     ),
@@ -560,15 +555,14 @@ class _Verdict extends StatelessWidget {
               children: [
                 Text(
                   right ? '正解 · Right.' : 'Not quite.',
-                  style: TextStyle(
-                    fontSize: 15,
+                  style: IunaText.subtitle.copyWith(
                     fontWeight: FontWeight.w700,
                     color: ink,
                   ),
                 ),
                 if (note != null) ...[
                   const SizedBox(height: 6),
-                  Text(note, style: TextStyle(fontSize: 12, color: ink)),
+                  Text(note, style: IunaText.caption.copyWith(color: ink)),
                   const SizedBox(height: 4),
                   Text(
                     sentence,

@@ -129,8 +129,7 @@ class _PackIntroScreenState extends State<PackIntroScreen>
                                 _packs > 1
                                     ? "TODAY'S PACKS"
                                     : "TODAY'S PACK",
-                                style: const TextStyle(
-                                  fontSize: 12,
+                                style: IunaText.caption.copyWith(
                                   fontWeight: FontWeight.w500,
                                   color: IunaPalette.ink3,
                                   letterSpacing: 4,
@@ -144,11 +143,9 @@ class _PackIntroScreenState extends State<PackIntroScreen>
                                   _ => '$_newCount new cards await',
                                 },
                                 textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  fontSize: 24,
+                                style: IunaText.headline.copyWith(
                                   fontWeight: FontWeight.w600,
                                   color: IunaPalette.ink,
-                                  letterSpacing: -0.2,
                                 ),
                               ),
                               const SizedBox(height: 32),
@@ -206,10 +203,9 @@ class _PackIntroScreenState extends State<PackIntroScreen>
                                 ),
                               ),
                               const SizedBox(height: 32),
-                              const Text(
+                              Text(
                                 'tap the bow to untie',
-                                style: TextStyle(
-                                  fontSize: 13,
+                                style: IunaText.bodySmall.copyWith(
                                   fontStyle: FontStyle.italic,
                                   color: IunaPalette.ink3,
                                   letterSpacing: 0.4,

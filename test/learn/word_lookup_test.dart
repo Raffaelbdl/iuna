@@ -216,12 +216,12 @@ void main() {
       await tester.pumpAndSettle();
       expect(deck.wished, ['会議/かいぎ']);
       expect(find.text('Add to wishlist'), findsNothing);
-      expect(find.text('On wishlist'), findsOneWidget);
+      expect(find.text('On your wishlist'), findsOneWidget);
     });
 
     testWidgets('an owned or bookmarked word offers no button', (tester) async {
       await open(tester, _FakeDeck({'会議': CardLookupStatus.owned}), '会議');
-      expect(find.text('In collection'), findsOneWidget);
+      expect(find.text('In your collection'), findsOneWidget);
       expect(find.text('Add to wishlist'), findsNothing);
       Navigator.of(tester.element(find.byType(WordSheet))).pop();
       await tester.pumpAndSettle();
@@ -235,7 +235,7 @@ void main() {
       await open(tester, null, '会議');
       expect(find.byType(WordSheet), findsOneWidget);
       expect(find.text('Add to wishlist'), findsNothing);
-      expect(find.text('In collection'), findsNothing);
+      expect(find.text('In your collection'), findsNothing);
     });
   });
 }

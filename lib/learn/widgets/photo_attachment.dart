@@ -28,10 +28,10 @@ class PhotoAttachmentStrip extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10),
-          const Expanded(
+          Expanded(
             child: Text(
               'Photo attached',
-              style: TextStyle(fontSize: 12, color: IunaPalette.ink3),
+              style: IunaText.caption.copyWith(color: IunaPalette.ink3),
             ),
           ),
           IconButton(

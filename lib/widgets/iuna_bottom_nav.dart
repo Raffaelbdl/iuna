@@ -140,9 +140,7 @@ class _NavBtn extends StatelessWidget {
             const SizedBox(height: 2),
             Text(
               label,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
+              style: IunaText.chip.copyWith(
                 color: active ? IunaPalette.ink : IunaPalette.ink3,
                 height: 1,
               ),

@@ -26,7 +26,7 @@ repetition. An optional AI tutor runs courses with you.
 - **Card packs and dictionary.** Optional themed packs (for example
   Science & Programming) and a full JMdict dictionary, downloaded on
   demand, so you can add any word to your deck.
-- **Stats.** Activity, retention, streaks, maturity, forecast, leeches.
+- **Stats.** Activity, retention, streaks, how well you know each card, forecast, tricky cards.
 - **Backup.** To your own Google Drive, or as a local file.
 - **AI tutor (optional).** Kuma-sensei probes your level, plans a
   course, teaches chapter by chapter, quizzes you, and can bookmark

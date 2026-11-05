@@ -1019,7 +1019,7 @@ void main() {
     );
   });
 
-  testWidgets('card detail — tutor on, no examples yet: two buttons', (tester) async {
+  testWidgets('card detail — tutor on, no examples yet: Get examples in the panel', (tester) async {
     final (env, deckDb, cardId) = await tutorCard();
     await _shoot(
       tester,
@@ -1030,18 +1030,17 @@ void main() {
     );
   });
 
-  testWidgets('card detail — Ask Kuma-sensei opens the chat bar', (tester) async {
+  testWidgets('card detail — scrolling down tucks the chat bar away', (tester) async {
     final (env, deckDb, cardId) = await tutorCard();
     await _shoot(
       tester,
-      'card_detail_tutor_open',
+      'card_detail_tutor_scrolled',
       CardDetailScreen(db: deckDb, cardId: cardId, learn: env),
       logical: const Size(360, 900),
       settle: const Duration(milliseconds: 500),
       act: () async {
-        await tester.tap(find.text('Ask Kuma-sensei'));
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 300));
+        await tester.drag(find.byType(ListView).first, const Offset(0, -300));
+        await tester.pump(const Duration(milliseconds: 400));
       },
     );
   });

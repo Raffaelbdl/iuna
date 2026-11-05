@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../theme/iuna_theme.dart';
 import '../deck.dart';
 import '../learn.dart';
 import '../photo/photo.dart';
@@ -19,8 +18,7 @@ class AskBar extends StatefulWidget {
     required this.nav,
     this.card,
     this.onReturn,
-    this.leading,
-    this.folded,
+    this.collapsed = false,
   });
 
   /// How far a screen's content scrolls clear of the bar and the nav.
@@ -40,12 +38,9 @@ class AskBar extends StatefulWidget {
   /// Runs once the Ask chat is closed.
   final VoidCallback? onReturn;
 
-  /// Shown beside the composer.
-  final Widget? leading;
-
-  /// Shown instead of the composer until it calls `open`. The bar folds
-  /// back when the keyboard closes with nothing written.
-  final Widget Function(VoidCallback open)? folded;
+  /// Tucks the composer away, leaving the nav, while the screen scrolls
+  /// down to read. A half-written question keeps it out.
+  final bool collapsed;
 
   @override
   State<AskBar> createState() => _AskBarState();
@@ -54,7 +49,6 @@ class AskBar extends StatefulWidget {
 class _AskBarState extends State<AskBar> with WidgetsBindingObserver {
   final _question = TextEditingController();
   Photo? _photo;
-  bool _open = false;
   bool _typing = false;
 
   @override
@@ -67,12 +61,6 @@ class _AskBarState extends State<AskBar> with WidgetsBindingObserver {
   void didChangeDependencies() {
     super.didChangeDependencies();
     _typing = _keyboardUp();
-  }
-
-  @override
-  void didUpdateWidget(AskBar old) {
-    super.didUpdateWidget(old);
-    if (old.folded == null && widget.folded != null) _open = false;
   }
 
   @override
@@ -90,11 +78,7 @@ class _AskBarState extends State<AskBar> with WidgetsBindingObserver {
   void didChangeMetrics() {
     final typing = _keyboardUp();
     if (typing == _typing) return;
-    setState(() {
-      _typing = typing;
-      // Android's back closes the keyboard before anything else.
-      if (!typing && _question.text.trim().isEmpty && _photo == null) _open = false;
-    });
+    setState(() => _typing = typing);
   }
 
   void _send() {
@@ -123,106 +107,38 @@ class _AskBarState extends State<AskBar> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    final folded = widget.folded;
-    final leading = widget.leading;
     final env = widget.env;
-    final bar = folded != null && !_open
-        ? folded(() => setState(() => _open = true))
-        : Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              if (leading != null) ...[leading, const SizedBox(width: 8)],
-              Expanded(
-                child: ChatComposer(
-                  controller: _question,
-                  // Unfolded by a tap that asked for it.
-                  autofocus: folded != null,
-                  hint: widget.hint,
-                  onSend: _send,
-                  recorder: env.dictation?.recorder,
-                  onVoice: (clip) => _ask(voice: clip),
-                  picker: env.photos,
-                  photo: _photo,
-                  onPhoto: env.photos == null
-                      ? null
-                      : (photo) => setState(() => _photo = photo),
-                ),
-              ),
-            ],
-          );
+    final hidden = widget.collapsed &&
+        !_typing &&
+        _question.text.trim().isEmpty &&
+        _photo == null;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Padding(padding: const EdgeInsets.fromLTRB(12, 0, 12, 10), child: bar),
-        if (!_typing) widget.nav,
-      ],
-    );
-  }
-}
-
-/// A paper pill for an [AskBar]: an icon and a label, or the icon
-/// alone as a round button beside the open composer.
-class AskBarButton extends StatelessWidget {
-  const AskBarButton({
-    super.key,
-    required this.icon,
-    required this.onTap,
-    this.label,
-    this.tooltip,
-    this.busy = false,
-  });
-
-  final IconData icon;
-  final VoidCallback onTap;
-  final String? label;
-  final String? tooltip;
-  final bool busy;
-
-  @override
-  Widget build(BuildContext context) {
-    final glyph = busy
-        ? const SizedBox.square(
-            dimension: 18,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          )
-        : Icon(icon, size: 20, color: IunaPalette.ink2);
-    final button = Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: busy ? null : onTap,
-        borderRadius: BorderRadius.circular(999),
-        child: Ink(
-          height: 48,
-          width: label == null ? 48 : null,
-          decoration: ghostPillDecoration(boxShadow: panelShadow()),
-          child: label == null
-              ? Center(child: glyph)
+        AnimatedSize(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.bottomCenter,
+          child: hidden
+              ? const SizedBox(width: double.infinity)
               : Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      glyph,
-                      const SizedBox(width: 8),
-                      Flexible(
-                        child: Text(
-                          label!,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: IunaPalette.ink2,
-                          ),
-                        ),
-                      ),
-                    ],
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                  child: ChatComposer(
+                    controller: _question,
+                    hint: widget.hint,
+                    onSend: _send,
+                    recorder: env.dictation?.recorder,
+                    onVoice: (clip) => _ask(voice: clip),
+                    picker: env.photos,
+                    photo: _photo,
+                    onPhoto: env.photos == null
+                        ? null
+                        : (photo) => setState(() => _photo = photo),
                   ),
                 ),
         ),
-      ),
+        if (!_typing) widget.nav,
+      ],
     );
-    return tooltip == null ? button : Tooltip(message: tooltip!, child: button);
   }
 }

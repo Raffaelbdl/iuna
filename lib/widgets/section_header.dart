@@ -46,9 +46,7 @@ class IunaEyebrow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       label.toUpperCase(),
-      style: const TextStyle(
-        fontSize: 11,
-        fontWeight: FontWeight.w700,
+      style: IunaText.eyebrow.copyWith(
         letterSpacing: 1.2,
         color: IunaPalette.ink3,
       ),

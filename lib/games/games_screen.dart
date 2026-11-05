@@ -106,17 +106,14 @@ class _GameTile extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
+                    style: IunaText.title.copyWith(
                       color: IunaPalette.ink,
                     ),
                   ),
                   const SizedBox(height: 3),
                   Text(
                     subtitle,
-                    style: const TextStyle(
-                      fontSize: 12,
+                    style: IunaText.caption.copyWith(
                       fontWeight: FontWeight.w500,
                       color: IunaPalette.ink3,
                       height: 1.3,

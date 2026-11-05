@@ -17,7 +17,9 @@ import '../widgets/iuna_bottom_nav.dart';
 import '../widgets/iuna_icon_button.dart';
 import '../widgets/section_header.dart';
 import '../widgets/snack.dart';
+import '../widgets/tab_header.dart';
 import '../widgets/tappable.dart';
+import '../widgets/time_words.dart';
 import '../widgets/vocab_card.dart';
 import 'card_detail_screen.dart';
 import 'app_nav.dart';
@@ -48,6 +50,7 @@ class _HomeScreenState extends State<HomeScreen> {
   int _streak = 0;
   int _learned = 0;
   int _wishCount = 0;
+  int _resetHour = 0;
   List<RecentLearned> _recent = const [];
 
   /// Whether a Google account is signed in for Drive backup. The home
@@ -82,13 +85,14 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Reloads in place; only the first load shows the spinner, so a
   /// return from another screen doesn't swap the whole tree out.
   Future<void> _refresh() async {
-    final (preview, due, streak, stats, wishCount, recent) = await (
+    final (preview, due, streak, stats, wishCount, recent, resetHour) = await (
       _repo.boosterPreview(),
       _repo.dueCountToday(),
       _repo.recordStreak(),
       _repo.collectionStats(),
       _repo.wishedCount(),
       _repo.recentlyObtained(limit: 10),
+      _repo.getResetHour(),
     ).wait;
     if (!mounted) return;
     setState(() {
@@ -98,6 +102,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _streak = streak;
       _learned = stats.owned;
       _wishCount = wishCount;
+      _resetHour = resetHour;
       _recent = [
         for (final e in recent)
           RecentLearned(card: e.card, level: e.userCard!.level),
@@ -254,6 +259,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: _HeroPack(
                     booster: _booster,
                     dueCount: _dueCount,
+                    resetHour: _resetHour,
                     onTap: _openTodayFlow,
                     kumaSeed: widget.kumaSeed,
                   ),
@@ -266,11 +272,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: IunaEyebrow('Recently collected'),
                 ),
                 if (_recent.isEmpty)
-                  const Padding(
+                  Padding(
                     padding: EdgeInsets.fromLTRB(18, 4, 18, 4),
                     child: Text(
                       'No cards yet — open a pack to start your collection.',
-                      style: TextStyle(fontSize: 13, color: IunaPalette.ink3),
+                      style: IunaText.bodySmall.copyWith(color: IunaPalette.ink3),
                     ),
                   )
                 else
@@ -325,63 +331,21 @@ class _TopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 6, 10, 2),
-      child: Row(
-        children: [
-          Container(
-            width: 30,
-            height: 30,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [IunaPalette.heroTop, IunaPalette.bowPink],
-              ),
-              borderRadius: BorderRadius.circular(10),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color.fromRGBO(120, 40, 60, 0.18),
-                  blurRadius: 0,
-                  offset: Offset(0, 0),
-                  spreadRadius: 0.5,
-                ),
-              ],
-            ),
-            child: const Center(
-              child: Text(
-                'い',
-                style: TextStyle(
-                  color: Color(0xFF5A3210),
-                  fontWeight: FontWeight.w800,
-                  fontSize: 14,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          const Text(
-            'Iuna',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
-              color: IunaPalette.ink,
-              letterSpacing: -0.2,
-            ),
-          ),
-          const Spacer(),
-          IunaIconButton(
-            icon: Icons.show_chart_rounded,
-            tooltip: 'Stats',
-            onTap: onStats,
-          ),
-          IunaIconButton(
-            icon: Icons.settings_rounded,
-            tooltip: 'Settings',
-            onTap: onSettings,
-          ),
-        ],
-      ),
+    return IunaTabHeader(
+      'Iuna',
+      leading: const IunaLogoMark(),
+      actions: [
+        IunaIconButton(
+          icon: Icons.show_chart_rounded,
+          tooltip: 'Stats',
+          onTap: onStats,
+        ),
+        IunaIconButton(
+          icon: Icons.settings_rounded,
+          tooltip: 'Settings',
+          onTap: onSettings,
+        ),
+      ],
     );
   }
 }
@@ -400,8 +364,7 @@ class _Greeting extends StatelessWidget {
       children: [
         Text(
           returning ? 'おかえり' : 'ようこそ',
-          style: const TextStyle(
-            fontSize: 15,
+          style: IunaText.bodyLarge.copyWith(
             fontStyle: FontStyle.italic,
             fontWeight: FontWeight.w500,
             color: IunaPalette.ink3,
@@ -410,12 +373,10 @@ class _Greeting extends StatelessWidget {
         const SizedBox(height: 2),
         Text(
           returning ? 'Welcome back.' : 'Welcome.',
-          style: const TextStyle(
-            fontSize: 26,
+          style: IunaText.display.copyWith(
             fontWeight: FontWeight.w600,
             height: 1.1,
             color: IunaPalette.ink,
-            letterSpacing: -0.3,
           ),
         ),
       ],
@@ -427,12 +388,16 @@ class _HeroPack extends StatelessWidget {
   const _HeroPack({
     required this.booster,
     required this.dueCount,
+    required this.resetHour,
     required this.onTap,
     this.kumaSeed,
   });
 
   final ({int packs, int newCards}) booster;
   final int dueCount;
+
+  /// When the day, and the next pack, rolls over.
+  final int resetHour;
   final VoidCallback onTap;
   final int? kumaSeed;
 
@@ -448,12 +413,11 @@ class _HeroPack extends StatelessWidget {
           '$reviews due';
     } else {
       final outOfCards = booster.packs > 0;
-      title = outOfCards ? 'No new cards left' : 'No pack today';
-      sub = dueCount > 0
-          ? '$reviews due today'
-          : outOfCards
+      title = outOfCards ? 'No new cards left' : "Today's pack is open";
+      final next = outOfCards
           ? 'You have every card in the draw pool.'
-          : 'All caught up — come back tomorrow.';
+          : 'Next pack at ${hourWords(resetHour)}.';
+      sub = dueCount > 0 ? '$reviews due today · $next' : next;
     }
     final String? cta = available
         ? 'Open & review'
@@ -523,19 +487,15 @@ class _HeroPack extends StatelessWidget {
                   children: [
                     Text(
                       title,
-                      style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
+                      style: IunaText.headline.copyWith(
                         height: 1.1,
                         color: IunaPalette.heroInk,
-                        letterSpacing: -0.2,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       sub,
-                      style: const TextStyle(
-                        fontSize: 13,
+                      style: IunaText.bodySmall.copyWith(
                         fontWeight: FontWeight.w500,
                         height: 1.3,
                         color: IunaPalette.heroInk,
@@ -576,8 +536,7 @@ class _HeroCta extends StatelessWidget {
           Flexible(
             child: Text(
               label,
-              style: const TextStyle(
-                fontSize: 14,
+              style: IunaText.label.copyWith(
                 fontWeight: FontWeight.w700,
                 color: kCtaInk,
               ),
@@ -614,7 +573,7 @@ class _StatsRow extends StatelessWidget {
             Expanded(child: _StreakStat(streak: streak)),
             const SizedBox(width: 10),
             Expanded(
-              child: _Stat(value: '$due', label: 'due now'),
+              child: _Stat(value: '$due', label: 'due today'),
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -644,9 +603,7 @@ class _Stat extends StatelessWidget {
         children: [
           Text(
             value,
-            style: const TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
+            style: IunaText.headline.copyWith(
               color: IunaPalette.ink,
               height: 1,
             ),
@@ -673,8 +630,7 @@ class _StatLabel extends StatelessWidget {
       child: Text(
         text,
         maxLines: 1,
-        style: const TextStyle(
-          fontSize: 12,
+        style: IunaText.caption.copyWith(
           fontWeight: FontWeight.w500,
           color: IunaPalette.ink3,
           letterSpacing: 0.4,
@@ -723,8 +679,7 @@ class _StreakRing extends StatelessWidget {
         child: Center(
           child: Text(
             '$value',
-            style: const TextStyle(
-              fontSize: 13,
+            style: IunaText.bodySmall.copyWith(
               fontWeight: FontWeight.w700,
               color: IunaPalette.ink,
             ),
@@ -830,8 +785,7 @@ class _RecentScroller extends StatelessWidget {
                           textAlign: TextAlign.center,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 12,
+                          style: IunaText.caption.copyWith(
                             color: IunaPalette.ink3,
                           ),
                         ),
@@ -841,8 +795,7 @@ class _RecentScroller extends StatelessWidget {
                           textAlign: TextAlign.center,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 12,
+                          style: IunaText.caption.copyWith(
                             fontWeight: FontWeight.w500,
                             color: IunaPalette.ink2,
                             height: 1.2,
@@ -931,7 +884,7 @@ class _LinkPanel extends StatelessWidget {
             height: 38,
             decoration: BoxDecoration(
               color: wash,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(IunaRadii.sm),
             ),
             child: Icon(icon, color: tint, size: 18),
           ),
@@ -942,9 +895,7 @@ class _LinkPanel extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
+                  style: IunaText.label.copyWith(
                     color: IunaPalette.ink,
                     height: 1.2,
                   ),
@@ -952,8 +903,7 @@ class _LinkPanel extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   subtitle,
-                  style: const TextStyle(
-                    fontSize: 12,
+                  style: IunaText.caption.copyWith(
                     fontWeight: FontWeight.w500,
                     color: IunaPalette.ink3,
                     height: 1.25,

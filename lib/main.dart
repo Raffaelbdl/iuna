@@ -1,5 +1,6 @@
+import 'package:flutter/cupertino.dart'
+    show CupertinoLocalizations, DefaultCupertinoLocalizations;
 import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'db/database.dart';
 import 'db/example_english.dart';
@@ -46,15 +47,36 @@ class _IunaAppState extends State<IunaApp> {
       theme: buildIunaTheme(),
       // Force ja-JP so Noto Sans CJK resolves Han codepoints to the JP
       // sub-font instead of the Simplified Chinese one (e.g. 直/骨/今
-      // differ across regions).
+      // differ across regions). The app speaks English, though, so the
+      // framework's own strings (Copy/Paste, tooltips, screen-reader
+      // labels) stay English under that locale.
       locale: const Locale('ja', 'JP'),
       supportedLocales: const [Locale('ja', 'JP'), Locale('en', 'US')],
       localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
+        _EnglishUnder<MaterialLocalizations>(DefaultMaterialLocalizations.load),
+        _EnglishUnder<CupertinoLocalizations>(
+          DefaultCupertinoLocalizations.load,
+        ),
+        _EnglishUnder<WidgetsLocalizations>(DefaultWidgetsLocalizations.load),
       ],
       home: HomeScreen(db: _db),
     );
   }
+}
+
+/// The framework's US English strings, whatever the locale: the app
+/// keeps ja-JP for glyph selection only.
+class _EnglishUnder<T> extends LocalizationsDelegate<T> {
+  const _EnglishUnder(this._load);
+
+  final Future<T> Function(Locale locale) _load;
+
+  @override
+  bool isSupported(Locale locale) => true;
+
+  @override
+  Future<T> load(Locale locale) => _load(locale);
+
+  @override
+  bool shouldReload(_EnglishUnder<T> old) => false;
 }

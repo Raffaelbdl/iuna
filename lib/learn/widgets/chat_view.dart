@@ -118,7 +118,7 @@ class _ChatViewState extends State<ChatView> {
                 padding: const EdgeInsets.fromLTRB(12, 4, 12, 10),
                 child: ChatComposer(
                   controller: _input,
-                  hint: c.pendingQuiz != null ? 'Answer the card above first' : widget.hint,
+                  hint: c.pendingQuiz != null ? 'Answer the quick check above first' : widget.hint,
                   enabled: c.loaded && c.pendingQuiz == null && c.pendingVoice == null,
                   // A quiz card waits on the learner, not the model:
                   // nothing to stop.
@@ -368,7 +368,7 @@ class _ToolChip extends StatelessWidget {
                 children: [
                   Icon(icon, size: 14, color: color),
                   const SizedBox(width: 6),
-                  Text(label, style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.w600)),
+                  Text(label, style: IunaText.chip.copyWith(color: color)),
                   if (onTap != null) ...[
                     const SizedBox(width: 2),
                     Icon(Icons.chevron_right_rounded, size: 14, color: color),
@@ -397,7 +397,7 @@ class _Caption extends StatelessWidget {
           line,
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 10),
-            child: Text(text, style: const TextStyle(fontSize: 12, color: IunaPalette.ink3)),
+            child: Text(text, style: IunaText.caption.copyWith(color: IunaPalette.ink3)),
           ),
           line,
         ],
@@ -451,7 +451,7 @@ class _TypingState extends State<_Typing> with SingleTickerProviderStateMixin {
           ),
           const SizedBox(width: 8),
           Flexible(
-            child: Text(widget.label, style: const TextStyle(fontSize: 12, color: IunaPalette.ink3)),
+            child: Text(widget.label, style: IunaText.caption.copyWith(color: IunaPalette.ink3)),
           ),
         ],
       ),
@@ -478,7 +478,7 @@ class _ErrorNote extends StatelessWidget {
           const Icon(Icons.error_outline_rounded, size: 18, color: IunaPalette.raritySsrInk),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(text, style: const TextStyle(fontSize: 13, color: IunaPalette.ink, height: 1.35)),
+            child: Text(text, style: IunaText.bodySmall.copyWith(color: IunaPalette.ink, height: 1.35)),
           ),
           TextButton(onPressed: onRetry, child: const Text('Retry')),
         ],
@@ -487,7 +487,7 @@ class _ErrorNote extends StatelessWidget {
   }
 }
 
-const _learnerText = TextStyle(fontSize: 14, height: 1.45, color: IunaPalette.ink);
+final _learnerText = IunaText.body.copyWith(height: 1.45, color: IunaPalette.ink);
 
 class _BubbleFrame extends StatelessWidget {
   const _BubbleFrame({required this.fromLearner, required this.child});
@@ -498,7 +498,7 @@ class _BubbleFrame extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
-    const round = Radius.circular(18);
+    const round = Radius.circular(IunaRadii.md);
     const tight = Radius.circular(6);
     return Align(
       alignment: fromLearner ? Alignment.centerRight : Alignment.centerLeft,
@@ -622,8 +622,7 @@ class _VoiceBubbleState extends State<_VoiceBubble> with SingleTickerProviderSta
             const SizedBox(width: 8),
             Text(
               clockLabel(voice.clip.length),
-              style: const TextStyle(
-                fontSize: 12,
+              style: IunaText.caption.copyWith(
                 color: IunaPalette.ink3,
                 fontFeatures: [FontFeature.tabularFigures()],
               ),
@@ -632,11 +631,11 @@ class _VoiceBubbleState extends State<_VoiceBubble> with SingleTickerProviderSta
         ),
         const SizedBox(height: 4),
         if (error == null)
-          const Text('Transcribing…', style: TextStyle(fontSize: 12, color: IunaPalette.ink3))
+          Text('Transcribing…', style: IunaText.caption.copyWith(color: IunaPalette.ink3))
         else ...[
           Text(
             error,
-            style: const TextStyle(fontSize: 12.5, height: 1.35, color: IunaPalette.raritySsrInk),
+            style: IunaText.caption.copyWith(height: 1.35, color: IunaPalette.raritySsrInk),
           ),
           Row(
             mainAxisSize: MainAxisSize.min,

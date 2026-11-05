@@ -20,27 +20,26 @@ class _ActivityChart extends StatelessWidget {
       children: [
         Row(
           children: [
-            const _LegendDot(color: _SP.mintDeep, label: 'correct'),
+            const _LegendDot(color: IunaPalette.chartMintDeep, label: 'correct'),
             const SizedBox(width: 14),
-            const _LegendDot(color: _SP.pink, label: 'wrong'),
+            const _LegendDot(color: IunaPalette.bowPink, label: 'wrong'),
             const Spacer(),
             Text(
               'peak $peak/day',
-              style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
+              style: IunaText.chip.copyWith(
                 color: IunaPalette.ink3,
               ),
             ),
           ],
         ),
         const SizedBox(height: 8),
-        SizedBox(
+        _ChartCanvas(
           height: 130,
-          child: CustomPaint(
-            painter: _ActivityPainter(days: days, peak: peak),
-            size: Size.infinite,
-          ),
+          summary:
+              'Reviews over the last ${days.length} days: $total in all, '
+              'at most $peak in a day.',
+          painter: (scaler) =>
+              _ActivityPainter(days: days, peak: peak, scaler: scaler),
         ),
       ],
     );
@@ -48,24 +47,29 @@ class _ActivityChart extends StatelessWidget {
 }
 
 class _ActivityPainter extends CustomPainter {
-  _ActivityPainter({required this.days, required this.peak});
+  _ActivityPainter({
+    required this.days,
+    required this.peak,
+    required this.scaler,
+  });
 
   final List<DailyActivity> days;
   final int peak;
+  final TextScaler scaler;
 
   @override
   void paint(Canvas canvas, Size size) {
-    const labelGutter = 18.0;
+    final labelGutter = scaler.scale(18);
     final chartH = size.height - labelGutter;
 
     final gridPaint = Paint()
-      ..color = _SP.grid
+      ..color = IunaPalette.chartGrid
       ..strokeWidth = 0.5;
     canvas.drawLine(
       Offset(0, chartH),
       Offset(size.width, chartH),
       Paint()
-        ..color = _SP.gridStrong
+        ..color = IunaPalette.chartGridStrong
         ..strokeWidth = 0.5,
     );
     // Mid gridline.
@@ -94,7 +98,7 @@ class _ActivityPainter extends CustomPainter {
             Rect.fromLTWH(left, wrongTop, bw, wrongH),
             const Radius.circular(1.5),
           ),
-          Paint()..color = _SP.pink,
+          Paint()..color = IunaPalette.bowPink,
         );
       }
       if (correctH > 0) {
@@ -103,18 +107,21 @@ class _ActivityPainter extends CustomPainter {
             Rect.fromLTWH(left, correctTop, bw, correctH),
             const Radius.circular(1.5),
           ),
-          Paint()..color = _SP.mintDeep,
+          Paint()..color = IunaPalette.chartMintDeep,
         );
       }
     }
-    _chartLabel('${days.length}d ago').paint(canvas, Offset(0, chartH + 4));
-    final today = _chartLabel('today');
+    _chartLabel(
+      '${days.length}d ago',
+      scaler: scaler,
+    ).paint(canvas, Offset(0, chartH + 4));
+    final today = _chartLabel('today', scaler: scaler);
     today.paint(canvas, Offset(size.width - today.width, chartH + 4));
   }
 
   @override
   bool shouldRepaint(covariant _ActivityPainter old) =>
-      old.days != days || old.peak != peak;
+      old.days != days || old.peak != peak || old.scaler != scaler;
 }
 
 // ─── Year heatmap ─────────────────────────────────────────────────────
@@ -129,32 +136,32 @@ class _YearHeatmap extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SizedBox(
+        _ChartCanvas(
           height: 80,
-          child: CustomPaint(
-            painter: _HeatmapPainter(days: days, peak: peak),
-            size: Size.infinite,
-          ),
+          summary:
+              'Study calendar: reviewed on '
+              '${days.where((d) => d.total > 0).length} of the last '
+              '${days.length} days.',
+          painter: (_) => _HeatmapPainter(days: days, peak: peak),
         ),
         const SizedBox(height: 8),
         Row(
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
-            const Text(
+            Text(
               'Less',
-              style: TextStyle(
-                fontSize: 10,
+              style: IunaText.caption.copyWith(
                 fontWeight: FontWeight.w500,
                 color: IunaPalette.ink3,
               ),
             ),
             const SizedBox(width: 6),
             for (final c in const [
-              _SP.heatmap0,
-              _SP.heatmap1,
-              _SP.heatmap2,
-              _SP.heatmap3,
-              _SP.heatmap4,
+              IunaPalette.heatmap0,
+              IunaPalette.heatmap1,
+              IunaPalette.heatmap2,
+              IunaPalette.heatmap3,
+              IunaPalette.heatmap4,
             ])
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 2),
@@ -168,10 +175,9 @@ class _YearHeatmap extends StatelessWidget {
                 ),
               ),
             const SizedBox(width: 6),
-            const Text(
+            Text(
               'More',
-              style: TextStyle(
-                fontSize: 10,
+              style: IunaText.caption.copyWith(
                 fontWeight: FontWeight.w500,
                 color: IunaPalette.ink3,
               ),
@@ -190,11 +196,11 @@ class _HeatmapPainter extends CustomPainter {
   final int peak;
 
   static Color _colorFor(double v) {
-    if (v <= 0) return _SP.heatmap0;
-    if (v < 0.25) return _SP.heatmap1;
-    if (v < 0.50) return _SP.heatmap2;
-    if (v < 0.75) return _SP.heatmap3;
-    return _SP.heatmap4;
+    if (v <= 0) return IunaPalette.heatmap0;
+    if (v < 0.25) return IunaPalette.heatmap1;
+    if (v < 0.50) return IunaPalette.heatmap2;
+    if (v < 0.75) return IunaPalette.heatmap3;
+    return IunaPalette.heatmap4;
   }
 
   @override
@@ -287,21 +293,19 @@ class _StreakStrip extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 6),
-          const Row(
+          Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
                 '5 weeks ago',
-                style: TextStyle(
-                  fontSize: 10,
+                style: IunaText.caption.copyWith(
                   fontWeight: FontWeight.w500,
                   color: IunaPalette.ink3,
                 ),
               ),
               Text(
                 'today',
-                style: TextStyle(
-                  fontSize: 10,
+                style: IunaText.caption.copyWith(
                   fontWeight: FontWeight.w500,
                   color: IunaPalette.ink3,
                 ),

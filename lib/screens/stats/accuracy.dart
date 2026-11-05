@@ -15,19 +15,23 @@ class _RetentionChart extends StatelessWidget {
             'No data in this window. Try "all" or come back after a few sessions.',
       );
     }
-    return SizedBox(
+    final summary = [
+      for (final b in bins)
+        if (b.retention case final r?)
+          '${b.label}: ${(r * 100).round()}% of ${b.total}',
+    ].join(', ');
+    return _ChartCanvas(
       height: 180,
-      child: CustomPaint(
-        painter: _RetentionPainter(bins: bins),
-        size: Size.infinite,
-      ),
+      summary: 'Pass rate by time since the last review. Goal 90%. $summary.',
+      painter: (scaler) => _RetentionPainter(bins: bins, scaler: scaler),
     );
   }
 }
 
 class _RetentionPainter extends CustomPainter {
-  _RetentionPainter({required this.bins});
+  _RetentionPainter({required this.bins, required this.scaler});
   final List<RetentionBin> bins;
+  final TextScaler scaler;
 
   static const _yLow = 0.5;
 
@@ -43,7 +47,7 @@ class _RetentionPainter extends CustomPainter {
 
     // Y gridlines + axis labels (60..100 by 10).
     final gridPaint = Paint()
-      ..color = _SP.grid
+      ..color = IunaPalette.chartGrid
       ..strokeWidth = 0.5;
     for (final v in const [0.6, 0.7, 0.8, 0.9, 1.0]) {
       final y = yAt(v);
@@ -51,16 +55,16 @@ class _RetentionPainter extends CustomPainter {
       _drawText(
         canvas,
         '${(v * 100).round()}',
-        Offset(padL - 6, y - 5),
+        Offset(padL - 4 - 24, y - scaler.scale(6)),
         align: TextAlign.right,
-        width: 18,
+        width: 24,
       );
     }
 
     // SM-2 90% target — dashed honey line.
     final targetY = yAt(0.9);
     final dashPaint = Paint()
-      ..color = _SP.honeyDeep
+      ..color = IunaPalette.chartHoneyDeep
       ..strokeWidth = 1;
     var x = padL;
     while (x < size.width - padR) {
@@ -74,10 +78,10 @@ class _RetentionPainter extends CustomPainter {
     _drawText(
       canvas,
       'Goal · 90%',
-      Offset(size.width - padR - 100, targetY - 12),
-      color: _SP.honeyDeep,
+      Offset(size.width - padR - 120, targetY - scaler.scale(15)),
+      color: IunaPalette.honeyInk,
       bold: true,
-      width: 100,
+      width: 120,
       align: TextAlign.right,
     );
 
@@ -100,13 +104,13 @@ class _RetentionPainter extends CustomPainter {
         ..close();
       canvas.drawPath(
         areaPath,
-        Paint()..color = _SP.mint.withValues(alpha: 0.45),
+        Paint()..color = IunaPalette.chartMint.withValues(alpha: 0.45),
       );
       canvas.drawPath(
         linePath,
         Paint()
           ..style = PaintingStyle.stroke
-          ..color = _SP.mintDeep
+          ..color = IunaPalette.chartMintDeep
           ..strokeWidth = 2
           ..strokeJoin = StrokeJoin.round
           ..strokeCap = StrokeCap.round,
@@ -124,7 +128,7 @@ class _RetentionPainter extends CustomPainter {
         canvas.drawCircle(
           Offset(cx, cy),
           3.4,
-          Paint()..color = below ? _SP.pinkDeep : _SP.mintDeep,
+          Paint()..color = below ? IunaPalette.bowPinkDeep : IunaPalette.chartMintDeep,
         );
         canvas.drawCircle(
           Offset(cx, cy),
@@ -137,24 +141,24 @@ class _RetentionPainter extends CustomPainter {
         _drawText(
           canvas,
           '${(ret * 100).round()}',
-          Offset(cx - 16, cy - 14),
-          color: below ? _SP.pinkDeep : IunaPalette.ink2,
+          Offset(cx - 16, cy - scaler.scale(17)),
+          color: below ? IunaPalette.pinkInk : IunaPalette.ink2,
           bold: true,
           width: 32,
           align: TextAlign.center,
         );
       }
-      _drawText(
+      _paintFitted(
         canvas,
-        b.label,
-        Offset(cx - 24, size.height - padB + 4),
-        width: 48,
-        align: TextAlign.center,
+        _chartLabel(b.label, scaler: scaler),
+        centerX: cx,
+        top: size.height - padB + 4,
+        maxWidth: cw / bins.length - 2,
       );
       _drawText(
         canvas,
         '${b.total}',
-        Offset(cx - 24, size.height - padB + 16),
+        Offset(cx - 24, size.height - padB + 4 + scaler.scale(13)),
         width: 48,
         align: TextAlign.center,
         color: IunaPalette.ink3,
@@ -162,7 +166,7 @@ class _RetentionPainter extends CustomPainter {
     }
   }
 
-  static void _drawText(
+  void _drawText(
     Canvas canvas,
     String text,
     Offset offset, {
@@ -173,6 +177,7 @@ class _RetentionPainter extends CustomPainter {
   }) {
     _chartLabel(
       text,
+      scaler: scaler,
       color: color,
       bold: bold,
       width: width,
@@ -181,7 +186,8 @@ class _RetentionPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _RetentionPainter old) => old.bins != bins;
+  bool shouldRepaint(covariant _RetentionPainter old) =>
+      old.bins != bins || old.scaler != scaler;
 }
 
 // ─── Pass rate by review kind (donut) ─────────────────────────────────
@@ -191,9 +197,9 @@ class _KindBreakdownDonut extends StatelessWidget {
   final Map<ReviewKind, ({int total, int correct})> byKind;
 
   static const _palette = <ReviewKind, Color>{
-    ReviewKind.review: _SP.mintDeep,
-    ReviewKind.learn: _SP.honey,
-    ReviewKind.relearn: _SP.pink,
+    ReviewKind.review: IunaPalette.chartMintDeep,
+    ReviewKind.learn: IunaPalette.chartHoney,
+    ReviewKind.relearn: IunaPalette.bowPink,
   };
 
   @override
@@ -212,18 +218,24 @@ class _KindBreakdownDonut extends StatelessWidget {
       children: [
         SizedBox(
           width: 150,
-          height: 150,
-          child: CustomPaint(
-            painter: _DonutPainter(
+          child: _ChartCanvas(
+            height: 150,
+            summary: '$total reviews. ${[
+              for (final e in entries)
+                if (e.$2.total > 0)
+                  '${_kindLabel(e.$1)}: ${e.$2.total}, '
+                      '${(e.$2.correct / e.$2.total * 100).round()}% passed',
+            ].join('. ')}.',
+            painter: (scaler) => _DonutPainter(
               entries: [
                 for (final e in entries)
                   if (e.$2.total > 0)
-                    (color: _palette[e.$1] ?? _SP.mintDeep, value: e.$2.total),
+                    (color: _palette[e.$1] ?? IunaPalette.chartMintDeep, value: e.$2.total),
               ],
               centerLabel: _compact(total),
               centerSub: 'reviews',
+              scaler: scaler,
             ),
-            size: Size.infinite,
           ),
         ),
         const SizedBox(width: 16),
@@ -236,7 +248,7 @@ class _KindBreakdownDonut extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.only(bottom: 6),
                   child: _KindRow(
-                    color: _palette[e.$1] ?? _SP.mintDeep,
+                    color: _palette[e.$1] ?? IunaPalette.chartMintDeep,
                     label: _kindLabel(e.$1),
                     total: e.$2.total,
                     correct: e.$2.correct,
@@ -289,18 +301,14 @@ class _KindRow extends StatelessWidget {
             Expanded(
               child: Text(
                 label,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
+                style: IunaText.chip.copyWith(
                   color: IunaPalette.ink2,
                 ),
               ),
             ),
             Text(
               _compact(total),
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
+              style: IunaText.chip.copyWith(
                 color: IunaPalette.ink2,
               ),
             ),
@@ -310,8 +318,7 @@ class _KindRow extends StatelessWidget {
           padding: const EdgeInsets.only(left: 16, top: 2),
           child: Text(
             pct == null ? 'no data' : '$pct% pass',
-            style: const TextStyle(
-              fontSize: 10.5,
+            style: IunaText.caption.copyWith(
               fontWeight: FontWeight.w500,
               color: IunaPalette.ink3,
             ),
@@ -327,11 +334,13 @@ class _DonutPainter extends CustomPainter {
     required this.entries,
     required this.centerLabel,
     required this.centerSub,
+    required this.scaler,
   });
 
   final List<({Color color, int value})> entries;
   final String centerLabel;
   final String centerSub;
+  final TextScaler scaler;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -346,6 +355,18 @@ class _DonutPainter extends CustomPainter {
       final a0 = acc / total * math.pi * 2 - math.pi / 2;
       acc += e.value;
       final a1 = acc / total * math.pi * 2 - math.pi / 2;
+      if (e.value == total) {
+        // A whole turn: arcTo from a point back to itself draws nothing.
+        canvas.drawCircle(
+          Offset(cx, cy),
+          (outer + inner) / 2,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = outer - inner
+            ..color = e.color,
+        );
+        continue;
+      }
       final path = Path()
         ..moveTo(cx + math.cos(a0) * inner, cy + math.sin(a0) * inner)
         ..lineTo(cx + math.cos(a0) * outer, cy + math.sin(a0) * outer)
@@ -368,27 +389,26 @@ class _DonutPainter extends CustomPainter {
     final big = TextPainter(
       text: TextSpan(
         text: centerLabel,
-        style: const TextStyle(
-          fontSize: 22,
-          fontWeight: FontWeight.w700,
+        style: IunaText.headline.copyWith(
           color: IunaPalette.ink,
-          fontFamily: _SP.labelFont,
+          fontFamily: _kChartLabelFont,
         ),
       ),
       textDirection: TextDirection.ltr,
+      textScaler: scaler,
     )..layout();
     big.paint(canvas, Offset(cx - big.width / 2, cy - big.height));
     final sub = TextPainter(
       text: TextSpan(
         text: centerSub,
-        style: const TextStyle(
-          fontSize: 10,
+        style: IunaText.caption.copyWith(
           fontWeight: FontWeight.w500,
           color: IunaPalette.ink3,
-          fontFamily: _SP.labelFont,
+          fontFamily: _kChartLabelFont,
         ),
       ),
       textDirection: TextDirection.ltr,
+      textScaler: scaler,
     )..layout();
     sub.paint(canvas, Offset(cx - sub.width / 2, cy + 2));
   }
@@ -397,7 +417,8 @@ class _DonutPainter extends CustomPainter {
   bool shouldRepaint(covariant _DonutPainter old) =>
       old.entries != entries ||
       old.centerLabel != centerLabel ||
-      old.centerSub != centerSub;
+      old.centerSub != centerSub ||
+      old.scaler != scaler;
 }
 
 // ─── Accuracy by rarity (horizontal bars) ─────────────────────────────
@@ -431,10 +452,9 @@ class _AccuracyByRarity extends StatelessWidget {
             ),
           ),
         const SizedBox(height: 2),
-        const Text(
+        Text(
           'The dotted line marks the 90% goal.',
-          style: TextStyle(
-            fontSize: 10.5,
+          style: IunaText.caption.copyWith(
             color: IunaPalette.ink3,
             fontWeight: FontWeight.w500,
           ),
@@ -461,12 +481,13 @@ class _RarityBar extends StatelessWidget {
     return Row(
       children: [
         SizedBox(
-          width: 72,
+          width: 80,
           child: Row(
             children: [
               Container(
-                width: 20,
-                height: 20,
+                constraints: const BoxConstraints(minWidth: 22),
+                height: 22,
+                padding: const EdgeInsets.symmetric(horizontal: 3),
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: rarityColor(rarity),
@@ -474,8 +495,7 @@ class _RarityBar extends StatelessWidget {
                 ),
                 child: Text(
                   rarityCode(rarity),
-                  style: TextStyle(
-                    fontSize: 9.5,
+                  style: IunaText.chip.copyWith(
                     fontWeight: FontWeight.w700,
                     color: rarityInk(rarity),
                   ),
@@ -485,8 +505,7 @@ class _RarityBar extends StatelessWidget {
               Expanded(
                 child: Text(
                   '$total',
-                  style: const TextStyle(
-                    fontSize: 11,
+                  style: IunaText.caption.copyWith(
                     fontWeight: FontWeight.w500,
                     color: IunaPalette.ink3,
                   ),
@@ -522,7 +541,7 @@ class _RarityBar extends StatelessWidget {
                         alignment: Alignment.centerRight,
                         child: Container(
                           width: 1.5,
-                          color: _SP.honeyDeep.withValues(alpha: 0.7),
+                          color: IunaPalette.chartHoneyDeep.withValues(alpha: 0.7),
                         ),
                       ),
                     ),
@@ -538,8 +557,7 @@ class _RarityBar extends StatelessWidget {
           child: Text(
             total == 0 ? '—' : '${(pct * 100).round()}%',
             textAlign: TextAlign.right,
-            style: const TextStyle(
-              fontSize: 12,
+            style: IunaText.chip.copyWith(
               fontWeight: FontWeight.w700,
               color: IunaPalette.ink,
             ),

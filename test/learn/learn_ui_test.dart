@@ -194,14 +194,11 @@ void main() {
 
     await tester.pumpWidget(MaterialApp(home: CardDetailScreen(db: db, cardId: id, learn: env)));
     await tester.pump();
-    expect(find.text('Ask Kuma-sensei'), findsNothing, reason: 'no key, no tutor');
+    expect(find.byType(TextField), findsNothing, reason: 'no key, no tutor');
 
     await settings.setApiKey('sk-or-v1-abc');
     await tester.pump();
-    expect(find.byType(TextField), findsNothing, reason: 'folded until asked');
-    await tester.tap(find.text('Ask Kuma-sensei'));
-    await tester.pump();
-    expect(find.text('Ask about 会議…'), findsOneWidget);
+    expect(find.text('Ask Kuma-sensei about 会議…'), findsOneWidget);
     expect(find.byIcon(Icons.bookmark_outline_rounded), findsOneWidget);
 
     await tester.enterText(find.byType(TextField), 'Keep this one for me');
@@ -244,6 +241,8 @@ void main() {
 
     await tester.pumpWidget(MaterialApp(home: CardDetailScreen(db: db, cardId: id, learn: env)));
     await tester.pump();
+    await tester.ensureVisible(find.text('Get examples'));
+    await tester.pump();
     await tester.tap(find.text('Get examples'));
     await tester.pump();
     await tester.pump(const Duration(seconds: 1));
@@ -255,8 +254,7 @@ void main() {
     expect(find.text('・会議は三時からです。'), findsOneWidget);
     expect(find.text('The meeting ran long.'), findsOneWidget);
     expect(find.text('Get examples'), findsNothing, reason: 'the card has examples now');
-    expect(find.text('Ask Kuma-sensei'), findsNothing);
-    expect(find.text('Ask Kuma-sensei about 会議…'), findsOneWidget, reason: 'the plain chat bar');
+    expect(find.text('Ask Kuma-sensei about 会議…'), findsOneWidget);
     final kinds = await env.repo.db.select(env.repo.db.usageLog).get();
     expect([for (final u in kinds) u.kind], ['examples']);
 
@@ -266,7 +264,6 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     expect(await deck.examplesForCard(id), isEmpty);
     expect(find.text('Get examples'), findsOneWidget);
-    expect(find.text('Ask Kuma-sensei'), findsOneWidget, reason: 'folded again');
 
     await tester.tap(find.text('Undo'));
     await tester.pump();
@@ -437,7 +434,9 @@ void main() {
     await tester.tap(option('は'));
     await tester.pumpAndSettle();
     expect(lastSent(), {'role': 'user', 'content': 'は'});
-    expect(find.byIcon(Icons.check_rounded), findsOneWidget);
+    expect(find.text('Your answer'), findsOneWidget);
+    expect(find.byIcon(Icons.check_rounded), findsNothing,
+        reason: 'the pick is marked as the learner\'s, not as right');
 
     await tester.tap(option('が'));
     await tester.pumpAndSettle();
@@ -447,7 +446,7 @@ void main() {
     await tester.tap(find.descendant(of: second, matching: find.text("I don't know")));
     await tester.pumpAndSettle();
     expect(lastSent(), {'role': 'user', 'content': "I don't know"});
-    expect(find.byIcon(Icons.check_rounded), findsNWidgets(2));
+    expect(find.text('Your answer'), findsNWidgets(2));
 
     await tester.pumpWidget(const SizedBox());
   });
@@ -482,5 +481,33 @@ void main() {
     await tester.pumpAndSettle();
     expect(await store.read('openrouter_model'), isNull);
     expect(find.text(kDefaultLearnModel), findsOneWidget);
+  });
+
+  testWidgets('settings: removing the key asks first', (tester) async {
+    final db = AppDatabase.forTesting(NativeDatabase.memory());
+    addTearDown(db.close);
+    await settings.setApiKey('sk-or-v1-abc');
+
+    await tester.pumpWidget(MaterialApp(home: SettingsScreen(db: db)));
+    await tester.pumpAndSettle();
+    Future<void> remove() async {
+      await tester.ensureVisible(find.text('Change'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Change'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Remove'));
+      await tester.pumpAndSettle();
+      expect(find.text('Remove key?'), findsOneWidget);
+    }
+
+    await remove();
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(settings.available.value, isTrue, reason: 'kept');
+
+    await remove();
+    await tester.tap(find.widgetWithText(FilledButton, 'Remove'));
+    await tester.pumpAndSettle();
+    expect(settings.available.value, isFalse);
   });
 }

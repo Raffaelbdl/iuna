@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../theme/iuna_theme.dart';
 import '../../widgets/confirm_dialog.dart';
 import '../../widgets/iuna_page.dart';
+import '../../widgets/time_words.dart';
 import '../agent/chat_controller.dart';
 import '../agent/chat_store.dart';
 import '../agent/tutor_prompt.dart';
@@ -213,14 +214,14 @@ class _PassedLessonHint extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
+    return Center(
       child: Padding(
         padding: EdgeInsets.all(32),
         child: Text(
           'This chapter is passed. Ask Kuma-sensei anything about it, or '
           'say “quiz me” for a revision check.',
           textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 13, height: 1.45, color: IunaPalette.ink3),
+          style: IunaText.bodySmall.copyWith(height: 1.45, color: IunaPalette.ink3),
         ),
       ),
     );
@@ -236,14 +237,14 @@ class _TheoryView extends StatelessWidget {
   Widget build(BuildContext context) {
     final passed = chapter.status == ChapterStatus.passed;
     if (chapter.doc.trim().isEmpty) {
-      return const Center(
+      return Center(
         child: Padding(
           padding: EdgeInsets.all(32),
           child: Text(
             'Kuma-sensei writes the theory here as the lesson goes. It is yours '
             'to revise from, and it freezes once you pass the chapter.',
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 13, height: 1.45, color: IunaPalette.ink3),
+            style: IunaText.bodySmall.copyWith(height: 1.45, color: IunaPalette.ink3),
           ),
         ),
       );
@@ -260,14 +261,18 @@ class _TheoryView extends StatelessWidget {
                 const SizedBox(width: 6),
                 Text(
                   chapter.passedAt == null
-                      ? 'Passed — this text is frozen'
-                      : 'Passed on ${isoDay(chapter.passedAt!.toLocal())} — this text is frozen',
-                  style: const TextStyle(fontSize: 12, color: IunaPalette.ink3),
+                      ? 'Passed — the lesson text is locked'
+                      : 'Passed on ${dayWords(chapter.passedAt!.toLocal())} — the lesson text is locked',
+                  style: IunaText.caption.copyWith(color: IunaPalette.ink3),
                 ),
               ],
             ),
           ),
-        LearnPanel(child: TutorMarkdown(chapter.doc, fontSize: 15, bookmarks: bookmarks)),
+        LearnPanel(child: TutorMarkdown(
+          chapter.doc,
+          fontSize: IunaText.bodyLarge.fontSize!,
+          bookmarks: bookmarks,
+        )),
       ],
     );
   }

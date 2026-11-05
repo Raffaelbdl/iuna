@@ -1,0 +1,32 @@
+import 'package:intl/intl.dart';
+
+/// An hour of the day as said aloud: "midnight", "noon", "4 AM".
+String hourWords(int hour) => switch (hour) {
+  0 => 'midnight',
+  12 => 'noon',
+  _ => DateFormat('h a').format(DateTime(2000, 1, 1, hour)),
+};
+
+/// When [t] is, seen from [now]: "now", "today at 3:10 PM", "tomorrow
+/// at midnight", "Thu at 9 AM", then "Apr 30" past a week.
+String whenWords(DateTime t, DateTime now) {
+  if (!t.isAfter(now)) return 'now';
+  // Calendar days in UTC, so a DST change can't make a day 23 hours.
+  final days = DateTime.utc(
+    t.year,
+    t.month,
+    t.day,
+  ).difference(DateTime.utc(now.year, now.month, now.day)).inDays;
+  final clock = t.minute == 0
+      ? hourWords(t.hour)
+      : DateFormat('h:mm a').format(t);
+  return switch (days) {
+    0 => 'today at $clock',
+    1 => 'tomorrow at $clock',
+    < 7 => '${DateFormat('EEE').format(t)} at $clock',
+    _ => DateFormat('MMM d').format(t),
+  };
+}
+
+/// A calendar day as the app shows it: "Apr 25, 2026".
+String dayWords(DateTime d) => DateFormat('MMM d, y').format(d);

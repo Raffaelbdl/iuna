@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../theme/iuna_theme.dart';
 import '../agent/quiz.dart';
+import '../../widgets/option_tile.dart';
 import 'tutor_markdown.dart';
 
 BoxDecoration _cardDecoration({bool live = false}) => paperPanelDecoration(
@@ -22,8 +23,7 @@ class _QuizHeader extends StatelessWidget {
         Expanded(
           child: Text(
             title,
-            style: const TextStyle(
-              fontSize: 14,
+            style: IunaText.label.copyWith(
               fontWeight: FontWeight.w800,
               color: IunaPalette.ink,
             ),
@@ -136,8 +136,7 @@ class _QuizCardState extends State<QuizCard> {
           children: [
             Text(
               '${index + 1}. ',
-              style: const TextStyle(
-                fontSize: 14,
+              style: IunaText.label.copyWith(
                 fontWeight: FontWeight.w700,
                 color: IunaPalette.ink3,
                 height: 1.5,
@@ -154,7 +153,7 @@ class _QuizCardState extends State<QuizCard> {
             enabled: !skipped && !_sent,
             minLines: 1,
             maxLines: 4,
-            style: const TextStyle(fontSize: 14, color: IunaPalette.ink),
+            style: IunaText.body.copyWith(color: IunaPalette.ink),
             decoration: InputDecoration(
               isDense: true,
               hintText: 'Your answer',
@@ -168,43 +167,28 @@ class _QuizCardState extends State<QuizCard> {
             ),
           )
         else
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final o in options)
-                ChoiceChip(
-                  label: Text(o.label),
-                  selected: (_selected[q.id] ?? const {}).contains(o.id),
-                  onSelected: _sent ? null : (_) => _toggle(q, o.id),
-                  selectedColor: const Color(0xFFFDE9C9),
-                  backgroundColor: IunaPalette.paper2,
-                  labelStyle: const TextStyle(fontSize: 14, color: IunaPalette.ink),
-                  showCheckmark: q.allowMultiple,
-                  side: const BorderSide(color: Color.fromRGBO(74, 53, 32, 0.12)),
-                ),
-            ],
-          ),
-        const SizedBox(height: 4),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton.icon(
-            onPressed: _sent
+          for (final o in options)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: OptionTile(
+                label: o.label,
+                mark: q.allowMultiple ? OptionMark.checkbox : OptionMark.radio,
+                selected: (_selected[q.id] ?? const {}).contains(o.id),
+                onTap: _sent ? null : () => _toggle(q, o.id),
+              ),
+            ),
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: OptionTile(
+            label: skipLabel,
+            quiet: true,
+            mark: OptionMark.checkbox,
+            selected: skipped,
+            onTap: _sent
                 ? null
                 : () => setState(() {
                       if (!_skipped.remove(q.id)) _skipped.add(q.id);
                     }),
-            icon: Icon(
-              skipped ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
-              size: 16,
-            ),
-            label: Text(skipLabel),
-            style: TextButton.styleFrom(
-              foregroundColor: skipped ? IunaPalette.ink : IunaPalette.ink3,
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              visualDensity: VisualDensity.compact,
-              textStyle: Theme.of(context).textTheme.labelMedium,
-            ),
           ),
         ),
       ],
@@ -236,14 +220,14 @@ class QuizRecordCard extends StatelessWidget {
             title: spec.title.isEmpty ? 'Quick check' : spec.title,
             trailing: Text(
               answered ? 'answered' : 'not answered',
-              style: const TextStyle(fontSize: 12, color: IunaPalette.ink3),
+              style: IunaText.caption.copyWith(color: IunaPalette.ink3),
             ),
           ),
           for (var i = 0; i < spec.questions.length; i++) ...[
             const SizedBox(height: 8),
             Text(
               '${i + 1}. ${spec.questions[i].prompt}',
-              style: const TextStyle(fontSize: 13, color: IunaPalette.ink2, height: 1.4),
+              style: IunaText.bodySmall.copyWith(color: IunaPalette.ink2, height: 1.4),
             ),
             if (answered)
               Padding(
@@ -252,8 +236,7 @@ class QuizRecordCard extends StatelessWidget {
                   skipped.contains(spec.questions[i].id)
                       ? spec.skipLabel
                       : _answerText(values[spec.questions[i].id]),
-                  style: const TextStyle(
-                    fontSize: 13,
+                  style: IunaText.bodySmall.copyWith(
                     fontWeight: FontWeight.w700,
                     color: IunaPalette.ink,
                   ),

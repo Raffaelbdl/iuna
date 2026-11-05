@@ -26,20 +26,15 @@ class _Headline extends StatelessWidget {
             children: [
               Text(
                 value,
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w700,
+                style: IunaText.headline.copyWith(
                   color: IunaPalette.ink,
                   height: 1,
-                  letterSpacing: -0.2,
                 ),
               ),
               const SizedBox(height: 6),
               Text(
                 label,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
+                style: IunaText.chip.copyWith(
                   color: IunaPalette.ink2,
                   height: 1.1,
                   letterSpacing: 0.3,
@@ -49,8 +44,7 @@ class _Headline extends StatelessWidget {
                 const SizedBox(height: 3),
                 Text(
                   sub,
-                  style: const TextStyle(
-                    fontSize: 12,
+                  style: IunaText.caption.copyWith(
                     fontWeight: FontWeight.w500,
                     color: IunaPalette.ink3,
                     height: 1.2,
@@ -66,7 +60,7 @@ class _Headline extends StatelessWidget {
     final divider = Container(
       width: 1,
       margin: const EdgeInsets.symmetric(vertical: 14),
-      color: _SP.grid,
+      color: IunaPalette.chartGrid,
     );
 
     final acc = trueRetention;

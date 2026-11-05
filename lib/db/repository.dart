@@ -882,6 +882,30 @@ class IunaRepository with MetaTimestamps {
     return entries;
   }
 
+  /// What comes once today's work is done: the next day rollover, which
+  /// brings the next pack, and the soonest review still scheduled (null
+  /// with no unsuspended card owned).
+  Future<({DateTime nextDay, DateTime? nextReview})> upcoming({
+    DateTime? now,
+  }) async {
+    final day = await _day(now);
+    final start = day.start;
+    // Built from the calendar, not start + 24h, so a DST change can't
+    // shift the hour.
+    final nextDay = DateTime(
+      start.year,
+      start.month,
+      start.day + 1,
+      day.resetHour,
+    );
+    final soonest = db.userCards.nextDue.min();
+    final row = await (db.selectOnly(db.userCards)
+          ..addColumns([soonest])
+          ..where(db.userCards.suspended.equals(false)))
+        .getSingle();
+    return (nextDay: nextDay, nextReview: row.read(soonest));
+  }
+
   Future<int> dueCountToday({DateTime? now}) async {
     final dayEnd = (await _day(now)).end;
     final count = db.userCards.cardId.count();

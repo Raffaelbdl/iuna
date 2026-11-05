@@ -7,6 +7,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:intl/intl.dart';
 
 import '../../db/repository.dart';
+import '../../db/sqlite_open.dart';
 import '../../learn/learn.dart';
 import '../../learn/learn_backup.dart';
 import '../../services/db_restore.dart';
@@ -17,9 +18,9 @@ import '../../widgets/confirm_dialog.dart';
 import '../../widgets/section_header.dart';
 import '../../widgets/snack.dart';
 
-/// Settings → Backup & restore and Cloud backup: restore from a file,
-/// Drive sign-in, back up now, and restore the library or the courses
-/// from Drive.
+/// Settings → Backup & restore and Cloud backup: save or restore a
+/// backup file, Drive sign-in, back up now, and restore the collection
+/// or the courses from Drive.
 class BackupSection extends StatefulWidget {
   const BackupSection({super.key, required this.repo});
 
@@ -66,12 +67,13 @@ class _BackupSectionState extends State<BackupSection> {
 
   Future<bool> _confirmReplaceLibrary() => showConfirmDialog(
     context,
-    title: 'Replace your library?',
+    title: 'Replace your collection?',
     body:
         'Your current cards, reviews, and progress will be replaced '
-        'with the chosen snapshot. This cannot be undone from inside '
+        'with the chosen backup. This cannot be undone from inside '
         'the app.',
     confirmLabel: 'Replace',
+    destructive: true,
   );
 
   Future<bool> _confirmReplaceCourses() => showConfirmDialog(
@@ -79,14 +81,15 @@ class _BackupSectionState extends State<BackupSection> {
     title: 'Replace your courses?',
     body:
         'Your current courses, chats and Kuma-sensei’s notes will be '
-        'replaced with the chosen snapshot. Your cards are not touched.',
+        'replaced with the chosen backup. Your cards are not touched.',
     confirmLabel: 'Replace',
+    destructive: true,
   );
 
   Future<void> _restoreFromFile() async {
     final picked = await FilePicker.platform.pickFiles(
       type: FileType.any,
-      dialogTitle: 'Pick an Iuna sqlite snapshot',
+      dialogTitle: 'Pick a backup file from Iuna',
     );
     final path = picked?.files.firstOrNull?.path;
     if (path == null || !mounted) return;
@@ -103,13 +106,44 @@ class _BackupSectionState extends State<BackupSection> {
     await _showStagedDialog();
   }
 
-  Future<void> _showStagedDialog({String what = 'library'}) async {
+  /// Writes a copy of the collection where the learner picks, for a
+  /// restore without Google Drive.
+  Future<void> _saveToFile() async {
+    setState(() => _busy = true);
+    final dir = await Directory.systemTemp.createTemp('iuna_backup_');
+    try {
+      final copy = File('${dir.path}/iuna.sqlite');
+      await vacuumInto(_repo.db, copy);
+      final bytes = await copy.readAsBytes();
+      final day = DateFormat('yyyy-MM-dd').format(DateTime.now());
+      final path = await FilePicker.platform.saveFile(
+        dialogTitle: 'Save a backup file',
+        fileName: 'iuna-backup-$day.sqlite',
+        bytes: bytes,
+      );
+      // On a phone the picker writes the bytes; a desktop one only
+      // names the file.
+      if (path != null && !Platform.isAndroid && !Platform.isIOS) {
+        await File(path).writeAsBytes(bytes, flush: true);
+      }
+      if (path != null && mounted) {
+        showSnack(context, 'Backup saved. Restore it here any time.');
+      }
+    } catch (e) {
+      if (mounted) showErrorSnack(context, "Couldn't save the backup.", e);
+    } finally {
+      unawaited(dir.delete(recursive: true));
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _showStagedDialog({String what = 'collection'}) async {
     if (!mounted) return;
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
-        title: const Text('Snapshot staged'),
+        title: const Text('Restore ready'),
         content: Text(
           'Close and reopen Iuna to apply the restored $what. The '
           'app will swap it in on next launch.',
@@ -184,7 +218,7 @@ class _BackupSectionState extends State<BackupSection> {
     setState(() => _busy = false);
 
     if (snapshots.isEmpty) {
-      showSnack(context, 'No snapshots on Drive yet');
+      showSnack(context, 'No backups on Drive yet');
       return;
     }
 
@@ -207,7 +241,7 @@ class _BackupSectionState extends State<BackupSection> {
       case DriveRestoreFailed(:final message):
         showErrorSnack(
           context,
-          "Couldn't download that snapshot. Try again later.",
+          "Couldn't download that backup. Try again later.",
           message,
         );
     }
@@ -272,15 +306,30 @@ class _BackupSectionState extends State<BackupSection> {
           children: [
             ListTile(
               leading: const Icon(
+                Icons.save_alt_rounded,
+                color: IunaPalette.pawBrown,
+              ),
+              title: const Text('Save a backup file'),
+              subtitle: const Text(
+                'A copy of your collection, reviews and progress, kept '
+                'wherever you choose. Courses are not included.',
+              ),
+              trailing: chevron,
+              enabled: !_busy,
+              onTap: _saveToFile,
+            ),
+            ListTile(
+              leading: const Icon(
                 Icons.upload_file_rounded,
                 color: IunaPalette.pawBrown,
               ),
               title: const Text('Restore from file'),
               subtitle: const Text(
-                'Replace your library with an Iuna sqlite snapshot. '
+                'Replace your collection with a backup file from Iuna. '
                 'Takes effect after restart.',
               ),
               trailing: chevron,
+              enabled: !_busy,
               onTap: _restoreFromFile,
             ),
           ],
@@ -332,7 +381,7 @@ class _BackupSectionState extends State<BackupSection> {
                 ),
                 title: const Text('Back up now'),
                 subtitle: const Text(
-                  'Upload your library to Google Drive. Courses go '
+                  'Upload your collection to Google Drive. Courses go '
                   'along whenever they changed.',
                 ),
                 enabled: !_busy,
@@ -345,13 +394,13 @@ class _BackupSectionState extends State<BackupSection> {
                 ),
                 title: const Text('Restore from Drive'),
                 subtitle: const Text(
-                  'Pick a snapshot to stage. Takes effect after restart.',
+                  'Pick a backup to restore. Takes effect after restart.',
                 ),
                 trailing: chevron,
                 enabled: !_busy,
                 onTap: () => _restore(
                   DriveArtifact.library,
-                  what: 'library',
+                  what: 'collection',
                   confirm: _confirmReplaceLibrary,
                 ),
               ),

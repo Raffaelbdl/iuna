@@ -44,8 +44,7 @@ class SenseRow extends StatelessWidget {
             width: 18,
             child: Text(
               '$ordinal.',
-              style: const TextStyle(
-                fontSize: 13,
+              style: IunaText.bodySmall.copyWith(
                 fontWeight: FontWeight.w700,
                 color: IunaPalette.ink3,
                 height: 1.4,
@@ -59,8 +58,7 @@ class SenseRow extends StatelessWidget {
               children: [
                 Text(
                   gloss,
-                  style: const TextStyle(
-                    fontSize: 14,
+                  style: IunaText.body.copyWith(
                     fontWeight: FontWeight.w500,
                     color: IunaPalette.ink,
                     height: 1.4,
@@ -71,8 +69,7 @@ class SenseRow extends StatelessWidget {
                     padding: const EdgeInsets.only(top: 2),
                     child: Text(
                       posLabel(pos),
-                      style: const TextStyle(
-                        fontSize: 12,
+                      style: IunaText.caption.copyWith(
                         fontStyle: FontStyle.italic,
                         color: IunaPalette.ink3,
                       ),
@@ -83,8 +80,7 @@ class SenseRow extends StatelessWidget {
                     padding: const EdgeInsets.only(top: 4),
                     child: Text(
                       definition,
-                      style: const TextStyle(
-                        fontSize: 13,
+                      style: IunaText.bodySmall.copyWith(
                         color: IunaPalette.ink2,
                         height: 1.5,
                       ),

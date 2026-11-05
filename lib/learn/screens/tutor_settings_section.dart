@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/iuna_theme.dart';
+import '../../widgets/confirm_dialog.dart';
 import '../../widgets/section_header.dart';
 import '../../widgets/snack.dart';
 import '../../widgets/text_input_dialog.dart';
@@ -60,9 +61,19 @@ class _TutorSettingsSectionState extends State<TutorSettingsSection> {
       hint: 'sk-or-v1-…',
       obscure: true,
       removeLabel: _key == null ? null : 'Remove',
+      removeIsDestructive: true,
     );
     if (result == null || !mounted) return;
     if (result.remove) {
+      final sure = await showConfirmDialog(
+        context,
+        title: 'Remove key?',
+        body: 'The Learn tab hides until you add one again. Your courses '
+            'and chats stay on this phone.',
+        confirmLabel: 'Remove',
+        destructive: true,
+      );
+      if (!sure) return;
       await _settings.clearApiKey();
       if (!mounted) return;
       setState(() => _key = null);
@@ -139,7 +150,7 @@ class _TutorSettingsSectionState extends State<TutorSettingsSection> {
               const SizedBox(height: 2),
               Text(
                 'Photos go to $kPhotoFallbackModel when this one cannot read them.',
-                style: const TextStyle(fontSize: 12, color: IunaPalette.ink3),
+                style: IunaText.caption.copyWith(color: IunaPalette.ink3),
               ),
             ],
           ),
@@ -153,7 +164,7 @@ class _TutorSettingsSectionState extends State<TutorSettingsSection> {
           subtitle: const Text('Spent on this phone, as OpenRouter reports it.'),
           trailing: Text(
             _formatCost(_spent),
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: IunaPalette.ink2),
+            style: IunaText.label.copyWith(fontWeight: FontWeight.w700, color: IunaPalette.ink2),
           ),
         ),
       ],

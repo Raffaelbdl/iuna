@@ -9,8 +9,10 @@ import '../widgets/cta_button.dart';
 import '../widgets/hex_bg.dart';
 import '../widgets/iuna_bottom_nav.dart';
 import '../widgets/iuna_icon_button.dart';
+import '../widgets/iuna_page.dart';
 import '../widgets/section_header.dart';
 import '../widgets/tappable.dart';
+import '../widgets/time_words.dart';
 import '../widgets/vocab_card.dart';
 import 'card_detail_screen.dart';
 import 'collection_screen.dart';
@@ -24,12 +26,21 @@ class ReviewDoneScreen extends StatefulWidget {
     required this.correct,
     required this.total,
     this.doneCardIds = const [],
+    this.canUndo = false,
+    this.now,
   });
 
   final AppDatabase db;
   final int correct;
   final int total;
   final List<int> doneCardIds;
+
+  /// Pushed over a finished review, which takes the last card back when
+  /// this pops with true.
+  final bool canUndo;
+
+  /// The clock for "Coming up"; goldens pin it.
+  final DateTime? now;
 
   @override
   State<ReviewDoneScreen> createState() => _ReviewDoneScreenState();
@@ -55,6 +66,8 @@ class _ReviewDoneScreenState extends State<ReviewDoneScreen>
   int _todayCorrect = 0;
   int _todayTotal = 0;
   List<CardRow> _doneCards = const [];
+  ({DateTime nextDay, DateTime? nextReview})? _upcoming;
+  bool _poolEmpty = false;
 
   @override
   void initState() {
@@ -63,10 +76,13 @@ class _ReviewDoneScreenState extends State<ReviewDoneScreen>
   }
 
   Future<void> _load() async {
-    final (streak, today, cards) = await (
-      _repo.recordStreak(),
-      _repo.todayStats(),
+    final now = widget.now;
+    final (streak, today, cards, upcoming, booster) = await (
+      _repo.recordStreak(now: now),
+      _repo.todayStats(now: now),
       _repo.cardsByIds(widget.doneCardIds),
+      _repo.upcoming(now: now),
+      _repo.boosterPreview(now: now),
     ).wait;
     if (!mounted) return;
     setState(() {
@@ -74,7 +90,19 @@ class _ReviewDoneScreenState extends State<ReviewDoneScreen>
       _todayCorrect = today.correct;
       _todayTotal = today.total;
       _doneCards = cards.take(5).toList();
+      _upcoming = upcoming;
+      _poolEmpty = booster.packs > 0 && booster.newCards == 0;
     });
+  }
+
+  void _leave() => Navigator.of(context).popUntil((r) => r.isFirst);
+
+  void _openCollection() {
+    final navigator = Navigator.of(context);
+    navigator.popUntil((r) => r.isFirst);
+    navigator.push(
+      MaterialPageRoute(builder: (_) => CollectionScreen(db: widget.db)),
+    );
   }
 
   @override
@@ -124,148 +152,168 @@ class _ReviewDoneScreenState extends State<ReviewDoneScreen>
     final perfect = _todayTotal > 0
         ? _todayCorrect == _todayTotal
         : hasSession && widget.correct == widget.total;
-    final tier = _tierFor(tierPct, perfect: perfect);
+    final tier = hasSession
+        ? _tierFor(tierPct, perfect: perfect)
+        : _tallyCopy();
 
-    return Scaffold(
-      backgroundColor: IunaPalette.bg,
-      body: DecoratedBox(
-        decoration: iunaPageBackground(),
-        child: Stack(
-          children: [
-            const Positioned.fill(child: HexBg(seed: 9)),
-            Positioned.fill(
-              child: IgnorePointer(
-                child: AnimatedBuilder(
-                  animation: _confetti,
-                  builder: (_, _) => CustomPaint(
-                    painter: _ConfettiPainter(
-                      hexes: _hexes,
-                      progress: _confetti.value,
+    // Under a finished review, Back leaves both rather than uncovering
+    // it; only the undo arrow goes back to it.
+    return PopScope<Object?>(
+      canPop: !widget.canUndo,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _leave();
+      },
+      child: Scaffold(
+        backgroundColor: IunaPalette.bg,
+        body: DecoratedBox(
+          decoration: iunaPageBackground(),
+          child: Stack(
+            children: [
+              const Positioned.fill(child: HexBg(seed: 9)),
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: AnimatedBuilder(
+                    animation: _confetti,
+                    builder: (_, _) => CustomPaint(
+                      painter: _ConfettiPainter(
+                        hexes: _hexes,
+                        progress: _confetti.value,
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-            SafeArea(
-              child: Column(
-                children: [
-                  _TopBar(
-                    label: hasSession ? 'Done' : 'Today',
-                    onClose: () =>
-                        Navigator.of(context).popUntil((r) => r.isFirst),
-                  ),
-                  Expanded(
-                    child: ListView(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                      children: [
-                        _HeroMedallion(animation: _float),
-                        const SizedBox(height: 18),
-                        Text(
-                          tier.kicker,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            color: IunaPalette.ink3,
-                            letterSpacing: 4,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          tier.headline,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w600,
-                            color: IunaPalette.ink,
-                            letterSpacing: -0.3,
-                            height: 1.1,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          tier.note,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontStyle: FontStyle.italic,
-                            color: IunaPalette.ink3,
-                          ),
-                        ),
-                        const SizedBox(height: 22),
-                        _StatsPanel(
-                          hasSession: hasSession,
-                          sessionCorrect: widget.correct,
-                          sessionTotal: widget.total,
-                          sessionPct: sessionPct,
-                          todayCorrect: _todayCorrect,
-                          todayTotal: _todayTotal,
-                          todayPct: todayPct,
-                          streak: _streak,
-                        ),
-                        if (_doneCards.isNotEmpty) ...[
+              SafeArea(
+                child: Column(
+                  children: [
+                    _TopBar(
+                      label: hasSession ? 'Done' : 'Today',
+                      onUndo: widget.canUndo
+                          ? () => Navigator.of(context).pop(true)
+                          : null,
+                    ),
+                    Expanded(
+                      child: ListView(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                        children: [
+                          _HeroMedallion(animation: _float),
                           const SizedBox(height: 18),
-                          const Padding(
-                            padding: EdgeInsets.only(left: 4, bottom: 10),
-                            child: IunaEyebrow('Reviewed this session'),
+                          Text(
+                            tier.kicker,
+                            textAlign: TextAlign.center,
+                            style: IunaText.caption.copyWith(
+                              fontWeight: FontWeight.w500,
+                              color: IunaPalette.ink3,
+                              letterSpacing: 4,
+                            ),
                           ),
-                          _DoneScroller(
-                            cards: _doneCards,
-                            onTap: (id) async {
-                              await Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => CardDetailScreen(
-                                    db: widget.db,
-                                    cardId: id,
-                                    from: IunaNavTab.today,
+                          const SizedBox(height: 6),
+                          Text(
+                            tier.headline,
+                            textAlign: TextAlign.center,
+                            style: IunaText.display.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: IunaPalette.ink,
+                              height: 1.1,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            tier.note,
+                            textAlign: TextAlign.center,
+                            style: IunaText.body.copyWith(
+                              fontStyle: FontStyle.italic,
+                              color: IunaPalette.ink3,
+                            ),
+                          ),
+                          const SizedBox(height: 22),
+                          _StatsPanel(
+                            hasSession: hasSession,
+                            sessionCorrect: widget.correct,
+                            sessionTotal: widget.total,
+                            sessionPct: sessionPct,
+                            todayCorrect: _todayCorrect,
+                            todayTotal: _todayTotal,
+                            todayPct: todayPct,
+                            streak: _streak,
+                          ),
+                          if (_upcoming case final upcoming?) ...[
+                            const SizedBox(height: 12),
+                            _ComingUp(
+                              nextDay: upcoming.nextDay,
+                              nextReview: upcoming.nextReview,
+                              poolEmpty: _poolEmpty,
+                              now: widget.now ?? DateTime.now(),
+                            ),
+                          ],
+                          if (_doneCards.isNotEmpty) ...[
+                            const SizedBox(height: 18),
+                            const Padding(
+                              padding: EdgeInsets.only(left: 4, bottom: 10),
+                              child: IunaEyebrow('Reviewed this session'),
+                            ),
+                            _DoneScroller(
+                              cards: _doneCards,
+                              onTap: (id) async {
+                                await Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => CardDetailScreen(
+                                      db: widget.db,
+                                      cardId: id,
+                                      from: IunaNavTab.today,
+                                    ),
                                   ),
-                                ),
-                              );
-                            },
+                                );
+                              },
+                            ),
+                          ],
+                          const SizedBox(height: 20),
+                          IunaCtaButton(label: 'Back home', onTap: _leave),
+                          const SizedBox(height: 10),
+                          IunaGhostButton(
+                            label: 'See in collection',
+                            leadingIcon: Icons.style_rounded,
+                            onTap: _openCollection,
                           ),
                         ],
-                        const SizedBox(height: 20),
-                        IunaCtaButton(
-                          label: 'See in collection',
-                          leadingIcon: Icons.style_rounded,
-                          onTap: () async {
-                            Navigator.of(context).pushReplacement(
-                              MaterialPageRoute(
-                                builder: (_) => CollectionScreen(db: widget.db),
-                              ),
-                            );
-                          },
-                        ),
-                        const SizedBox(height: 10),
-                        IunaGhostButton(
-                          label: 'Back home',
-                          onTap: () =>
-                              Navigator.of(context).popUntil((r) => r.isFirst),
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
+
+  /// Opened from Today with no session behind it: about the day, not a
+  /// run of cards.
+  _TierCopy _tallyCopy() => _todayTotal == 0
+      ? const _TierCopy(
+          kicker: 'ひとやすみ',
+          headline: 'Nothing to review yet.',
+          note: 'Your next cards are on their way.',
+        )
+      : const _TierCopy(
+          kicker: 'おつかれさま',
+          headline: 'All done for today.',
+          note: 'Kuma will have more for you soon.',
+        );
 
   _TierCopy _tierFor(int pct, {required bool perfect}) {
     if (perfect) {
       return const _TierCopy(
         kicker: 'くまくま！',
         headline: "That's a perfect run.",
-        note: 'Iuna is proud of you.',
+        note: 'Kuma is proud of you.',
       );
     } else if (pct >= 90) {
       return const _TierCopy(
         kicker: 'すごい！',
         headline: 'Excellent session.',
-        note: 'Only a slip or two — Iuna is proud of you.',
+        note: 'Only a slip or two — Kuma is proud of you.',
       );
     } else if (pct >= 70) {
       return const _TierCopy(
@@ -301,25 +349,109 @@ class _TierCopy {
 }
 
 class _TopBar extends StatelessWidget {
-  const _TopBar({required this.label, required this.onClose});
+  const _TopBar({required this.label, this.onUndo});
   final String label;
-  final VoidCallback onClose;
+
+  /// Takes back the session's last card; null with nothing to take back.
+  final VoidCallback? onUndo;
+
   @override
   Widget build(BuildContext context) {
     return IunaTopBar(
-      title: Text(
-        label,
-        style: const TextStyle(
-          fontSize: 15,
-          fontWeight: FontWeight.w600,
-          color: IunaPalette.ink2,
-          letterSpacing: 0.6,
-        ),
+      leading: onUndo == null
+          ? null
+          : IunaIconButton(
+              icon: Icons.undo_rounded,
+              tooltip: 'Undo last card',
+              onTap: onUndo,
+            ),
+      title: IunaTopBarTitle(label),
+    );
+  }
+}
+
+/// When the next pack and the next review come, so a finished day
+/// doesn't end on a guess.
+class _ComingUp extends StatelessWidget {
+  const _ComingUp({
+    required this.nextDay,
+    required this.nextReview,
+    required this.poolEmpty,
+    required this.now,
+  });
+
+  final DateTime nextDay;
+  final DateTime? nextReview;
+
+  /// Every card in the draw pool is collected: no pack is coming.
+  final bool poolEmpty;
+  final DateTime now;
+
+  @override
+  Widget build(BuildContext context) {
+    final nextReview = this.nextReview;
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 18),
+      decoration: paperPanelDecoration(),
+      child: Column(
+        children: [
+          _ComingRow(
+            icon: Icons.card_giftcard_rounded,
+            label: 'Next pack',
+            value: poolEmpty
+                ? 'Every card is collected'
+                : _capitalized(whenWords(nextDay, now)),
+          ),
+          if (nextReview != null)
+            _ComingRow(
+              icon: Icons.schedule_rounded,
+              label: 'Next review',
+              value: _capitalized(whenWords(nextReview, now)),
+            ),
+        ],
       ),
-      trailing: IunaIconButton(
-        icon: Icons.close_rounded,
-        tooltip: 'Close',
-        onTap: onClose,
+    );
+  }
+
+  static String _capitalized(String s) =>
+      s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
+}
+
+class _ComingRow extends StatelessWidget {
+  const _ComingRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: IunaPalette.ink3),
+          const SizedBox(width: 10),
+          Text(
+            label,
+            style: IunaText.bodySmall.copyWith(color: IunaPalette.ink3),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: IunaText.bodySmall.copyWith(
+                fontWeight: FontWeight.w600,
+                color: IunaPalette.ink,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -457,18 +589,15 @@ class _StatsPanel extends StatelessWidget {
               const SizedBox(width: 6),
               Text(
                 '$streak',
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
+                style: IunaText.headline.copyWith(
                   color: IunaPalette.ink,
                   height: 1,
                 ),
               ),
               const SizedBox(width: 6),
-              const Text(
+              Text(
                 'DAY STREAK',
-                style: TextStyle(
-                  fontSize: 10,
+                style: IunaText.eyebrow.copyWith(
                   fontWeight: FontWeight.w600,
                   color: IunaPalette.ink3,
                   letterSpacing: 1.2,
@@ -502,9 +631,7 @@ class _StatsRow extends StatelessWidget {
           width: 70,
           child: Text(
             label,
-            style: const TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
+            style: IunaText.eyebrow.copyWith(
               color: IunaPalette.ink3,
               letterSpacing: 1.2,
             ),
@@ -515,17 +642,14 @@ class _StatsRow extends StatelessWidget {
             child: Text.rich(
               TextSpan(
                 text: '$correct',
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w700,
+                style: IunaText.headline.copyWith(
                   color: IunaPalette.ink,
                   height: 1,
                 ),
                 children: [
                   TextSpan(
                     text: '/$total',
-                    style: const TextStyle(
-                      fontSize: 16,
+                    style: IunaText.bodyLarge.copyWith(
                       fontWeight: FontWeight.w500,
                       color: IunaPalette.ink3,
                     ),
@@ -540,9 +664,7 @@ class _StatsRow extends StatelessWidget {
           child: Text(
             '$pct%',
             textAlign: TextAlign.right,
-            style: const TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
+            style: IunaText.headline.copyWith(
               color: IunaPalette.ink,
               height: 1,
             ),
@@ -598,8 +720,7 @@ class _DoneScroller extends StatelessWidget {
                       textAlign: TextAlign.center,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 12,
+                      style: IunaText.caption.copyWith(
                         color: IunaPalette.ink3,
                       ),
                     ),
@@ -609,8 +730,7 @@ class _DoneScroller extends StatelessWidget {
                       textAlign: TextAlign.center,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 12,
+                      style: IunaText.caption.copyWith(
                         fontWeight: FontWeight.w500,
                         color: IunaPalette.ink3,
                       ),

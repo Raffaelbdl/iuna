@@ -202,7 +202,7 @@ class _EmptyState extends StatelessWidget {
             Text(
               text,
               textAlign: TextAlign.center,
-              style: const TextStyle(color: IunaPalette.ink2, fontSize: 14),
+              style: IunaText.body.copyWith(color: IunaPalette.ink2),
             ),
           ],
         ),
@@ -254,8 +254,7 @@ class _ResultTile extends StatelessWidget {
                           Flexible(
                             child: Text(
                               hit.kana,
-                              style: const TextStyle(
-                                fontSize: 13,
+                              style: IunaText.bodySmall.copyWith(
                                 color: IunaPalette.ink2,
                               ),
                               overflow: TextOverflow.ellipsis,
@@ -268,8 +267,7 @@ class _ResultTile extends StatelessWidget {
                       const SizedBox(height: 2),
                       Text(
                         headline,
-                        style: const TextStyle(
-                          fontSize: 13,
+                        style: IunaText.bodySmall.copyWith(
                           color: IunaPalette.ink2,
                         ),
                         maxLines: 2,
@@ -325,8 +323,7 @@ class _PreviewSheet extends StatelessWidget {
                           padding: const EdgeInsets.only(top: 2),
                           child: Text(
                             hit.kana,
-                            style: const TextStyle(
-                              fontSize: 16,
+                            style: IunaText.bodyLarge.copyWith(
                               color: IunaPalette.ink2,
                             ),
                           ),

@@ -23,6 +23,39 @@ class IunaPalette {
   static const bowMint = Color(0xFFB8D8C9);
   static const bellGold = Color(0xFFE8B96B);
   static const bowPinkDeep = Color(0xFFD97A8C);
+  // The deep honey of the Collection progress bar and active chips.
+  static const honey = Color(0xFFF0B66C);
+  // The fill of a picked answer or option.
+  static const optionPicked = Color(0xFFFDE9C9);
+
+  // Status text that must clear 4.5:1 on paper and bg ("Revise",
+  // "Continue", the stats goal line). The pastel accents above do not.
+  static const mintInk = Color(0xFF3F6A52);
+  static const honeyInk = Color(0xFF8A5A14);
+  static const pinkInk = Color(0xFFA8455A);
+  // Destructive actions: "Remove key", "Delete course", "Replace".
+  static const danger = Color(0xFF9E3B33);
+
+  // ── Chart fills (Stats) ──
+  static const chartMint = Color(0xFFA9D4C2);
+  static const chartMintDeep = Color(0xFF7FBFA3);
+  static const chartHoney = Color(0xFFF0C168);
+  static const chartHoneyDeep = Color(0xFFD49A3A);
+  static const chartBlue = Color(0xFFBCD3DF);
+  static const chartBlueDeep = Color(0xFF7FAABE);
+  static const chartLilac = Color(0xFFC4B2E0);
+  static const chartLilacDeep = Color(0xFF9A7EC5);
+  static const chartLearning = Color(0xFFDFE8D8);
+  static const chartLearningInk = Color(0xFF4F6E4B);
+  static const chartMatureInk = Color(0xFF4A6F82);
+  static const chartGrid = Color.fromRGBO(74, 53, 32, 0.08);
+  static const chartGridStrong = Color.fromRGBO(74, 53, 32, 0.14);
+  static const chipBg = Color.fromRGBO(74, 53, 32, 0.06);
+  static const heatmap0 = Color.fromRGBO(74, 53, 32, 0.05);
+  static const heatmap1 = Color(0xFFDFE8D8);
+  static const heatmap2 = Color(0xFFBDD9C4);
+  static const heatmap3 = Color(0xFF92C4A8);
+  static const heatmap4 = Color(0xFF5FA982);
 
   // ── Hero gradient (Home hero, logo, active chips) ──
   static const heroTop = Color(0xFFFFD994);
@@ -57,6 +90,58 @@ class IunaPalette {
   // Pre-redesign names, still the spelling most Settings code uses.
   static const cream = bg;
   static const pawBrown = ink;
+}
+
+/// The type scale: seven sizes, 12 to 28. Every text style on screen
+/// starts from one of these and may change its colour or weight, never
+/// its size. They carry no colour, so text keeps the ink it inherits
+/// unless a screen sets one. Japanese shown as content (a card's kanji,
+/// a game's tiles) is sized to its layout instead.
+abstract final class IunaText {
+  /// A screen's one big line: the recap headline, a game's result.
+  static const display = TextStyle(
+    fontSize: 28,
+    fontWeight: FontWeight.w700,
+    letterSpacing: -0.3,
+  );
+
+  /// Hero titles, tab titles and big numbers.
+  static const headline = TextStyle(
+    fontSize: 22,
+    fontWeight: FontWeight.w700,
+    letterSpacing: -0.2,
+  );
+
+  /// Sheet and panel titles.
+  static const title = TextStyle(fontSize: 18, fontWeight: FontWeight.w700);
+
+  /// Row titles, top-bar titles and primary buttons.
+  static const subtitle = TextStyle(fontSize: 16, fontWeight: FontWeight.w600);
+
+  /// Lead text: a greeting, a lesson's prose.
+  static const bodyLarge = TextStyle(fontSize: 16);
+
+  /// Running text.
+  static const body = TextStyle(fontSize: 14);
+
+  /// Secondary lines under a title, hints and notes.
+  static const bodySmall = TextStyle(fontSize: 13);
+
+  /// Metadata, legends and chart labels: the floor for readable text.
+  static const caption = TextStyle(fontSize: 12);
+
+  /// Button and control labels.
+  static const label = TextStyle(fontSize: 14, fontWeight: FontWeight.w600);
+
+  /// Chips, badges and pills.
+  static const chip = TextStyle(fontSize: 12, fontWeight: FontWeight.w600);
+
+  /// The upper-cased caption over a section.
+  static const eyebrow = TextStyle(
+    fontSize: 12,
+    fontWeight: FontWeight.w700,
+    letterSpacing: 1.1,
+  );
 }
 
 /// Standard panel shadow (light, top-highlighted).
@@ -227,17 +312,18 @@ ThemeData buildIunaTheme() {
 
   // Every style below derives from the platform typography so it keeps
   // its font family and fallbacks; a bare TextStyle on a theme slot
-  // (AppBar title, button label) would lose them.
+  // (AppBar title, button label) would lose them. Sizes follow
+  // [IunaText].
   final t = base.textTheme;
   final textTheme = t
       .copyWith(
         headlineSmall: t.headlineSmall?.copyWith(
-          fontSize: 24,
+          fontSize: 22,
           fontWeight: FontWeight.w600,
           letterSpacing: -0.3,
         ),
         titleLarge: t.titleLarge?.copyWith(
-          fontSize: 20,
+          fontSize: 18,
           fontWeight: FontWeight.w700,
         ),
         titleMedium: t.titleMedium?.copyWith(
@@ -248,7 +334,7 @@ ThemeData buildIunaTheme() {
           fontSize: 14,
           fontWeight: FontWeight.w700,
         ),
-        bodyLarge: t.bodyLarge?.copyWith(fontSize: 15, height: 1.35),
+        bodyLarge: t.bodyLarge?.copyWith(fontSize: 16, height: 1.35),
         bodyMedium: t.bodyMedium?.copyWith(fontSize: 14, height: 1.35),
         bodySmall: t.bodySmall?.copyWith(fontSize: 12, height: 1.4),
         labelLarge: t.labelLarge?.copyWith(
@@ -260,12 +346,12 @@ ThemeData buildIunaTheme() {
           fontWeight: FontWeight.w600,
         ),
         labelSmall: t.labelSmall?.copyWith(
-          fontSize: 11,
+          fontSize: 12,
           fontWeight: FontWeight.w700,
         ),
       )
       .apply(bodyColor: IunaPalette.ink, displayColor: IunaPalette.ink);
-  final buttonLabel = textTheme.labelLarge!.copyWith(fontSize: 15);
+  final buttonLabel = textTheme.labelLarge!;
   const pill = StadiumBorder();
   final hairline = BorderSide(
     color: IunaPalette.ink.withValues(alpha: 0.18),
@@ -282,7 +368,6 @@ ThemeData buildIunaTheme() {
       elevation: 0,
       centerTitle: true,
       titleTextStyle: textTheme.titleMedium!.copyWith(
-        fontSize: 15,
         letterSpacing: 0.6,
         color: IunaPalette.ink2,
       ),

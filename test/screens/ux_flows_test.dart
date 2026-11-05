@@ -5,6 +5,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:iuna/db/database.dart';
 import 'package:iuna/screens/booster_reveal_screen.dart';
 import 'package:iuna/screens/collection_screen.dart';
+import 'package:iuna/screens/review_done_screen.dart';
+import 'package:iuna/screens/review_screen.dart';
+import 'package:iuna/screens/today_flow.dart';
 import 'package:iuna/screens/stats_screen.dart';
 import 'package:iuna/theme/iuna_theme.dart';
 
@@ -76,10 +79,10 @@ void main() {
     final first = _shownKanji(tester);
     final ownedBefore = (await db.select(db.userCards).get()).length;
 
-    await tester.tap(find.text('Suspend'));
+    await tester.tap(find.text('Suspend & swap'));
     await _frames(tester);
     expect(
-      find.text('Suspended — find it in Collection › Suspended.'),
+      find.text('Suspended and replaced. Find it in Collection › Suspended.'),
       findsOneWidget,
     );
     expect(find.text(first), findsNothing, reason: 'swapped out');
@@ -153,11 +156,126 @@ void main() {
       ),
     );
     await _frames(tester);
-    expect(find.text('Leeches'), findsOneWidget);
+    expect(find.text('Tricky cards'), findsOneWidget);
     expect(find.text('Retention curve'), findsNothing);
 
     await tester.tap(find.text('More stats'));
     await _frames(tester, 300);
     expect(find.text('Retention curve'), findsOneWidget);
+  });
+
+  Future<void> ownAll(List<int> ids, {DateTime? due}) async {
+    for (final id in ids) {
+      await db
+          .into(db.userCards)
+          .insert(
+            UserCardsCompanion.insert(
+              cardId: Value(id),
+              nextDue: due ?? DateTime(2026),
+              obtainedAt: DateTime(2026),
+              isNew: const Value(false),
+            ),
+          );
+    }
+  }
+
+  testWidgets('Collection: a search with no match offers Clear filters', (
+    tester,
+  ) async {
+    await ownAll(await _seedCards(db, 3));
+    await openCollection(tester);
+    expect(find.text('k0'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), 'nothing like this');
+    await _frames(tester, 400);
+    expect(find.text('No matching cards.'), findsOneWidget);
+
+    await tester.tap(find.text('Clear filters'));
+    await _frames(tester, 400);
+    expect(find.text('No matching cards.'), findsNothing);
+    expect(find.text('k0'), findsOneWidget);
+    expect(find.text('nothing like this'), findsNothing);
+  });
+
+  testWidgets('Collection: shuffle is a toggle', (tester) async {
+    await ownAll(await _seedCards(db, 3));
+    await openCollection(tester);
+    final handle = tester.ensureSemantics();
+    final shuffle = find.bySemanticsLabel('Shuffle');
+    expect(tester.getSemantics(shuffle), isSemantics(isSelected: false));
+
+    await tester.tap(shuffle);
+    await _frames(tester, 300);
+    expect(tester.getSemantics(shuffle), isSemantics(isSelected: true));
+    expect(find.byIcon(Icons.shuffle_on_rounded), findsOneWidget);
+
+    await tester.tap(shuffle);
+    await _frames(tester, 300);
+    expect(tester.getSemantics(shuffle), isSemantics(isSelected: false));
+    handle.dispose();
+  });
+
+  testWidgets("Collection: a missing card doesn't read out its word", (
+    tester,
+  ) async {
+    await _seedCards(db, 1);
+    await openCollection(tester);
+    final handle = tester.ensureSemantics();
+    await tester.tap(find.text('Show missing'));
+    await _frames(tester, 300);
+    expect(find.bySemanticsLabel('Missing Common card'), findsOneWidget);
+    expect(find.bySemanticsLabel(RegExp('k0')), findsNothing);
+    handle.dispose();
+  });
+
+  testWidgets('Review: the last card can be taken back from the recap', (
+    tester,
+  ) async {
+    final ids = await _seedCards(db, 1);
+    final due = DateTime.now().subtract(const Duration(hours: 1));
+    await ownAll(ids, due: due);
+    final before = (await db.select(db.userCards).getSingle());
+
+    await tester.pumpWidget(
+      MaterialApp(theme: buildIunaTheme(), home: ReviewScreen(db: db)),
+    );
+    await _frames(tester);
+    await tester.tap(find.text('k0'));
+    await _frames(tester, 400);
+    await tester.tap(find.text('Got it'));
+    await _frames(tester, 1200);
+    expect(find.byType(ReviewDoneScreen), findsOneWidget);
+    expect(await db.select(db.reviewLog).get(), hasLength(1));
+
+    await tester.tap(find.byTooltip('Undo last card'));
+    await _frames(tester, 1200);
+    expect(find.byType(ReviewDoneScreen), findsNothing);
+    expect(find.text('Got it'), findsOneWidget, reason: 'back on the card, flipped');
+    expect(await db.select(db.reviewLog).get(), isEmpty);
+    final after = await db.select(db.userCards).getSingle();
+    expect(after.nextDue, before.nextDue);
+    expect(after.level, before.level);
+  });
+
+  testWidgets('Today with nothing to do shows when the next pack comes', (
+    tester,
+  ) async {
+    await ownAll(await _seedCards(db, 1), due: DateTime(2099));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildIunaTheme(),
+        home: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => openTodayFlow(context, db),
+            child: const Text('today'),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('today'));
+    await _frames(tester, 1500);
+    expect(find.text('Nothing to review yet.'), findsOneWidget);
+    expect(find.text('Next pack'), findsOneWidget);
+    expect(find.text('Next review'), findsOneWidget);
   });
 }

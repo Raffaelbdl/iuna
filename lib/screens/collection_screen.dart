@@ -6,10 +6,12 @@ import '../db/database.dart';
 import '../db/repository.dart';
 import '../services/dict_download.dart';
 import '../theme/iuna_theme.dart';
+import '../widgets/cta_button.dart';
 import '../widgets/hex_bg.dart';
 import '../widgets/iuna_bottom_nav.dart';
 import '../widgets/iuna_icon_button.dart';
 import '../widgets/search_field.dart';
+import '../widgets/tab_header.dart';
 import '../widgets/tappable.dart';
 import '../widgets/vocab_card.dart';
 import 'add_card_screen.dart';
@@ -41,6 +43,7 @@ class _CollectionScreenState extends State<CollectionScreen> {
   bool _showMissing = false;
   late bool _wishedOnly = widget.initialWishedOnly;
   bool _suspendedOnly = false;
+  bool _shuffled = false;
 
   bool _loading = true;
   CollectionStats? _stats;
@@ -75,9 +78,14 @@ class _CollectionScreenState extends State<CollectionScreen> {
     suspendedOnly: _suspendedOnly,
   );
 
+  Future<List<CollectionEntry>> _queryOrdered() async {
+    final entries = await _queryEntries();
+    return _shuffled ? (List.of(entries)..shuffle()) : entries;
+  }
+
   Future<void> _reloadEntries() async {
     final gen = ++_entriesGen;
-    final entries = await _queryEntries();
+    final entries = await _queryOrdered();
     if (!mounted || gen != _entriesGen) return;
     setState(() => _entries = entries);
   }
@@ -95,7 +103,7 @@ class _CollectionScreenState extends State<CollectionScreen> {
     final (stats, wishCount, entries) = await (
       _repo.collectionStats(),
       _repo.wishedCount(),
-      _queryEntries(),
+      _queryOrdered(),
     ).wait;
     if (!mounted) return;
     setState(() {
@@ -152,9 +160,27 @@ class _CollectionScreenState extends State<CollectionScreen> {
     await _reloadEntries();
   }
 
-  Future<void> _shuffle() async {
-    final list = List<CollectionEntry>.of(_entries)..shuffle();
-    setState(() => _entries = list);
+  /// Shuffled until tapped again, which restores the usual order.
+  Future<void> _toggleShuffle() async {
+    setState(() => _shuffled = !_shuffled);
+    await _reloadEntries();
+  }
+
+  bool get _filtered =>
+      _selected.isNotEmpty ||
+      _query.isNotEmpty ||
+      _wishedOnly ||
+      _suspendedOnly;
+
+  Future<void> _clearFilters() async {
+    _queryCtrl.clear();
+    setState(() {
+      _query = '';
+      _selected = const {};
+      _wishedOnly = false;
+      _suspendedOnly = false;
+    });
+    await _reloadEntries();
   }
 
   Future<void> _openDetail(int cardId) async {
@@ -210,11 +236,29 @@ class _CollectionScreenState extends State<CollectionScreen> {
 
   Widget _buildBody() {
     final stats = _stats!;
+    // The header and search stay; the filters and progress scroll away
+    // with the grid, so large text still leaves room for cards.
     return Column(
       children: [
-        _TopBar(
-          onShuffle: _shuffle,
-          onAdd: _dictInstalled ? _openAddCard : null,
+        IunaTabHeader(
+          'Collection',
+          actions: [
+            if (_dictInstalled)
+              IunaIconButton(
+                icon: Icons.add_rounded,
+                tooltip: 'Add to wishlist',
+                onTap: _openAddCard,
+              ),
+            IunaIconButton(
+              icon: _shuffled
+                  ? Icons.shuffle_on_rounded
+                  : Icons.shuffle_rounded,
+              tooltip: 'Shuffle',
+              selected: _shuffled,
+              tint: _shuffled ? IunaPalette.ctaBottom : null,
+              onTap: _toggleShuffle,
+            ),
+          ],
         ),
         IunaSearchField(
           controller: _queryCtrl,
@@ -222,88 +266,67 @@ class _CollectionScreenState extends State<CollectionScreen> {
           onChanged: _onQueryChanged,
         ),
         const SizedBox(height: 2),
-        _RarityFilters(
-          selected: _selected,
-          onToggle: _toggleRarity,
-          onClear: _clearRarityFilter,
-          wishedOnly: _wishedOnly,
-          wishCount: _wishCount,
-          onToggleWishedOnly: _toggleWishedOnly,
-          suspendedOnly: _suspendedOnly,
-          onToggleSuspendedOnly: _toggleSuspendedOnly,
-        ),
-        _ProgressStrip(
-          stats: stats,
-          showMissing: _showMissing,
-          onToggleShowMissing: _toggleShowMissing,
-        ),
         Expanded(
-          child: _entries.isEmpty
-              ? _EmptyState(
-                  narrowed: _selected.isNotEmpty || _query.isNotEmpty,
+          child: CustomScrollView(
+            slivers: [
+              SliverToBoxAdapter(
+                child: _RarityFilters(
+                  selected: _selected,
+                  onToggle: _toggleRarity,
+                  onClear: _clearRarityFilter,
                   wishedOnly: _wishedOnly,
+                  wishCount: _wishCount,
+                  onToggleWishedOnly: _toggleWishedOnly,
                   suspendedOnly: _suspendedOnly,
-                  showMissing: _showMissing,
-                )
-              : GridView.builder(
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 110),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    mainAxisSpacing: 14,
-                    crossAxisSpacing: 14,
-                    childAspectRatio: 3 / 4,
-                  ),
-                  itemCount: _entries.length,
-                  itemBuilder: (_, i) {
-                    final entry = _entries[i];
-                    return _HexTile(
-                      entry: entry,
-                      onTap: () => _openDetail(entry.card.id),
-                    );
-                  },
+                  onToggleSuspendedOnly: _toggleSuspendedOnly,
                 ),
+              ),
+              SliverToBoxAdapter(
+                child: _ProgressStrip(
+                  stats: stats,
+                  showMissing: _showMissing,
+                  onToggleShowMissing: _toggleShowMissing,
+                ),
+              ),
+              if (_entries.isEmpty)
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 90),
+                    child: _EmptyState(
+                      narrowed: _selected.isNotEmpty || _query.isNotEmpty,
+                      wishedOnly: _wishedOnly,
+                      suspendedOnly: _suspendedOnly,
+                      showMissing: _showMissing,
+                      onClearFilters: _filtered ? _clearFilters : null,
+                    ),
+                  ),
+                )
+              else
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 110),
+                  sliver: SliverGrid.builder(
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          mainAxisSpacing: 14,
+                          crossAxisSpacing: 14,
+                          childAspectRatio: 3 / 4,
+                        ),
+                    itemCount: _entries.length,
+                    itemBuilder: (_, i) {
+                      final entry = _entries[i];
+                      return _HexTile(
+                        entry: entry,
+                        onTap: () => _openDetail(entry.card.id),
+                      );
+                    },
+                  ),
+                ),
+            ],
+          ),
         ),
       ],
-    );
-  }
-}
-
-/// A tab root, so no back button: the system Back still pops it.
-class _TopBar extends StatelessWidget {
-  const _TopBar({required this.onShuffle, this.onAdd});
-  final VoidCallback onShuffle;
-  final VoidCallback? onAdd;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 6, 10, 2),
-      child: Row(
-        children: [
-          const Expanded(
-            child: Text(
-              'Collection',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: IunaPalette.ink,
-                letterSpacing: -0.2,
-              ),
-            ),
-          ),
-          if (onAdd != null)
-            IunaIconButton(
-              icon: Icons.add_rounded,
-              tooltip: 'Add to wishlist',
-              onTap: onAdd!,
-            ),
-          IunaIconButton(
-            icon: Icons.shuffle_rounded,
-            tooltip: 'Shuffle',
-            onTap: onShuffle,
-          ),
-        ],
-      ),
     );
   }
 }
@@ -397,7 +420,7 @@ class _Chip extends StatelessWidget {
     Color fg;
     Color border = const Color.fromRGBO(74, 53, 32, 0.06);
     if (active) {
-      bg = const Color(0xFFF0B66C);
+      bg = IunaPalette.honey;
       fg = IunaPalette.heroInk;
       border = const Color.fromRGBO(120, 70, 20, 0.15);
     } else if (rarity != null) {
@@ -423,7 +446,7 @@ class _Chip extends StatelessWidget {
                 ? const LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [IunaPalette.heroTop, Color(0xFFF0B66C)],
+                    colors: [IunaPalette.heroTop, IunaPalette.honey],
                   )
                 : null,
             color: active ? null : bg,
@@ -439,9 +462,7 @@ class _Chip extends StatelessWidget {
               ],
               Text(
                 label,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
+                style: IunaText.chip.copyWith(
                   color: fg,
                 ),
               ),
@@ -495,8 +516,7 @@ class _ProgressStrip extends StatelessWidget {
                         ),
                       ],
                     ),
-                    style: const TextStyle(
-                      fontSize: 13,
+                    style: IunaText.bodySmall.copyWith(
                       fontWeight: FontWeight.w700,
                       color: IunaPalette.ink,
                     ),
@@ -613,8 +633,7 @@ class _LegendChip extends StatelessWidget {
         const SizedBox(width: 5),
         Text(
           rarityCode(rarity),
-          style: const TextStyle(
-            fontSize: 12,
+          style: IunaText.chip.copyWith(
             fontWeight: FontWeight.w800,
             color: IunaPalette.ink2,
           ),
@@ -622,8 +641,7 @@ class _LegendChip extends StatelessWidget {
         const SizedBox(width: 4),
         Text(
           '$owned/$total',
-          style: const TextStyle(
-            fontSize: 12,
+          style: IunaText.caption.copyWith(
             color: IunaPalette.ink3,
             fontFeatures: [FontFeature.tabularFigures()],
           ),
@@ -645,140 +663,165 @@ class _HexTile extends StatelessWidget {
     final owned = entry.isOwned;
     final tint = rarityFill(card.rarity);
     final suspended = owned && entry.userCard?.suspended == true;
+    final level = owned ? entry.userCard?.level ?? 0 : 0;
+    // A missing card's kanji and meaning are hidden on screen, so a
+    // screen reader must not read them out either.
+    final String label;
+    if (!owned) {
+      label = 'Missing ${rarityName(card.rarity)} card';
+    } else {
+      label = [
+        card.kanji,
+        if (card.kana != card.kanji) card.kana,
+        card.meaning,
+        '${rarityName(card.rarity)} card',
+        if (suspended) 'suspended' else if (level > 0) 'memory level $level',
+      ].join(', ');
+    }
     return Tappable(
       onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: const Alignment(-0.3, -1),
-            end: const Alignment(0.3, 1),
-            colors: [IunaPalette.paper, tint],
-          ),
-          borderRadius: BorderRadius.circular(18),
-          boxShadow: panelShadow(),
-          border: Border.all(
-            color: const Color.fromRGBO(74, 53, 32, 0.06),
-            width: 0.5,
-          ),
+      label: label,
+      child: ExcludeSemantics(
+        child: _tile(card, owned: owned, tint: tint, suspended: suspended),
+      ),
+    );
+  }
+
+  Widget _tile(
+    CardRow card, {
+    required bool owned,
+    required Color tint,
+    required bool suspended,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: const Alignment(-0.3, -1),
+          end: const Alignment(0.3, 1),
+          colors: [IunaPalette.paper, tint],
         ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(18),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              // Centered kanji — pinned to the visual center of the tile
-              // so its position is stable regardless of caption length.
-              Center(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Hero(
-                    tag: 'card-kanji-${card.id}',
-                    flightShuttleBuilder: _kanjiFlightShuttle,
-                    child: Material(
-                      color: Colors.transparent,
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
+        borderRadius: BorderRadius.circular(IunaRadii.md),
+        boxShadow: panelShadow(),
+        border: Border.all(
+          color: const Color.fromRGBO(74, 53, 32, 0.06),
+          width: 0.5,
+        ),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(IunaRadii.md),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // Centered kanji — pinned to the visual center of the tile
+            // so its position is stable regardless of caption length.
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Hero(
+                  tag: 'card-kanji-${card.id}',
+                  flightShuttleBuilder: _kanjiFlightShuttle,
+                  child: Material(
+                    color: Colors.transparent,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        card.kanji,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 44,
+                          fontWeight: FontWeight.w700,
+                          color: IunaPalette.ink,
+                          height: 1,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            // Caption strip pinned to the bottom of the tile.
+            Positioned(
+              left: 10,
+              right: 10,
+              bottom: 12,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    card.kana,
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: IunaText.caption.copyWith(
+                      color: IunaPalette.ink3,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    card.meaning,
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: IunaText.caption.copyWith(
+                      fontWeight: FontWeight.w500,
+                      color: IunaPalette.ink2,
+                      height: 1.3,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (!owned)
+              // Heavy paper overlay for "missing" tiles. Sits above
+              // the kanji + caption so the underlying content reads
+              // as a faint silhouette, with a centered '？'. Corner
+              // rarity / level pill render on top of the overlay.
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Container(color: const Color(0xF2FFFDF6)),
+                      const Center(
                         child: Text(
-                          card.kanji,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 44,
-                            fontWeight: FontWeight.w700,
-                            color: IunaPalette.ink,
-                            height: 1,
+                          '？',
+                          style: TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.w600,
+                            color: IunaPalette.inkMute,
                           ),
                         ),
                       ),
-                    ),
+                    ],
                   ),
                 ),
               ),
-              // Caption strip pinned to the bottom of the tile.
-              Positioned(
-                left: 10,
-                right: 10,
-                bottom: 12,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      card.kana,
-                      textAlign: TextAlign.center,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: IunaPalette.ink3,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      card.meaning,
-                      textAlign: TextAlign.center,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        color: IunaPalette.ink2,
-                        height: 1.3,
-                      ),
-                    ),
-                  ],
+            Positioned(
+              top: 8,
+              left: 8,
+              child: RarityChip(
+                rarity: card.rarity,
+                size: RarityChipSize.tiny,
+              ),
+            ),
+            if (suspended)
+              // Whole-tile wash so a suspended card reads as inactive
+              // at a glance, without hiding the kanji the way the
+              // "missing" overlay does.
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: Container(color: const Color(0x66FFFDF6)),
                 ),
               ),
-              if (!owned)
-                // Heavy paper overlay for "missing" tiles. Sits above
-                // the kanji + caption so the underlying content reads
-                // as a faint silhouette, with a centered '？'. Corner
-                // rarity / level pill render on top of the overlay.
-                Positioned.fill(
-                  child: IgnorePointer(
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        Container(color: const Color(0xF2FFFDF6)),
-                        const Center(
-                          child: Text(
-                            '？',
-                            style: TextStyle(
-                              fontSize: 28,
-                              fontWeight: FontWeight.w600,
-                              color: IunaPalette.inkMute,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+            if (suspended)
+              const Positioned(top: 8, right: 8, child: _SuspendedBadge())
+            else if (owned && (entry.userCard?.level ?? 0) > 0)
               Positioned(
                 top: 8,
-                left: 8,
-                child: RarityChip(
-                  rarity: card.rarity,
-                  size: RarityChipSize.tiny,
-                ),
+                right: 8,
+                child: _LevelPill(level: entry.userCard!.level),
               ),
-              if (suspended)
-                // Whole-tile wash so a suspended card reads as inactive
-                // at a glance, without hiding the kanji the way the
-                // "missing" overlay does.
-                Positioned.fill(
-                  child: IgnorePointer(
-                    child: Container(color: const Color(0x66FFFDF6)),
-                  ),
-                ),
-              if (suspended)
-                const Positioned(top: 8, right: 8, child: _SuspendedBadge())
-              else if (owned && (entry.userCard?.level ?? 0) > 0)
-                Positioned(
-                  top: 8,
-                  right: 8,
-                  child: _LevelPill(level: entry.userCard!.level),
-                ),
-            ],
-          ),
+          ],
         ),
       ),
     );
@@ -796,15 +839,14 @@ class _SuspendedBadge extends StatelessWidget {
         color: const Color.fromRGBO(74, 53, 32, 0.85),
         borderRadius: BorderRadius.circular(999),
       ),
-      child: const Row(
+      child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(Icons.pause_rounded, size: 12, color: Color(0xFFFFE9A8)),
           SizedBox(width: 3),
           Text(
             'Suspended',
-            style: TextStyle(
-              fontSize: 12,
+            style: IunaText.chip.copyWith(
               fontWeight: FontWeight.w700,
               color: Color(0xFFFFE9A8),
               letterSpacing: 0.3,
@@ -840,8 +882,7 @@ class _LevelPill extends StatelessWidget {
       ),
       child: Text(
         'Lv $level',
-        style: const TextStyle(
-          fontSize: 12,
+        style: IunaText.chip.copyWith(
           fontWeight: FontWeight.w700,
           color: Color(0xFFFFE9A8),
           letterSpacing: 0.4,
@@ -857,6 +898,7 @@ class _EmptyState extends StatelessWidget {
     required this.wishedOnly,
     required this.suspendedOnly,
     required this.showMissing,
+    this.onClearFilters,
   });
 
   /// A search or a rarity filter is on.
@@ -864,6 +906,9 @@ class _EmptyState extends StatelessWidget {
   final bool wishedOnly;
   final bool suspendedOnly;
   final bool showMissing;
+
+  /// Null when no filter narrows the grid.
+  final VoidCallback? onClearFilters;
 
   @override
   Widget build(BuildContext context) {
@@ -898,8 +943,17 @@ class _EmptyState extends StatelessWidget {
             Text(
               message,
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 14, color: IunaPalette.ink3),
+              style: IunaText.body.copyWith(color: IunaPalette.ink3),
             ),
+            if (onClearFilters != null) ...[
+              const SizedBox(height: 16),
+              IunaGhostButton(
+                label: 'Clear filters',
+                leadingIcon: Icons.filter_alt_off_rounded,
+                shrinkWrap: true,
+                onTap: onClearFilters,
+              ),
+            ],
           ],
         ),
       ),

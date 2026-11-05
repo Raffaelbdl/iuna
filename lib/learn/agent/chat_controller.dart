@@ -260,7 +260,12 @@ class ChatController extends ChangeNotifier {
     } on LlmException catch (e) {
       return _voiceFailed(clip, e.friendly, canRetry: true);
     } catch (e) {
-      return _voiceFailed(clip, 'Transcription failed: $e', canRetry: true);
+      debugPrint('Transcription failed: $e');
+      return _voiceFailed(
+        clip,
+        "Couldn't turn that into text. Try again, or type it.",
+        canRetry: true,
+      );
     }
     unawaited(_recordDictation(heard, transcriber.model));
     if (heard.text.isEmpty) {

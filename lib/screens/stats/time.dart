@@ -14,19 +14,19 @@ class _HourClock extends StatelessWidget {
         text: 'No reviews yet — your study clock will fill in over time.',
       );
     }
-    return SizedBox(
+    final peak = hours.indexOf(hours.reduce(math.max));
+    return _ChartCanvas(
       height: 220,
-      child: CustomPaint(
-        painter: _HourClockPainter(hours: hours),
-        size: Size.infinite,
-      ),
+      summary: 'Reviews by hour of day. Most at ${_hourLabel(peak)}.',
+      painter: (scaler) => _HourClockPainter(hours: hours, scaler: scaler),
     );
   }
 }
 
 class _HourClockPainter extends CustomPainter {
-  _HourClockPainter({required this.hours});
+  _HourClockPainter({required this.hours, required this.scaler});
   final List<int> hours;
+  final TextScaler scaler;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -41,7 +41,7 @@ class _HourClockPainter extends CustomPainter {
       outerR + 2,
       Paint()
         ..style = PaintingStyle.stroke
-        ..color = _SP.grid
+        ..color = IunaPalette.chartGrid
         ..strokeWidth = 0.6,
     );
     canvas.drawCircle(
@@ -75,9 +75,9 @@ class _HourClockPainter extends CustomPainter {
         p,
         Paint()
           ..color = t > 0.7
-              ? _SP.honeyDeep
+              ? IunaPalette.chartHoneyDeep
               : t > 0.45
-              ? _SP.honey
+              ? IunaPalette.chartHoney
               : t > 0.2
               ? const Color(0xFFF0D2A0)
               : const Color(0xFFEADCB8),
@@ -95,36 +95,28 @@ class _HourClockPainter extends CustomPainter {
       final tp = TextPainter(
         text: TextSpan(
           text: l.label,
-          style: const TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.w600,
+          style: IunaText.chip.copyWith(
             color: IunaPalette.ink3,
-            fontFamily: _SP.labelFont,
+            fontFamily: _kChartLabelFont,
           ),
         ),
         textDirection: TextDirection.ltr,
+        textScaler: scaler,
       )..layout();
       tp.paint(canvas, Offset(tx - tp.width / 2, ty - tp.height / 2));
     }
-    final peakH = hours.indexOf(maxV);
-    final peakLabel = peakH == 0
-        ? '12 am'
-        : peakH < 12
-        ? '$peakH am'
-        : peakH == 12
-        ? '12 pm'
-        : '${peakH - 12} pm';
+    final peakLabel = _hourLabel(hours.indexOf(maxV));
     final peakTitle = TextPainter(
-      text: const TextSpan(
+      text: TextSpan(
         text: 'peak',
-        style: TextStyle(
-          fontSize: 13,
+        style: IunaText.bodySmall.copyWith(
           fontWeight: FontWeight.w600,
           color: IunaPalette.ink,
-          fontFamily: _SP.labelFont,
+          fontFamily: _kChartLabelFont,
         ),
       ),
       textDirection: TextDirection.ltr,
+      textScaler: scaler,
     )..layout();
     peakTitle.paint(
       canvas,
@@ -133,21 +125,29 @@ class _HourClockPainter extends CustomPainter {
     final peakSub = TextPainter(
       text: TextSpan(
         text: peakLabel,
-        style: const TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          color: _SP.honeyDeep,
-          fontFamily: _SP.labelFont,
+        style: IunaText.chip.copyWith(
+          color: IunaPalette.honeyInk,
+          fontFamily: _kChartLabelFont,
         ),
       ),
       textDirection: TextDirection.ltr,
+      textScaler: scaler,
     )..layout();
     peakSub.paint(canvas, Offset(cx - peakSub.width / 2, cy + 2));
   }
 
   @override
-  bool shouldRepaint(covariant _HourClockPainter old) => old.hours != hours;
+  bool shouldRepaint(covariant _HourClockPainter old) =>
+      old.hours != hours || old.scaler != scaler;
 }
+
+String _hourLabel(int h) => h == 0
+    ? '12 am'
+    : h < 12
+    ? '$h am'
+    : h == 12
+    ? '12 pm'
+    : '${h - 12} pm';
 
 // ─── Time spent (bars + median line) ─────────────────────────────────
 
@@ -196,19 +196,19 @@ class _TimeSpentChart extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 10),
-        SizedBox(
+        _ChartCanvas(
           height: 120,
-          child: CustomPaint(
-            painter: _TimeSpentPainter(days: days),
-            size: Size.infinite,
-          ),
+          summary:
+              'Minutes studied per day over the last ${days.length} days: '
+              '$totalMin in all.',
+          painter: (scaler) => _TimeSpentPainter(days: days, scaler: scaler),
         ),
         const SizedBox(height: 6),
         Row(
           children: const [
-            _LegendDot(color: _SP.lilac, label: 'minutes / day'),
+            _LegendDot(color: IunaPalette.chartLilac, label: 'minutes / day'),
             SizedBox(width: 14),
-            _LegendLine(color: _SP.lilacDeep, label: 'median answer (s)'),
+            _LegendLine(color: IunaPalette.chartLilacDeep, label: 'median answer (s)'),
           ],
         ),
       ],
@@ -229,8 +229,7 @@ class _LegendLine extends StatelessWidget {
         const SizedBox(width: 6),
         Text(
           label,
-          style: const TextStyle(
-            fontSize: 11,
+          style: IunaText.caption.copyWith(
             fontWeight: FontWeight.w500,
             color: IunaPalette.ink3,
           ),
@@ -241,16 +240,17 @@ class _LegendLine extends StatelessWidget {
 }
 
 class _TimeSpentPainter extends CustomPainter {
-  _TimeSpentPainter({required this.days});
+  _TimeSpentPainter({required this.days, required this.scaler});
   final List<TimeSpentDay> days;
+  final TextScaler scaler;
 
   @override
   void paint(Canvas canvas, Size size) {
-    const padT = 8.0, padB = 18.0;
+    final padT = 8.0, padB = scaler.scale(18);
     final chartH = size.height - padT - padB;
     final maxMin = days.fold<int>(0, (m, d) => math.max(m, d.totalMs ~/ 60000));
     if (days.isEmpty || maxMin == 0) {
-      _paintEnds(canvas, size);
+      _paintEnds(canvas, size, padB);
       return;
     }
     final slot = size.width / days.length;
@@ -265,7 +265,7 @@ class _TimeSpentPainter extends CustomPainter {
           Rect.fromLTWH(left, padT + chartH - h, bw, h),
           const Radius.circular(2),
         ),
-        Paint()..color = _SP.lilac,
+        Paint()..color = IunaPalette.chartLilac,
       );
     }
 
@@ -289,23 +289,28 @@ class _TimeSpentPainter extends CustomPainter {
         path,
         Paint()
           ..style = PaintingStyle.stroke
-          ..color = _SP.lilacDeep
+          ..color = IunaPalette.chartLilacDeep
           ..strokeWidth = 1.6
           ..strokeCap = StrokeCap.round,
       );
       for (var i = 0; i < pts.length; i += 5) {
-        canvas.drawCircle(pts[i], 2.2, Paint()..color = _SP.lilacDeep);
+        canvas.drawCircle(pts[i], 2.2, Paint()..color = IunaPalette.chartLilacDeep);
       }
     }
-    _paintEnds(canvas, size);
+    _paintEnds(canvas, size, padB);
   }
 
-  static void _paintEnds(Canvas canvas, Size size) {
-    _chartLabel('30d ago').paint(canvas, Offset(0, size.height - 10));
-    final today = _chartLabel('today');
-    today.paint(canvas, Offset(size.width - today.width, size.height - 10));
+  void _paintEnds(Canvas canvas, Size size, double padB) {
+    final y = size.height - padB + 4;
+    _chartLabel(
+      '${days.length}d ago',
+      scaler: scaler,
+    ).paint(canvas, Offset(0, y));
+    final today = _chartLabel('today', scaler: scaler);
+    today.paint(canvas, Offset(size.width - today.width, y));
   }
 
   @override
-  bool shouldRepaint(covariant _TimeSpentPainter old) => old.days != days;
+  bool shouldRepaint(covariant _TimeSpentPainter old) =>
+      old.days != days || old.scaler != scaler;
 }

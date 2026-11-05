@@ -228,7 +228,10 @@ class _BoosterRevealScreenState extends State<BoosterRevealScreen>
   void _offerUndo(BoosterSwap swap, {required int slot, required CardRow original}) {
     showSnack(
       context,
-      'Suspended — find it in Collection › Suspended.',
+      swap.replacements.isEmpty
+          ? 'Suspended. No unseen cards were left to swap in. Find it in '
+                'Collection › Suspended.'
+          : 'Suspended and replaced. Find it in Collection › Suspended.',
       action: SnackBarAction(
         label: 'Undo',
         onPressed: () async {
@@ -504,9 +507,8 @@ class _SuspendPill extends StatelessWidget {
             ),
             const SizedBox(width: 6),
             Text(
-              'Suspend',
-              style: TextStyle(
-                fontSize: 13,
+              'Suspend & swap',
+              style: IunaText.bodySmall.copyWith(
                 fontWeight: FontWeight.w600,
                 color: disabled ? IunaPalette.ink3 : IunaPalette.ink2,
               ),
@@ -543,8 +545,7 @@ class _TopBar extends StatelessWidget {
       ),
       title: Text(
         label,
-        style: const TextStyle(
-          fontSize: 13,
+        style: IunaText.bodySmall.copyWith(
           fontWeight: FontWeight.w600,
           color: IunaPalette.ink2,
           height: 1,
@@ -604,8 +605,7 @@ class _RevealCard extends StatelessWidget {
                     Text(
                       card.kana,
                       textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 14,
+                      style: IunaText.body.copyWith(
                         color: IunaPalette.ink3,
                       ),
                     ),
@@ -613,8 +613,7 @@ class _RevealCard extends StatelessWidget {
                     Text(
                       card.meaning,
                       textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 13,
+                      style: IunaText.bodySmall.copyWith(
                         fontWeight: FontWeight.w600,
                         color: IunaPalette.ink2,
                         height: 1.3,
@@ -630,8 +629,7 @@ class _RevealCard extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(horizontal: 2),
                         child: Text(
                           '★',
-                          style: TextStyle(
-                            fontSize: 16,
+                          style: IunaText.bodyLarge.copyWith(
                             color: rarityInk(card.rarity),
                           ),
                         ),

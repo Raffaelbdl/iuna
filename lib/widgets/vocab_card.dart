@@ -170,7 +170,7 @@ enum RarityChipSize {
   regular(
     padH: 10,
     padV: 5,
-    codeSize: 11,
+    codeSize: 12,
     letterSpacing: 0.6,
     gap: 5,
     starSize: 9,
@@ -178,7 +178,7 @@ enum RarityChipSize {
   compact(
     padH: 8,
     padV: 4,
-    codeSize: 10,
+    codeSize: 11,
     letterSpacing: 0.6,
     gap: 4,
     starSize: 8,
@@ -186,7 +186,7 @@ enum RarityChipSize {
   header(
     padH: 10,
     padV: 5,
-    codeSize: 10,
+    codeSize: 11,
     letterSpacing: null,
     gap: 4,
     starSize: 9,
@@ -194,7 +194,7 @@ enum RarityChipSize {
   tiny(
     padH: 6,
     padV: 3,
-    codeSize: 9,
+    codeSize: 11,
     letterSpacing: 0.4,
     gap: 3,
     starSize: 7,
@@ -224,14 +224,18 @@ class RarityChip extends StatelessWidget {
     super.key,
     required this.rarity,
     this.size = RarityChipSize.regular,
+    this.named = false,
   });
   final Rarity rarity;
   final RarityChipSize size;
 
+  /// Spells the tier out after the stars ("Super Rare").
+  final bool named;
+
   @override
   Widget build(BuildContext context) {
     final ink = rarityInk(rarity);
-    return Container(
+    final chip = Container(
       padding: EdgeInsets.symmetric(horizontal: size.padH, vertical: size.padV),
       decoration: BoxDecoration(
         color: rarityFill(rarity),
@@ -261,8 +265,24 @@ class RarityChip extends StatelessWidget {
               color: ink.withValues(alpha: 0.7),
             ),
           ),
+          if (named) ...[
+            SizedBox(width: size.gap + 2),
+            Text(
+              rarityName(rarity),
+              style: TextStyle(
+                fontSize: size.codeSize,
+                fontWeight: FontWeight.w600,
+                color: ink,
+              ),
+            ),
+          ],
         ],
       ),
+    );
+    return Semantics(
+      label: '${rarityName(rarity)} card',
+      excludeSemantics: true,
+      child: chip,
     );
   }
 }
@@ -278,15 +298,20 @@ class MetaChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: IunaPalette.ink3.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
         label,
-        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: IunaPalette.ink2),
+        style: IunaText.chip.copyWith(color: IunaPalette.ink2),
       ),
     );
   }
 }
+
+// One wording for where a card stands, wherever it is shown.
+const kNotCollectedLabel = 'Not in your collection yet';
+const kWishlistedLabel = 'On your wishlist';
+const kOwnedLabel = 'In your collection';
 
 /// Where a headword stands in the learner's deck.
 class CardStatusChip extends StatelessWidget {
@@ -297,21 +322,19 @@ class CardStatusChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final (label, color) = switch (status) {
       CardLookupStatus.notFound ||
-      CardLookupStatus.available => ('Not collected yet', IunaPalette.pawBrown),
-      CardLookupStatus.wishlisted => ('On wishlist', IunaPalette.ink2),
-      CardLookupStatus.owned => ('In collection', IunaPalette.ink2),
+      CardLookupStatus.available => (kNotCollectedLabel, IunaPalette.pawBrown),
+      CardLookupStatus.wishlisted => (kWishlistedLabel, IunaPalette.ink2),
+      CardLookupStatus.owned => (kOwnedLabel, IunaPalette.ink2),
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
         label,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
+        style: IunaText.chip.copyWith(
           color: color,
         ),
       ),

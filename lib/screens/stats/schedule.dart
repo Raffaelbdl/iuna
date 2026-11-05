@@ -22,7 +22,7 @@ class _MaturityChart extends StatelessWidget {
     final total = bins.fold<int>(0, (s, b) => s + b.count);
     if (total == 0) {
       return const _EmptyHint(
-        text: 'No mature cards yet — review a few times to grow intervals.',
+        text: 'Nothing to show yet — cards settle as you review them.',
       );
     }
     final stageTotals = {'learn': 0, 'young': 0, 'mature': 0};
@@ -42,39 +42,39 @@ class _MaturityChart extends StatelessWidget {
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             _StageTag(
-              color: _SP.learning,
-              dark: _SP.learningInk,
+              color: IunaPalette.chartLearning,
+              dark: IunaPalette.chartLearningInk,
               label: 'learning ${stageTotals['learn']}',
             ),
             _StageTag(
-              color: _SP.blue,
-              dark: _SP.blueDeep,
-              label: 'young ${stageTotals['young']}',
+              color: IunaPalette.chartBlue,
+              dark: IunaPalette.chartMatureInk,
+              label: 'getting there ${stageTotals['young']}',
             ),
             _StageTag(
-              color: _SP.blueDeep,
-              dark: _SP.matureInk,
-              label: 'mature ${stageTotals['mature']}',
+              color: IunaPalette.chartMatureInk,
+              dark: IunaPalette.chartMatureInk,
+              label: 'well known ${stageTotals['mature']}',
               solid: true,
             ),
           ],
         ),
         const SizedBox(height: 4),
         Text(
-          'mature $maturePct% of $total',
-          style: const TextStyle(
-            fontSize: 11,
+          '$maturePct% of $total well known',
+          style: IunaText.caption.copyWith(
             fontWeight: FontWeight.w500,
             color: IunaPalette.ink3,
           ),
         ),
         const SizedBox(height: 8),
-        SizedBox(
+        _ChartCanvas(
           height: 130,
-          child: CustomPaint(
-            painter: _MaturityPainter(bins: bins, stages: _stages),
-            size: Size.infinite,
-          ),
+          summary:
+              'Cards by time until their next review: '
+              '${[for (final b in bins) '${b.label}: ${b.count}'].join(', ')}.',
+          painter: (scaler) =>
+              _MaturityPainter(bins: bins, stages: _stages, scaler: scaler),
         ),
       ],
     );
@@ -117,9 +117,7 @@ class _StageTag extends StatelessWidget {
           const SizedBox(width: 6),
           Text(
             label,
-            style: TextStyle(
-              fontSize: 10.5,
-              fontWeight: FontWeight.w600,
+            style: IunaText.chip.copyWith(
               color: solid ? Colors.white : dark,
             ),
           ),
@@ -130,19 +128,24 @@ class _StageTag extends StatelessWidget {
 }
 
 class _MaturityPainter extends CustomPainter {
-  _MaturityPainter({required this.bins, required this.stages});
+  _MaturityPainter({
+    required this.bins,
+    required this.stages,
+    required this.scaler,
+  });
   final List<MaturityBin> bins;
   final List<String> stages;
+  final TextScaler scaler;
 
   static Color _color(String stage) => switch (stage) {
-    'mature' => _SP.blueDeep,
-    'young' => _SP.blue,
-    _ => _SP.learning,
+    'mature' => IunaPalette.chartMatureInk,
+    'young' => IunaPalette.chartBlue,
+    _ => IunaPalette.chartLearning,
   };
 
   @override
   void paint(Canvas canvas, Size size) {
-    const padT = 16.0, padB = 22.0;
+    final padT = scaler.scale(16), padB = scaler.scale(22);
     final chartH = size.height - padT - padB;
     final maxV = bins.fold<int>(0, (m, b) => math.max(m, b.count));
     if (maxV == 0) return;
@@ -152,7 +155,7 @@ class _MaturityPainter extends CustomPainter {
       Offset(0, padT + chartH),
       Offset(size.width, padT + chartH),
       Paint()
-        ..color = _SP.gridStrong
+        ..color = IunaPalette.chartGridStrong
         ..strokeWidth = 0.5,
     );
     for (var i = 0; i < bins.length; i++) {
@@ -171,19 +174,25 @@ class _MaturityPainter extends CustomPainter {
         );
         final n = _chartLabel(
           '${b.count}',
+          scaler: scaler,
           color: IunaPalette.ink2,
           bold: true,
         );
-        n.paint(canvas, Offset(left + (bw - n.width) / 2, top - 12));
+        n.paint(canvas, Offset(left + (bw - n.width) / 2, top - n.height));
       }
-      final l = _chartLabel(b.label);
-      l.paint(canvas, Offset(left + (bw - l.width) / 2, padT + chartH + 4));
+      _paintFitted(
+        canvas,
+        _chartLabel(b.label, scaler: scaler),
+        centerX: left + bw / 2,
+        top: padT + chartH + 4,
+        maxWidth: slot - 2,
+      );
     }
   }
 
   @override
   bool shouldRepaint(covariant _MaturityPainter old) =>
-      old.bins != bins || old.stages != stages;
+      old.bins != bins || old.stages != stages || old.scaler != scaler;
 }
 
 // ─── Forecast (next 14 days) with summary ─────────────────────────────
@@ -200,8 +209,11 @@ class _ForecastChart extends StatelessWidget {
         text: 'Nothing due in the next two weeks. Sit back, kuma.',
       );
     }
-    const minPerCard = 6;
-    final totalMin = (total * minPerCard / 60).round();
+    const secPerCard = 6;
+    final totalMin = (total * secPerCard / 60).round();
+    final duration = totalMin < 60
+        ? '$totalMin min'
+        : '${totalMin ~/ 60}h ${totalMin % 60}m';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -212,16 +224,14 @@ class _ForecastChart extends StatelessWidget {
                 children: [
                   TextSpan(
                     text: '$total ',
-                    style: const TextStyle(
-                      fontSize: 12,
+                    style: IunaText.chip.copyWith(
                       fontWeight: FontWeight.w700,
                       color: IunaPalette.ink,
                     ),
                   ),
-                  const TextSpan(
+                  TextSpan(
                     text: 'reviews',
-                    style: TextStyle(
-                      fontSize: 11,
+                    style: IunaText.caption.copyWith(
                       fontWeight: FontWeight.w500,
                       color: IunaPalette.ink3,
                     ),
@@ -233,26 +243,23 @@ class _ForecastChart extends StatelessWidget {
             Text.rich(
               TextSpan(
                 children: [
-                  const TextSpan(
+                  TextSpan(
                     text: '≈ ',
-                    style: TextStyle(
-                      fontSize: 11,
+                    style: IunaText.caption.copyWith(
                       fontWeight: FontWeight.w500,
                       color: IunaPalette.ink3,
                     ),
                   ),
                   TextSpan(
-                    text: '${totalMin}h',
-                    style: const TextStyle(
-                      fontSize: 12,
+                    text: duration,
+                    style: IunaText.chip.copyWith(
                       fontWeight: FontWeight.w700,
                       color: IunaPalette.ink,
                     ),
                   ),
-                  const TextSpan(
-                    text: ' total · ${minPerCard}s/card',
-                    style: TextStyle(
-                      fontSize: 11,
+                  TextSpan(
+                    text: ' total · ${secPerCard}s/card',
+                    style: IunaText.caption.copyWith(
                       fontWeight: FontWeight.w500,
                       color: IunaPalette.ink3,
                     ),
@@ -263,12 +270,12 @@ class _ForecastChart extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 8),
-        SizedBox(
+        _ChartCanvas(
           height: 110,
-          child: CustomPaint(
-            painter: _ForecastPainter(days: days),
-            size: Size.infinite,
-          ),
+          summary:
+              '$total reviews due over the next ${days.length} days, '
+              '${days.first.due} of them today.',
+          painter: (scaler) => _ForecastPainter(days: days, scaler: scaler),
         ),
       ],
     );
@@ -276,19 +283,20 @@ class _ForecastChart extends StatelessWidget {
 }
 
 class _ForecastPainter extends CustomPainter {
-  _ForecastPainter({required this.days});
+  _ForecastPainter({required this.days, required this.scaler});
   final List<ForecastDay> days;
+  final TextScaler scaler;
 
   @override
   void paint(Canvas canvas, Size size) {
-    const padT = 12.0, padB = 22.0;
+    final padT = 12.0, padB = scaler.scale(22);
     final chartH = size.height - padT - padB;
     final maxV = days.fold<int>(0, (m, d) => math.max(m, d.due));
     if (maxV == 0) return;
     final slot = size.width / days.length;
     final bw = math.max(2.0, slot * 0.78);
     final gridPaint = Paint()
-      ..color = _SP.grid
+      ..color = IunaPalette.chartGrid
       ..strokeWidth = 0.5;
     for (final v in const [0.5, 1.0]) {
       final y = padT + (1 - v) * chartH;
@@ -307,7 +315,7 @@ class _ForecastPainter extends CustomPainter {
           Rect.fromLTWH(left, padT + chartH - h, bw, h),
           const Radius.circular(3),
         ),
-        Paint()..color = _SP.honey,
+        Paint()..color = IunaPalette.chartHoney,
       );
       if (i == 0 || i == 7 || i == days.length - 1) {
         final label = i == 0
@@ -315,12 +323,13 @@ class _ForecastPainter extends CustomPainter {
             : i == 7
             ? '+7d'
             : '+${days.length - 1}d';
-        final tp = _chartLabel(label);
+        final tp = _chartLabel(label, scaler: scaler);
         tp.paint(canvas, Offset(left + (bw - tp.width) / 2, padT + chartH + 4));
       }
     }
   }
 
   @override
-  bool shouldRepaint(covariant _ForecastPainter old) => old.days != days;
+  bool shouldRepaint(covariant _ForecastPainter old) =>
+      old.days != days || old.scaler != scaler;
 }

@@ -119,9 +119,16 @@ class _ChatComposerState extends State<ChatComposer> with SingleTickerProviderSt
 
   Future<void> _press(PointerDownEvent event) async {
     if (!widget.enabled || _hold != _Hold.idle) return;
-    _hold = _Hold.starting;
     _pressX = event.position.dx;
     _pressY = event.position.dy;
+    await _begin();
+  }
+
+  /// Starts recording. [locked] goes straight to hands-free, for a
+  /// screen reader's tap, which can't hold.
+  Future<void> _begin({bool locked = false}) async {
+    if (!widget.enabled || _hold != _Hold.idle) return;
+    _hold = _Hold.starting;
     _lift.value = 0;
     _cancelArmed = false;
     final recorder = _recorder ??= widget.recorder!();
@@ -153,7 +160,7 @@ class _ChatComposerState extends State<ChatComposer> with SingleTickerProviderSt
     _seconds.value = 0;
     _ticker.start();
     HapticFeedback.lightImpact();
-    setState(() => _hold = _Hold.recording);
+    setState(() => _hold = locked ? _Hold.locked : _Hold.recording);
   }
 
   void _move(PointerMoveEvent event) {
@@ -312,7 +319,7 @@ class _ChatComposerState extends State<ChatComposer> with SingleTickerProviderSt
                         maxLines: 5,
                         keyboardType: TextInputType.multiline,
                         textCapitalization: TextCapitalization.sentences,
-                        style: const TextStyle(fontSize: 14, color: IunaPalette.ink),
+                        style: IunaText.body.copyWith(color: IunaPalette.ink),
                         decoration: InputDecoration(
                           hintText: _nudge ?? widget.hint,
                           hintStyle: const TextStyle(color: IunaPalette.ink3),
@@ -418,7 +425,12 @@ class _ChatComposerState extends State<ChatComposer> with SingleTickerProviderSt
       child: Semantics(
         button: true,
         enabled: widget.enabled,
-        label: 'Hold to speak, slide up to lock',
+        label: 'Dictate',
+        hint: 'Hold to speak, or tap for hands-free',
+        onTap: widget.enabled && _hold == _Hold.idle
+            ? () => unawaited(_begin(locked: true))
+            : null,
+        excludeSemantics: true,
         child: SizedBox(
           width: 48,
           height: 48,
@@ -534,8 +546,7 @@ class _RecordingBarState extends State<_RecordingBar> with SingleTickerProviderS
           valueListenable: widget.seconds,
           builder: (context, seconds, _) => Text(
             clockLabel(Duration(seconds: seconds)),
-            style: const TextStyle(
-              fontSize: 13,
+            style: IunaText.bodySmall.copyWith(
               fontWeight: FontWeight.w600,
               color: IunaPalette.ink2,
               fontFeatures: [FontFeature.tabularFigures()],
@@ -545,10 +556,9 @@ class _RecordingBarState extends State<_RecordingBar> with SingleTickerProviderS
         const SizedBox(width: 10),
         Expanded(
           child: armed
-              ? const Text(
+              ? Text(
                   'Release to cancel',
-                  style: TextStyle(
-                    fontSize: 13,
+                  style: IunaText.bodySmall.copyWith(
                     fontWeight: FontWeight.w600,
                     color: IunaPalette.raritySsrInk,
                   ),
@@ -569,14 +579,14 @@ class _RecordingBarState extends State<_RecordingBar> with SingleTickerProviderS
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               foregroundColor: IunaPalette.raritySsrInk,
             ),
-            child: const Text(
+            child: Text(
               'Cancel',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+              style: IunaText.bodySmall.copyWith(fontWeight: FontWeight.w600),
             ),
           ),
         ] else if (!armed) ...[
           const SizedBox(width: 8),
-          const Text('‹ Slide to cancel', style: TextStyle(fontSize: 12, color: IunaPalette.ink3)),
+          Text('‹ Slide to cancel', style: IunaText.caption.copyWith(color: IunaPalette.ink3)),
         ],
       ],
     );

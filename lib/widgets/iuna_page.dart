@@ -78,9 +78,7 @@ class IunaTopBarTitle extends StatelessWidget {
           title,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
+          style: IunaText.subtitle.copyWith(
             color: IunaPalette.ink2,
             letterSpacing: 0.6,
             height: 1.2,
@@ -91,8 +89,7 @@ class IunaTopBarTitle extends StatelessWidget {
             subtitle,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 12,
+            style: IunaText.caption.copyWith(
               fontWeight: FontWeight.w500,
               color: IunaPalette.ink3,
               height: 1.2,

@@ -105,7 +105,7 @@ class _CardPacksSectionState extends State<CardPacksSection> {
       listing.sourceAuthor,
       listing.license,
     );
-    const creditStyle = TextStyle(fontSize: 12, color: IunaPalette.ink3);
+    final creditStyle = IunaText.caption.copyWith(color: IunaPalette.ink3);
 
     return ListTile(
       leading: const Icon(icon, color: IunaPalette.pawBrown),

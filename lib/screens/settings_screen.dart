@@ -352,8 +352,8 @@ class _PackFilterTile extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Draw packs from a single themed pack instead of the whole '
-            'deck. Turns off "JLPT only"; wishlist cards still show up.',
+            'Draw packs from a single themed pack instead of all cards. '
+            'Turns off "JLPT only"; wishlist cards still show up.',
           ),
           const SizedBox(height: 8),
           _DropdownBox(

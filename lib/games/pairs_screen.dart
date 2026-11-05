@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../db/database.dart';
 import '../db/repository.dart';
+import '../screens/today_flow.dart';
 import '../services/tts.dart';
 import '../theme/iuna_theme.dart';
 import '../widgets/section_header.dart';
@@ -88,6 +89,13 @@ class _PairsScreenState extends State<PairsScreen> {
     });
   }
 
+  Future<void> _openToday() async {
+    await openTodayFlow(context, widget.db);
+    if (!mounted) return;
+    setState(() => _loading = true);
+    await _load();
+  }
+
   /// Deals the next round in this round's mode, or in the next mode
   /// that has enough cards for it.
   void _deal() {
@@ -169,10 +177,11 @@ class _PairsScreenState extends State<PairsScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : round == null
-          ? const GameNotice(
+          ? GameNotice(
               text:
                   'Pairs needs at least $kMinPairs cards you have met. '
-                  'Open a pack and flip its cards to start.',
+                  'Open a pack and reveal its cards to start.',
+              action: (label: 'Go to Today', onTap: _openToday),
             )
           : round.finished
           ? _summary(round)
@@ -222,9 +231,7 @@ class _Board extends StatelessWidget {
               const Spacer(),
               Text(
                 '${round.matched.length} / ${round.size}',
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
+                style: IunaText.chip.copyWith(
                   color: IunaPalette.ink3,
                 ),
               ),
@@ -309,8 +316,7 @@ class _Tile extends StatelessWidget {
             textAlign: TextAlign.center,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 13,
+            style: IunaText.bodySmall.copyWith(
               fontWeight: FontWeight.w600,
               height: 1.25,
               color: ink,

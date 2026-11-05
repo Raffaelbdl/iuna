@@ -56,8 +56,7 @@ class IunaSearchField extends StatelessWidget {
                   border: InputBorder.none,
                   isDense: true,
                 ),
-                style: const TextStyle(
-                  fontSize: 14,
+                style: IunaText.body.copyWith(
                   color: IunaPalette.ink,
                   fontWeight: FontWeight.w500,
                 ),
@@ -71,7 +70,7 @@ class IunaSearchField extends StatelessWidget {
                   onChanged('');
                 },
                 child: const SizedBox.square(
-                  dimension: 40,
+                  dimension: 48,
                   child: Icon(
                     Icons.close_rounded,
                     size: 18,

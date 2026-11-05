@@ -145,16 +145,7 @@ class _ReviewScreenState extends State<ReviewScreen>
     _undoStack.add(_SuspendUndo(entry.card.id));
 
     if (_index + 1 >= _deck.length) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (_) => ReviewDoneScreen(
-            db: widget.db,
-            correct: _correctCount,
-            total: _gradedCardIds.length,
-            doneCardIds: _gradedCardIds,
-          ),
-        ),
-      );
+      await _finish();
       return;
     }
 
@@ -189,19 +180,7 @@ class _ReviewScreenState extends State<ReviewScreen>
     _undoStack.add(_GradeUndo(result.snapshot));
 
     if (_index + 1 >= _deck.length) {
-      // Push the done screen and pop ourselves on the way out so the
-      // back stack keeps the home → done relation, not home → review →
-      // done with a stranded review.
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (_) => ReviewDoneScreen(
-            db: widget.db,
-            correct: _correctCount,
-            total: _gradedCardIds.length,
-            doneCardIds: _gradedCardIds,
-          ),
-        ),
-      );
+      await _finish();
       return;
     }
 
@@ -216,8 +195,29 @@ class _ReviewScreenState extends State<ReviewScreen>
     _showCurrent();
   }
 
-  Future<void> _undoLast() async {
-    if (_undoStack.isEmpty || _undoing || _index == 0) return;
+  /// Shows the recap over the finished session. It stays underneath so
+  /// the recap's undo can bring the last card back; every other way out
+  /// of the recap leaves both.
+  Future<void> _finish() async {
+    final undo = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => ReviewDoneScreen(
+          db: widget.db,
+          correct: _correctCount,
+          total: _gradedCardIds.length,
+          doneCardIds: List.of(_gradedCardIds),
+          canUndo: true,
+        ),
+      ),
+    );
+    if (undo == true && mounted) await _undoLast(fromRecap: true);
+  }
+
+  /// Rolls back the last grade or suspension. From the recap, the last
+  /// card is still the current one, so the index stays.
+  Future<void> _undoLast({bool fromRecap = false}) async {
+    if (_undoStack.isEmpty || _undoing) return;
+    if (!fromRecap && _index == 0) return;
     final action = _undoStack.removeLast();
     setState(() => _undoing = true);
     HapticFeedback.selectionClick();
@@ -238,7 +238,7 @@ class _ReviewScreenState extends State<ReviewScreen>
     }
     if (!mounted) return;
     setState(() {
-      _index -= 1;
+      if (!fromRecap) _index -= 1;
       // The user already saw the answer side after a grade; come back
       // flipped so they can re-grade without an extra tap. After a
       // suspension we come back unflipped (see above).
@@ -441,8 +441,7 @@ class _TopBar extends StatelessWidget {
             ),
       title: Text(
         label,
-        style: const TextStyle(
-          fontSize: 13,
+        style: IunaText.bodySmall.copyWith(
           fontWeight: FontWeight.w600,
           color: IunaPalette.ink2,
         ),
@@ -532,19 +531,10 @@ class _ReviewVocab extends StatelessWidget {
                       children: [
                         RarityChip(rarity: card.rarity),
                         if (flipped)
-                          Tappable(
+                          IunaIconButton(
+                            icon: Icons.info_outline_rounded,
+                            tooltip: 'Card details',
                             onTap: onDetails,
-                            label: 'Card details',
-                            child: Container(
-                              width: 40,
-                              height: 40,
-                              alignment: Alignment.center,
-                              child: const Icon(
-                                Icons.info_outline_rounded,
-                                size: 18,
-                                color: IunaPalette.ink2,
-                              ),
-                            ),
                           ),
                       ],
                     ),
@@ -581,8 +571,7 @@ class _ReviewVocab extends StatelessWidget {
                                     Text(
                                       card.kana,
                                       textAlign: TextAlign.center,
-                                      style: const TextStyle(
-                                        fontSize: 13,
+                                      style: IunaText.bodySmall.copyWith(
                                         color: IunaPalette.ink3,
                                       ),
                                     ),
@@ -591,8 +580,7 @@ class _ReviewVocab extends StatelessWidget {
                                       Text(
                                         card.meaning,
                                         textAlign: TextAlign.center,
-                                        style: const TextStyle(
-                                          fontSize: 14,
+                                        style: IunaText.body.copyWith(
                                           fontWeight: FontWeight.w500,
                                           color: IunaPalette.ink,
                                         ),
@@ -616,8 +604,7 @@ class _ReviewVocab extends StatelessWidget {
                                                 children: [
                                                   Text(
                                                     '${i + 1}.',
-                                                    style: const TextStyle(
-                                                      fontSize: 12,
+                                                    style: IunaText.chip.copyWith(
                                                       fontWeight:
                                                           FontWeight.w700,
                                                       color: IunaPalette.ink3,
@@ -627,8 +614,7 @@ class _ReviewVocab extends StatelessWidget {
                                                   Expanded(
                                                     child: Text(
                                                       senses[i].gloss,
-                                                      style: const TextStyle(
-                                                        fontSize: 13,
+                                                      style: IunaText.bodySmall.copyWith(
                                                         fontWeight:
                                                             FontWeight.w500,
                                                         color: IunaPalette.ink,
@@ -649,8 +635,7 @@ class _ReviewVocab extends StatelessWidget {
                     Text(
                       flipped ? '← swipe to grade →' : 'tap to reveal',
                       textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 12,
+                      style: IunaText.caption.copyWith(
                         fontStyle: FontStyle.italic,
                         color: IunaPalette.ink3,
                       ),
@@ -752,7 +737,7 @@ class _AnswerBtn extends StatelessWidget {
             end: Alignment.bottomCenter,
             colors: gradient,
           ),
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(IunaRadii.md),
           boxShadow: const [
             BoxShadow(
               color: Color.fromRGBO(74, 53, 32, 0.18),
@@ -769,9 +754,7 @@ class _AnswerBtn extends StatelessWidget {
             const SizedBox(width: 8),
             Text(
               label,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
+              style: IunaText.label.copyWith(
                 color: fg,
               ),
             ),
@@ -795,15 +778,14 @@ class _GhostHint extends StatelessWidget {
           width: double.infinity,
           padding: const EdgeInsets.symmetric(vertical: 14),
           decoration: ghostPillDecoration(),
-          child: const Row(
+          child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(Icons.visibility_rounded, size: 16, color: IunaPalette.ink2),
               SizedBox(width: 8),
               Text(
                 'Tap card or here to reveal',
-                style: TextStyle(
-                  fontSize: 13,
+                style: IunaText.bodySmall.copyWith(
                   fontWeight: FontWeight.w600,
                   color: IunaPalette.ink2,
                 ),
@@ -831,9 +813,9 @@ class _NoCards extends StatelessWidget {
             color: IunaPalette.bellGold,
           ),
           const SizedBox(height: 12),
-          const Text(
+          Text(
             'Nothing to review right now.',
-            style: TextStyle(fontSize: 16, color: IunaPalette.ink2),
+            style: IunaText.bodyLarge.copyWith(color: IunaPalette.ink2),
           ),
           const SizedBox(height: 16),
           IunaCtaButton(
@@ -894,7 +876,7 @@ class _DetailsSheet extends StatelessWidget {
         margin: const EdgeInsets.symmetric(horizontal: 8),
         decoration: const BoxDecoration(
           color: IunaPalette.paper,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(IunaRadii.lg)),
           boxShadow: [
             BoxShadow(
               color: Color.fromRGBO(74, 53, 32, 0.25),
@@ -931,8 +913,7 @@ class _DetailsSheet extends StatelessWidget {
                     child: senses.isEmpty
                         ? Text(
                             card.meaning,
-                            style: const TextStyle(
-                              fontSize: 14,
+                            style: IunaText.body.copyWith(
                               color: IunaPalette.ink,
                             ),
                           )
@@ -990,7 +971,7 @@ class _SuspendTile extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
         decoration: BoxDecoration(
           color: const Color(0x66FFFDF6),
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(IunaRadii.md),
           border: Border.all(
             color: const Color.fromRGBO(74, 53, 32, 0.06),
             width: 0.5,
@@ -1004,15 +985,13 @@ class _SuspendTile extends StatelessWidget {
               color: IunaPalette.ink2,
             ),
             const SizedBox(width: 10),
-            const Expanded(
+            Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     'Suspend this card',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
+                    style: IunaText.label.copyWith(
                       color: IunaPalette.ink,
                     ),
                   ),
@@ -1020,8 +999,7 @@ class _SuspendTile extends StatelessWidget {
                   Text(
                     'Skip it now and remove it from future reviews. You '
                     'can unsuspend from the collection.',
-                    style: TextStyle(
-                      fontSize: 12,
+                    style: IunaText.caption.copyWith(
                       color: IunaPalette.ink3,
                       height: 1.4,
                     ),
@@ -1070,7 +1048,7 @@ class _SheetHeader extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   card.kana,
-                  style: const TextStyle(fontSize: 14, color: IunaPalette.ink3),
+                  style: IunaText.body.copyWith(color: IunaPalette.ink3),
                 ),
               ],
             ),
@@ -1097,7 +1075,7 @@ class _SheetSection extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       decoration: BoxDecoration(
         color: const Color(0x66FFFDF6),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(IunaRadii.md),
         border: Border.all(
           color: const Color.fromRGBO(74, 53, 32, 0.06),
           width: 0.5,

@@ -51,9 +51,7 @@ class GamePage extends StatelessWidget {
                     ),
                     title: Text(
                       title,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
+                      style: IunaText.subtitle.copyWith(
                         color: IunaPalette.ink2,
                         letterSpacing: 0.6,
                       ),
@@ -105,8 +103,7 @@ class GameSummary extends StatelessWidget {
         Text(
           kicker,
           textAlign: TextAlign.center,
-          style: const TextStyle(
-            fontSize: 12,
+          style: IunaText.caption.copyWith(
             fontWeight: FontWeight.w500,
             color: IunaPalette.ink3,
             letterSpacing: 4,
@@ -116,11 +113,9 @@ class GameSummary extends StatelessWidget {
         Text(
           headline,
           textAlign: TextAlign.center,
-          style: const TextStyle(
-            fontSize: 28,
+          style: IunaText.display.copyWith(
             fontWeight: FontWeight.w600,
             color: IunaPalette.ink,
-            letterSpacing: -0.3,
             height: 1.1,
           ),
         ),
@@ -175,9 +170,7 @@ class _Figure extends StatelessWidget {
       children: [
         Text(
           value,
-          style: const TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.w700,
+          style: IunaText.headline.copyWith(
             color: IunaPalette.ink,
             height: 1,
           ),
@@ -185,8 +178,7 @@ class _Figure extends StatelessWidget {
         const SizedBox(height: 4),
         Text(
           label,
-          style: const TextStyle(
-            fontSize: 12,
+          style: IunaText.caption.copyWith(
             fontWeight: FontWeight.w500,
             color: IunaPalette.ink3,
             letterSpacing: 0.4,
@@ -211,17 +203,13 @@ class _MissedRow extends StatelessWidget {
         children: [
           Text(
             card.kanji,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: IunaPalette.ink,
-            ),
+            style: IunaText.title.copyWith(color: IunaPalette.ink),
           ),
           if (card.kana != card.kanji) ...[
             const SizedBox(width: 8),
             Text(
               card.kana,
-              style: const TextStyle(fontSize: 13, color: IunaPalette.ink3),
+              style: IunaText.bodySmall.copyWith(color: IunaPalette.ink3),
             ),
           ],
           const SizedBox(width: 12),
@@ -231,7 +219,7 @@ class _MissedRow extends StatelessWidget {
               textAlign: TextAlign.right,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 13, color: IunaPalette.ink2),
+              style: IunaText.bodySmall.copyWith(color: IunaPalette.ink2),
             ),
           ),
         ],
@@ -259,8 +247,7 @@ class GameNotice extends StatelessWidget {
             Text(
               text,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 14,
+              style: IunaText.body.copyWith(
                 color: IunaPalette.ink3,
                 height: 1.4,
               ),
